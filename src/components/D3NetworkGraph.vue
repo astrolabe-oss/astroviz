@@ -177,15 +177,21 @@ export default {
             .attr('fill', '#999')
             .style('stroke', 'none');
 
-        // Initialize force simulation
+        // Initialize force simulation with more compact settings
         this.simulation = d3.forceSimulation()
-            .force('link', d3.forceLink().id(d => d.id).distance(100))
-            .force('charge', d3.forceManyBody().strength(-300))
+            // Shorter link distance for more compact layout
+            .force('link', d3.forceLink().id(d => d.id).distance(60))
+            // Weaker repulsion force between nodes
+            .force('charge', d3.forceManyBody().strength(-150))
+            // Center force
             .force('center', d3.forceCenter(width / 2, height / 2))
-            .force('collision', d3.forceCollide().radius(40))
+            // Smaller collision radius
+            .force('collision', d3.forceCollide().radius(25))
+            // Add a radial force to keep nodes within a certain radius
+            .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.05))
             .on('tick', this.tick);
 
-        console.log("D3: Visualization initialized");
+        console.log("D3: Visualization initialized with compact force layout");
       } catch (error) {
         console.error("D3: Error initializing D3", error);
         throw error;
@@ -252,6 +258,41 @@ export default {
       this.g.selectAll('.node').remove();
       this.g.selectAll('.node-label').remove();
 
+      // Adjust force parameters based on graph size
+      const nodeCount = data.nodes.length;
+
+      // For larger graphs, use even more compact settings
+      if (nodeCount > 100) {
+        // Update link distance - MUST use separate references to each force
+        const linkForce = this.simulation.force('link');
+        if (linkForce) linkForce.distance(40);
+
+        // Update charge strength - MUST use separate references
+        const chargeForce = this.simulation.force('charge');
+        if (chargeForce) chargeForce.strength(-100);
+
+        // Update collision radius - MUST use separate references
+        const collisionForce = this.simulation.force('collision');
+        if (collisionForce) collisionForce.radius(20);
+
+        // Update radial force strength - MUST use separate references
+        const radialForce = this.simulation.force('radial');
+        if (radialForce) radialForce.strength(0.1);
+      } else {
+        // Default settings for smaller graphs
+        const linkForce = this.simulation.force('link');
+        if (linkForce) linkForce.distance(60);
+
+        const chargeForce = this.simulation.force('charge');
+        if (chargeForce) chargeForce.strength(-150);
+
+        const collisionForce = this.simulation.force('collision');
+        if (collisionForce) collisionForce.radius(25);
+
+        const radialForce = this.simulation.force('radial');
+        if (radialForce) radialForce.strength(0.05);
+      }
+
       // Create links
       const link = this.g.selectAll('.link')
           .data(data.links)
@@ -273,7 +314,7 @@ export default {
 
       // Add circles to node groups
       node.append('circle')
-          .attr('r', 12)
+          .attr('r', nodeCount > 100 ? 8 : 12) // Smaller circles for larger graphs
           .attr('fill', d => this.nodeColors[d.type] || '#ccc')
           .attr('stroke', d => d3.color(this.nodeColors[d.type] || '#ccc').darker())
           .attr('stroke-width', 1.5);
@@ -281,10 +322,10 @@ export default {
       // Add text labels
       node.append('text')
           .attr('class', 'node-label')
-          .attr('dx', 15)
+          .attr('dx', nodeCount > 100 ? 10 : 15)
           .attr('dy', 4)
-          .text(d => d.label)
-          .attr('font-size', '10px');
+          .text(d => nodeCount > 200 ? '' : d.label) // Hide labels on very large graphs
+          .attr('font-size', nodeCount > 100 ? '8px' : '10px');
 
       // Add tooltips
       node.append('title')
@@ -297,8 +338,8 @@ export default {
           .nodes(data.nodes)
           .force('link').links(data.links);
 
-      // Restart simulation
-      this.simulation.alpha(1).restart();
+      // Use a higher alpha for better initial layout
+      this.simulation.alpha(1).alphaDecay(0.02).restart();
     },
 
     /**
