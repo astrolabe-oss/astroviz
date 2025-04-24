@@ -55,12 +55,12 @@ export default {
       currentZoomLevel: 1, // Track current zoom level
 
       nodeColors: {
-        'Application': '#6DB33F',
-        'Deployment': '#1E88E5',
-        'Compute': '#FFA726',
-        'Resource': '#7E57C2',
-        'TrafficController': '#26A69A',
-        'InternetIP': '#EC407A'
+        'Application': '#F9696E', // Red like in the image
+        'Deployment': '#F2A3B3', // Pink like in the image
+        'Compute': '#5DCAD1', // Light blue like in the image
+        'Resource': '#74B56D', // Green like in the image
+        'TrafficController': '#4A98E3', // Blue like in the image
+        'InternetIP': '#F9BD58', // Yellow/orange like in the image
       },
 
       isRendering: false,
