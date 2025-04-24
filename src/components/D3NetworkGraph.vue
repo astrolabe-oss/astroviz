@@ -6,9 +6,10 @@
       <span>Rendering {{ nodeCount }} nodes and {{ edgeCount }} connections...</span>
     </div>
     <div class="controls">
-      <button @click="zoomIn" class="control-btn">+</button>
-      <button @click="zoomOut" class="control-btn">-</button>
-      <button @click="resetView" class="control-btn">Reset</button>
+      <button @click="zoomIn" class="control-btn" title="Zoom In">+</button>
+      <button @click="zoomOut" class="control-btn" title="Zoom Out">−</button>
+      <div class="zoom-level" v-if="currentZoomLevel">{{ Math.round(currentZoomLevel * 100) }}%</div>
+      <button @click="resetView" class="control-btn" title="Reset View">⟳</button>
     </div>
     <div id="d3-container" ref="d3Container"></div>
     <div class="legend">
@@ -51,6 +52,7 @@ export default {
       svg: null,
       g: null, // Main group for zoom/pan
       zoom: null,
+      currentZoomLevel: 1, // Track current zoom level
 
       nodeColors: {
         'Application': '#6DB33F',
@@ -149,6 +151,8 @@ export default {
         this.zoom = d3.zoom()
             .scaleExtent([0.1, 5])
             .on('zoom', (event) => {
+              // Update current zoom level
+              this.currentZoomLevel = event.transform.k;
               this.g.attr('transform', event.transform);
             });
 
@@ -499,18 +503,22 @@ export default {
      * Zoom in on the visualization
      */
     zoomIn() {
+      // Use d3's built-in zoom handling with smooth transition
       this.svg.transition().duration(300).call(
           this.zoom.scaleBy, 1.2
       );
+      this.currentZoomLevel *= 1.2;
     },
 
     /**
      * Zoom out on the visualization
      */
     zoomOut() {
+      // Use d3's built-in zoom handling with smooth transition
       this.svg.transition().duration(300).call(
           this.zoom.scaleBy, 0.8
       );
+      this.currentZoomLevel *= 0.8;
     },
 
     /**
@@ -521,9 +529,12 @@ export default {
       const width = container.clientWidth;
       const height = container.clientHeight || 600;
 
+      // Reset zoom level
+      this.currentZoomLevel = 0.5;
+
       this.svg.transition().duration(500).call(
           this.zoom.transform,
-          d3.zoomIdentity.translate(width / 4, height / 4).scale(0.5)
+          d3.zoomIdentity.translate(width / 3, height / 3).scale(0.5)
       );
     }
   }
@@ -558,6 +569,7 @@ export default {
   align-items: center;
   z-index: 10;
   font-size: 14px;
+  pointer-events: none;
 }
 
 .spinner {
@@ -573,14 +585,21 @@ export default {
 .controls {
   position: absolute;
   top: 10px;
-  left: 10px;
-  z-index: 10;
+  left: 15px;
+  z-index: 20;
   display: flex;
+  align-items: center;
   gap: 5px;
+  background-color: rgba(255, 255, 255, 0.85);
+  padding: 5px;
+  border-radius: 4px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
 .control-btn {
-  width: 30px;
+  font-size: 16px;
+  font-weight: bold;
+  width: 32px;
   height: 30px;
   background-color: white;
   border: 1px solid #ddd;
@@ -594,6 +613,13 @@ export default {
 
 .control-btn:hover {
   background-color: #f0f0f0;
+}
+
+.zoom-level {
+  font-size: 12px;
+  min-width: 40px;
+  text-align: center;
+  user-select: none;
 }
 
 .legend {
