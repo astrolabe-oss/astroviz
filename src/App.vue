@@ -150,8 +150,9 @@ export default {
   },
 
   mounted() {
-    console.log("APP: Component mounted");
-    // Note: Not auto-connecting to allow user control
+    console.log("APP: Component mounted, connecting automatically");
+    // Auto-connect when the component is mounted
+    this.connect();
   },
 
   methods: {
