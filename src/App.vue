@@ -1,3 +1,4 @@
+// src/App.vue
 <template>
   <div id="app">
     <header class="header">
@@ -6,6 +7,7 @@
         Connected to: {{ connectionInfo }}
         <button @click="disconnect" class="disconnect-button">Disconnect</button>
       </div>
+      <button v-else @click="connect" class="connect-button">Connect to Neo4j</button>
     </header>
 
     <div v-if="connectionError" class="error-banner">
@@ -31,7 +33,7 @@
           :filters.sync="filters"
       />
 
-      <NetworkGraph
+      <D3NetworkGraph
           :graph-data="filteredGraphData"
           :view-mode="viewMode"
           @node-clicked="onNodeClicked"
@@ -52,7 +54,7 @@
 
 <script>
 import FilterBar from '@/components/FilterBar.vue';
-import NetworkGraph from '@/components/NetworkGraph.vue';
+import D3NetworkGraph from '@/components/D3NetworkGraph.vue';
 import neo4jService from '@/services/neo4jService';
 import config from '@/config';
 
@@ -61,7 +63,7 @@ export default {
 
   components: {
     FilterBar,
-    NetworkGraph
+    D3NetworkGraph
   },
 
   data() {
@@ -147,10 +149,9 @@ export default {
     }
   },
 
-  // Connect automatically when the app is mounted
   mounted() {
-    console.log("APP: Component mounted, connecting automatically");
-    this.connect();
+    console.log("APP: Component mounted");
+    // Note: Not auto-connecting to allow user control
   },
 
   methods: {
@@ -162,6 +163,8 @@ export default {
       this.connecting = true;
       this.connectionError = null;
       this.loading = true;
+      this.loadingStatus = "Connecting to Neo4j...";
+      this.loadingProgress = 5;
 
       try {
         console.log("APP: Calling neo4jService.connect()");
@@ -194,6 +197,7 @@ export default {
         protocolMuxes: [],
         addresses: []
       };
+      this.selectedNode = null;
     },
 
     /**
@@ -206,9 +210,9 @@ export default {
       this.loadingProgress = 5;
 
       try {
-        // Fetch nodes
+        // Fetch graph data
         console.log("APP: Preparing to fetch data");
-        this.loadingStatus = "Fetching nodes...";
+        this.loadingStatus = "Fetching graph data...";
         this.loadingProgress = 10;
         const graphData = await neo4jService.fetchGraphData(
             (status, progress) => {
@@ -219,7 +223,7 @@ export default {
         );
 
         console.log("APP: Data fetch complete, processing data");
-        this.loadingStatus = "Processing node data...";
+        this.loadingStatus = "Processing graph data...";
         this.loadingProgress = 70;
         this.graphData = graphData;
 
@@ -241,10 +245,10 @@ export default {
         });
 
         this.uniqueValues = {
-          appNames: Array.from(appNames),
-          providers: Array.from(providers),
-          protocolMuxes: Array.from(protocolMuxes),
-          addresses: Array.from(addresses)
+          appNames: Array.from(appNames).sort(),
+          providers: Array.from(providers).sort(),
+          protocolMuxes: Array.from(protocolMuxes).sort(),
+          addresses: Array.from(addresses).sort()
         };
 
         console.log("APP: Filter values extracted", this.uniqueValues);
@@ -305,17 +309,40 @@ export default {
   gap: 10px;
 }
 
+.connect-button, .disconnect-button, .retry-button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.2s;
+}
+
+.connect-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.connect-button:hover {
+  background-color: #45a049;
+}
+
 .disconnect-button {
   background-color: #f44336;
   color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
-  cursor: pointer;
 }
 
 .disconnect-button:hover {
   background-color: #d32f2f;
+}
+
+.retry-button {
+  background-color: #2196F3;
+  color: white;
+}
+
+.retry-button:hover {
+  background-color: #1976D2;
 }
 
 .error-banner {
@@ -332,19 +359,6 @@ export default {
 .error-banner p {
   color: #c62828;
   margin: 0;
-}
-
-.retry-button {
-  background-color: #2196F3;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
-  cursor: pointer;
-}
-
-.retry-button:hover {
-  background-color: #1976D2;
 }
 
 .loading-overlay {
@@ -414,6 +428,7 @@ export default {
 
 .main-content {
   position: relative;
+  min-height: 80vh;
 }
 
 .node-details {
@@ -428,6 +443,7 @@ export default {
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   max-height: 70vh;
   overflow-y: auto;
+  z-index: 5;
 }
 
 .node-details h3 {

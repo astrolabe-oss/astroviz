@@ -1,13 +1,10 @@
+// src/main.js
 import Vue from 'vue';
 import App from './App.vue';
 
 Vue.config.productionTip = false;
 
-// Load environment variables are already handled by Vue CLI
-// They are accessible via process.env.VUE_APP_*
-console.log('MAIN: Starting Astrolabe Visualizer application');
-
-// Global error handler
+// Register global error handlers
 Vue.config.errorHandler = function(err, vm, info) {
     console.error('Vue Error:', err);
     console.error('Component:', vm);
@@ -23,6 +20,7 @@ window.onerror = function(message, source, lineno, colno, error) {
     return false;
 };
 
+// Create and mount the Vue instance
 console.log('MAIN: Creating Vue instance');
 new Vue({
     render: h => h(App)

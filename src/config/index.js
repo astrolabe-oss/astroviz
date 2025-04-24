@@ -1,3 +1,4 @@
+// src/config/index.js
 /**
  * Application configuration
  * Loads values from environment variables with fallbacks

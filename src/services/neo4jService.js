@@ -1,3 +1,4 @@
+// src/services/neo4jService.js
 import neo4j from 'neo4j-driver';
 import config from '@/config';
 
@@ -19,7 +20,12 @@ class Neo4jService {
         console.log(`NEO4J SERVICE: Using URI: ${uri}`);
 
         // Create driver instance
-        const driverConfig = {};
+        const driverConfig = {
+            maxConnectionLifetime: 3 * 60 * 60 * 1000, // 3 hours
+            maxConnectionPoolSize: 50,
+            connectionAcquisitionTimeout: 30 * 1000 // 30 seconds
+        };
+
         if (database) {
             driverConfig.database = database;
             console.log(`NEO4J SERVICE: Using database: ${database}`);
@@ -87,6 +93,25 @@ class Neo4jService {
     }
 
     /**
+     * Run a Cypher query
+     * @param {string} query The Cypher query to run
+     * @param {Object} params Query parameters
+     * @returns {Promise<Object>} Query result
+     */
+    async runQuery(query, params = {}) {
+        const session = this.getSession();
+        try {
+            const result = await session.run(query, params);
+            return result;
+        } catch (error) {
+            console.error("NEO4J SERVICE: Query error", error);
+            throw error;
+        } finally {
+            await session.close();
+        }
+    }
+
+    /**
      * Fetch the entire graph data
      * @param {Function} progressCallback Optional callback function for reporting progress
      * @returns {Promise<Object>} Promise resolving to vertices and edges
@@ -104,95 +129,111 @@ class Neo4jService {
             }
         };
 
-        let session;
         try {
-            console.log("NEO4J SERVICE: Getting session...");
-            session = this.getSession();
+            // Get all nodes and relationships in one query for better performance
+            reportProgress("Fetching graph data...", 20);
 
-            // Count total nodes and relationships to track progress
-            reportProgress("Counting nodes and relationships...", 15);
+            const query = `
+                // Get all nodes with their labels and properties
+                MATCH (n)
+                WITH collect({
+                    id: id(n),
+                    labels: labels(n),
+                    properties: properties(n)
+                }) AS nodes
+                
+                // Get all relationships
+                MATCH (source)-[r]->(target)
+                WITH nodes, collect({
+                    source: id(source),
+                    target: id(target),
+                    type: type(r),
+                    properties: properties(r)
+                }) AS relationships
+                
+                RETURN nodes, relationships
+            `;
 
-            console.log("NEO4J SERVICE: Running count query...");
-            const countResult = await session.run(`
-        MATCH (n) 
-        RETURN count(n) AS nodeCount
-      `);
+            reportProgress("Executing query...", 30);
+            const result = await this.runQuery(query);
 
-            const nodeCount = countResult.records[0].get('nodeCount').toNumber();
-            console.log(`NEO4J SERVICE: Found ${nodeCount} nodes`);
-            reportProgress(`Found ${nodeCount} nodes`, 20);
+            if (result.records.length === 0) {
+                console.log("NEO4J SERVICE: No data returned");
+                return { vertices: {}, edges: [] };
+            }
 
-            // Get all nodes and their properties
-            reportProgress("Fetching node data...", 25);
-            console.log("NEO4J SERVICE: Running nodes query...");
-            const nodesResult = await session.run(`
-        MATCH (n)
-        RETURN n, labels(n) as labels
-      `);
+            const record = result.records[0];
+            const nodesData = record.get('nodes');
+            const relationshipsData = record.get('relationships');
 
-            console.log(`NEO4J SERVICE: Retrieved ${nodesResult.records.length} node records`);
-            reportProgress("Processing node data...", 40);
+            reportProgress("Processing nodes...", 60);
 
             // Process nodes
-            console.log("NEO4J SERVICE: Processing node data...");
             const vertices = {};
-            nodesResult.records.forEach((record, index) => {
-                if (index % 50 === 0 && nodeCount > 100) {
-                    // Periodically update progress for large datasets
-                    const progressPercent = 40 + Math.floor((index / nodesResult.records.length) * 15);
-                    reportProgress(`Processed ${index} of ${nodesResult.records.length} nodes...`, progressPercent);
-                }
+            nodesData.forEach(node => {
+                // Use the first label as the type (matching your previous implementation)
+                const type = node.labels[0];
 
-                const node = record.get('n');
-                const labels = record.get('labels');
-                const id = node.identity.toString();
+                // Convert neo4j int to string for the ID
+                const id = node.id.toString();
 
+                // Store node with its properties and type
                 vertices[id] = {
-                    ...node.properties,
-                    type: labels[0]  // Use first label as type
+                    ...this.processProperties(node.properties),
+                    type
                 };
             });
 
-            // Get all relationships
-            reportProgress("Fetching relationship data...", 55);
-            console.log("NEO4J SERVICE: Running relationships query...");
-            const relsResult = await session.run(`
-        MATCH (parent)-[r]->(child)
-        RETURN ID(parent) as parent_id, ID(child) as child_id, type(r) as rel_type, properties(r) as props
-      `);
-
-            console.log(`NEO4J SERVICE: Retrieved ${relsResult.records.length} relationship records`);
-            reportProgress("Processing relationship data...", 60);
+            reportProgress("Processing relationships...", 80);
 
             // Process relationships
-            console.log("NEO4J SERVICE: Processing relationship data...");
-            const edges = [];
-            relsResult.records.forEach((record, index) => {
-                if (index % 50 === 0 && relsResult.records.length > 100) {
-                    // Periodically update progress for large datasets
-                    const progressPercent = 60 + Math.floor((index / relsResult.records.length) * 10);
-                    reportProgress(`Processed ${index} of ${relsResult.records.length} relationships...`, progressPercent);
-                }
+            const edges = relationshipsData.map(rel => ({
+                start_node: rel.source.toString(),
+                end_node: rel.target.toString(),
+                type: rel.type,
+                properties: this.processProperties(rel.properties)
+            }));
 
-                edges.push({
-                    start_node: record.get('parent_id').toString(),
-                    end_node: record.get('child_id').toString(),
-                    type: record.get('rel_type'),
-                    properties: record.get('props')
-                });
-            });
+            reportProgress("Completing...", 95);
 
             console.log(`NEO4J SERVICE: Completed with ${Object.keys(vertices).length} vertices and ${edges.length} edges`);
             return { vertices, edges };
         } catch (error) {
             console.error("NEO4J SERVICE: Error in fetchGraphData", error);
             throw error;
-        } finally {
-            if (session) {
-                console.log("NEO4J SERVICE: Closing session");
-                await session.close();
+        }
+    }
+
+    /**
+     * Process Neo4j properties to convert Neo4j types to JavaScript types
+     * @param {Object} properties Neo4j properties object
+     * @returns {Object} Processed properties
+     */
+    processProperties(properties) {
+        const processed = {};
+
+        for (const [key, value] of Object.entries(properties)) {
+            // Handle Neo4j integers
+            if (neo4j.isInt(value)) {
+                processed[key] = value.toNumber();
+            }
+            // Handle arrays with Neo4j integers
+            else if (Array.isArray(value)) {
+                processed[key] = value.map(item =>
+                    neo4j.isInt(item) ? item.toNumber() : item
+                );
+            }
+            // Handle date objects - Neo4j returns them as native JavaScript Date objects
+            else if (value instanceof Date) {
+                processed[key] = value.toISOString();
+            }
+            // Pass through everything else
+            else {
+                processed[key] = value;
             }
         }
+
+        return processed;
     }
 }
 
