@@ -64,7 +64,7 @@
                   v-for="(rel, relIndex) in group.relationships"
                   :key="`out-${relIndex}`"
                   class="relationship-item"
-                  @click="selectNodeInGraph(rel.nodeId)"
+                  @click="selectNodeInGraph(rel)"
               >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
@@ -89,7 +89,7 @@
                   v-for="(rel, relIndex) in group.relationships"
                   :key="`in-${relIndex}`"
                   class="relationship-item"
-                  @click="selectNodeInGraph(rel.nodeId)"
+                  @click="selectNodeInGraph(rel)"
               >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
@@ -241,18 +241,18 @@ export default {
     },
 
     /**
-     * Select a node in the main graph by ID
-     * @param {string} nodeId ID of the node to select
+     * Select a node in the main graph
+     * @param {Object} rel The relationship object containing nodeId and node type information
      */
-    selectNodeInGraph(nodeId) {
-      // Check if the node exists in the current filtered graph data
-      const nodeData = this.graphData.vertices[nodeId];
+    selectNodeInGraph(rel) {
+      // Get the node data directly using the nodeId from the relationship
+      const nodeData = this.graphData.vertices[rel.nodeId];
 
       if (nodeData) {
         // Emit an event to notify the parent components to select this node
         this.$emit('select-node', nodeData);
       } else {
-        console.warn(`Node with ID ${nodeId} not found in current graph data (may be filtered out)`);
+        console.warn(`Node with ID ${rel.nodeId} not found in current graph data (may be filtered out)`);
       }
     },
 
