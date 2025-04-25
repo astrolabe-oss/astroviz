@@ -12,6 +12,7 @@
         @zoom-in="onZoomIn"
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
+        @reset-positions="onResetPositions"
     />
 
     <GraphVisualization
@@ -147,6 +148,15 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
+      }
+    },
+
+    /**
+     * Handle reset positions button click
+     */
+    onResetPositions() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.resetNodePositions();
       }
     }
   }

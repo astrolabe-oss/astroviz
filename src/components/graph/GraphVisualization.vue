@@ -41,7 +41,10 @@ export default {
 
       // Store current nodes and links for updates
       currentNodes: [],
-      currentLinks: []
+      currentLinks: [],
+
+      // Map to store fixed node positions
+      nodePositions: {}
     };
   },
 
@@ -207,6 +210,12 @@ export default {
           visData = this.transformToDetailedView(this.graphData);
         }
 
+        // Store node positions before updating
+        this.saveNodePositions();
+
+        // Apply any saved positions to the new nodes
+        this.applyNodePositions(visData.nodes);
+
         // Store current nodes and links
         this.currentNodes = visData.nodes;
         this.currentLinks = visData.links;
@@ -226,6 +235,35 @@ export default {
       } catch (error) {
         console.error("D3: Error updating visualization", error);
         throw error;
+      }
+    },
+
+    /**
+     * Save current node positions
+     */
+    saveNodePositions() {
+      this.nodePositions = {};
+      if (this.currentNodes && this.currentNodes.length > 0) {
+        this.currentNodes.forEach(node => {
+          if (node.fx !== undefined && node.fy !== undefined) {
+            this.nodePositions[node.id] = { fx: node.fx, fy: node.fy };
+          }
+        });
+      }
+      console.log("D3: Saved positions for", Object.keys(this.nodePositions).length, "nodes");
+    },
+
+    /**
+     * Apply saved node positions to new nodes
+     */
+    applyNodePositions(nodes) {
+      if (nodes && nodes.length > 0) {
+        nodes.forEach(node => {
+          if (this.nodePositions[node.id]) {
+            node.fx = this.nodePositions[node.id].fx;
+            node.fy = this.nodePositions[node.id].fy;
+          }
+        });
       }
     },
 
@@ -358,7 +396,7 @@ export default {
     },
 
     /**
-     * Create drag behavior for nodes
+     * Create drag behavior for nodes that keeps them fixed after dragging
      */
     drag() {
       return d3.drag()
@@ -373,9 +411,28 @@ export default {
           })
           .on('end', (event, d) => {
             if (!event.active) this.simulation.alphaTarget(0);
-            d.fx = null;
-            d.fy = null;
+            // Keep fx and fy set to maintain the node's position
+            // We no longer set d.fx = null; d.fy = null;
           });
+    },
+
+    /**
+     * Reset all node positions (make them unfixed)
+     */
+    resetNodePositions() {
+      if (this.currentNodes) {
+        this.currentNodes.forEach(node => {
+          node.fx = null;
+          node.fy = null;
+        });
+
+        // Clear saved positions
+        this.nodePositions = {};
+
+        // Update the simulation with the unfixed nodes
+        this.simulation.nodes(this.currentNodes);
+        this.simulation.alpha(0.3).restart();
+      }
     },
 
     /**
