@@ -5,9 +5,10 @@ import { findNodeIdByProperties, getNodeDisplayName } from './nodeUtils';
  * Process relationships for a node
  * @param {Object} node The node to get relationships for
  * @param {Object} graphData The graph data containing vertices and edges
+ * @param {string} direction The direction of relationships to get: 'outgoing', 'incoming', or 'both'
  * @returns {Array} Array of processed relationships
  */
-export function processNodeRelationships(node, graphData) {
+export function processNodeRelationships(node, graphData, direction = 'outgoing') {
     if (!node || !graphData || !graphData.edges) {
         return [];
     }
@@ -15,25 +16,57 @@ export function processNodeRelationships(node, graphData) {
     const nodeId = findNodeIdByProperties(node, graphData);
     if (!nodeId) return [];
 
-    // Find only outgoing edges as requested
-    const relationships = graphData.edges.filter(edge =>
-        edge.start_node === nodeId
-    );
+    let relationships = [];
 
-    // Enrich edges with node details
-    return relationships.map(edge => {
-        const otherNodeId = edge.end_node;
-        const otherNode = graphData.vertices[otherNodeId];
+    if (direction === 'outgoing' || direction === 'both') {
+        // Find outgoing edges
+        const outgoingEdges = graphData.edges.filter(edge =>
+            edge.start_node === nodeId
+        );
 
-        return {
-            type: edge.type,
-            direction: 'outgoing',
-            nodeId: otherNodeId,
-            nodeName: getNodeDisplayName(otherNode),
-            nodeType: otherNode.type,
-            properties: edge.properties || {}
-        };
-    });
+        // Enrich outgoing edges with node details
+        const outRelationships = outgoingEdges.map(edge => {
+            const otherNodeId = edge.end_node;
+            const otherNode = graphData.vertices[otherNodeId];
+
+            return {
+                type: edge.type,
+                direction: 'outgoing',
+                nodeId: otherNodeId,
+                nodeName: getNodeDisplayName(otherNode),
+                nodeType: otherNode.type,
+                properties: edge.properties || {}
+            };
+        });
+
+        relationships = [...outRelationships];
+    }
+
+    if (direction === 'incoming' || direction === 'both') {
+        // Find incoming edges
+        const incomingEdges = graphData.edges.filter(edge =>
+            edge.end_node === nodeId
+        );
+
+        // Enrich incoming edges with node details
+        const inRelationships = incomingEdges.map(edge => {
+            const otherNodeId = edge.start_node;
+            const otherNode = graphData.vertices[otherNodeId];
+
+            return {
+                type: edge.type,
+                direction: 'incoming',
+                nodeId: otherNodeId,
+                nodeName: getNodeDisplayName(otherNode),
+                nodeType: otherNode.type,
+                properties: edge.properties || {}
+            };
+        });
+
+        relationships = [...relationships, ...inRelationships];
+    }
+
+    return relationships;
 }
 
 /**

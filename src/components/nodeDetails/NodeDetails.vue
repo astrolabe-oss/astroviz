@@ -34,20 +34,60 @@
       </div>
     </div>
 
-    <!-- Node Outgoing Relationships Section -->
-    <div class="detail-section" v-if="relationships.length > 0">
-      <h4>Outgoing Connections</h4>
-      <div class="relationships-container">
-        <div v-for="(group, index) in groupedRelationships" :key="index" class="relationship-group">
-          <h5>{{ group.type }}</h5>
-          <ul class="relationship-list">
-            <li v-for="(rel, relIndex) in group.relationships" :key="relIndex">
-              <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
-                {{ rel.nodeType }}
-              </span>
-              {{ rel.nodeName }}
-            </li>
-          </ul>
+    <!-- Node Relationships Section with Tabs -->
+    <div class="detail-section" v-if="outgoingRelationships.length > 0 || incomingRelationships.length > 0">
+      <div class="relationship-tabs">
+        <button
+            :class="['tab-button', { active: activeTab === 'to' }]"
+            @click="activeTab = 'to'"
+        >
+          TO ({{ outgoingRelationships.length }})
+        </button>
+        <button
+            :class="['tab-button', { active: activeTab === 'from' }]"
+            @click="activeTab = 'from'"
+        >
+          FROM ({{ incomingRelationships.length }})
+        </button>
+      </div>
+
+      <!-- TO Connections Tab -->
+      <div v-if="activeTab === 'to'" class="tab-content">
+        <div v-if="outgoingRelationships.length === 0" class="no-connections">
+          No outgoing connections
+        </div>
+        <div v-else class="relationships-container">
+          <div v-for="(group, index) in groupedOutgoingRelationships" :key="`out-${index}`" class="relationship-group">
+            <h5>{{ group.type }}</h5>
+            <ul class="relationship-list">
+              <li v-for="(rel, relIndex) in group.relationships" :key="`out-${relIndex}`">
+                <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
+                  {{ rel.nodeType }}
+                </span>
+                {{ rel.nodeName }}
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+
+      <!-- FROM Connections Tab -->
+      <div v-if="activeTab === 'from'" class="tab-content">
+        <div v-if="incomingRelationships.length === 0" class="no-connections">
+          No incoming connections
+        </div>
+        <div v-else class="relationships-container">
+          <div v-for="(group, index) in groupedIncomingRelationships" :key="`in-${index}`" class="relationship-group">
+            <h5>{{ group.type }}</h5>
+            <ul class="relationship-list">
+              <li v-for="(rel, relIndex) in group.relationships" :key="`in-${relIndex}`">
+                <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
+                  {{ rel.nodeType }}
+                </span>
+                {{ rel.nodeName }}
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
@@ -56,7 +96,7 @@
 
 <script>
 import { getNodeTypeColor } from '@/utils/nodeUtils';
-import { processNodeRelationships } from '@/utils/relationshipUtils';
+import { processNodeRelationships, groupRelationshipsByType } from '@/utils/relationshipUtils';
 
 export default {
   name: 'NodeDetails',
@@ -70,6 +110,12 @@ export default {
       type: Object,
       required: true
     }
+  },
+
+  data() {
+    return {
+      activeTab: 'to'  // Default to TO tab
+    };
   },
 
   computed: {
@@ -93,37 +139,44 @@ export default {
     },
 
     /**
-     * Get all relationships for the current node
+     * Get outgoing (TO) relationships for the current node
      */
-    relationships() {
-      return processNodeRelationships(this.node, this.graphData);
+    outgoingRelationships() {
+      return processNodeRelationships(this.node, this.graphData, 'outgoing');
+    },
+
+    /**
+     * Get incoming (FROM) relationships for the current node
+     */
+    incomingRelationships() {
+      return processNodeRelationships(this.node, this.graphData, 'incoming');
     },
 
     /**
      * Get outgoing relationships grouped by type
      */
-    groupedRelationships() {
-      if (!this.relationships.length) return [];
+    groupedOutgoingRelationships() {
+      return groupRelationshipsByType(this.outgoingRelationships);
+    },
 
-      // Create an object to hold the grouped relationships
-      const groupedByType = {};
-
-      this.relationships.forEach(rel => {
-        const groupKey = rel.type;
-
-        if (!groupedByType[groupKey]) {
-          groupedByType[groupKey] = {
-            type: groupKey,
-            relationships: []
-          };
-        }
-
-        groupedByType[groupKey].relationships.push(rel);
-      });
-
-      // Convert to array and sort alphabetically by relationship type
-      return Object.values(groupedByType).sort((a, b) => a.type.localeCompare(b.type));
+    /**
+     * Get incoming relationships grouped by type
+     */
+    groupedIncomingRelationships() {
+      return groupRelationshipsByType(this.incomingRelationships);
     }
+  },
+
+  watch: {
+    // When the node changes, set the active tab based on available connections
+    node() {
+      this.setInitialActiveTab();
+    }
+  },
+
+  mounted() {
+    // Set the initial active tab based on available connections
+    this.setInitialActiveTab();
   },
 
   methods: {
@@ -131,6 +184,20 @@ export default {
      * Get color for node type badge
      */
     getNodeTypeColor,
+
+    /**
+     * Set the initial active tab based on available connections
+     */
+    setInitialActiveTab() {
+      // If there are no outgoing connections but there are incoming connections,
+      // set the active tab to 'from'
+      if (this.outgoingRelationships.length === 0 && this.incomingRelationships.length > 0) {
+        this.activeTab = 'from';
+      } else {
+        // Otherwise, default to 'to' tab
+        this.activeTab = 'to';
+      }
+    },
 
     /**
      * Close the details panel
@@ -239,6 +306,43 @@ export default {
   word-break: break-word;
   font-size: 13px;
   color: #555;
+}
+
+/* Tab styles */
+.relationship-tabs {
+  display: flex;
+  border-bottom: 1px solid #eee;
+  margin-bottom: 15px;
+}
+
+.tab-button {
+  padding: 8px 16px;
+  background: none;
+  border: none;
+  border-bottom: 3px solid transparent;
+  cursor: pointer;
+  font-weight: bold;
+  color: #666;
+  transition: all 0.2s ease;
+}
+
+.tab-button:hover {
+  color: #4A98E3;
+}
+
+.tab-button.active {
+  color: #4A98E3;
+  border-bottom-color: #4A98E3;
+}
+
+.tab-content {
+  padding-top: 5px;
+}
+
+.no-connections {
+  color: #999;
+  font-style: italic;
+  padding: 10px 0;
 }
 
 .relationships-container {
