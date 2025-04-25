@@ -1,4 +1,3 @@
-// src/components/nodeDetails/NodeDetails.vue
 <template>
   <div v-if="node" class="node-details">
     <h3>Node: <span class="node-type-header-badge" :style="{ backgroundColor: getNodeTypeColor(node.type) }">{{ node.type }}</span></h3>
@@ -69,7 +68,9 @@
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                <span class="node-link" :title="getNodeTooltip(rel)">{{ rel.nodeName }}</span>
+                <span class="connection-details" :title="getNodeTooltip(rel)">
+                  {{ formatConnectionDetails(rel) }}
+                </span>
               </li>
             </ul>
           </div>
@@ -94,7 +95,9 @@
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                <span class="node-link" :title="getNodeTooltip(rel)">{{ rel.nodeName }}</span>
+                <span class="connection-details" :title="getNodeTooltip(rel)">
+                  {{ formatConnectionDetails(rel) }}
+                </span>
               </li>
             </ul>
           </div>
@@ -238,6 +241,22 @@ export default {
         // Otherwise, default to 'to' tab
         this.activeTab = 'to';
       }
+    },
+
+    /**
+     * Format connection details in a consistent format: "address (protocol_multiplexor)"
+     * @param {Object} rel The relationship object
+     * @returns {string} Formatted connection details
+     */
+    formatConnectionDetails(rel) {
+      // Get the node from the graph data
+      const node = this.graphData.vertices[rel.nodeId];
+      if (!node) return "";
+
+      const address = node.address || "Unknown";
+      const protocolMultiplexor = node.protocol_multiplexor || "Unknown";
+
+      return `${address} (${protocolMultiplexor})`;
     },
 
     /**
@@ -463,5 +482,20 @@ export default {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.connection-details {
+  flex: 1;
+  color: #555;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.connection-details:hover {
+  text-decoration: underline;
+  color: #4A98E3;
 }
 </style>
