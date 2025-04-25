@@ -14,7 +14,7 @@
     <div id="d3-container" ref="d3Container"></div>
     <div class="legend">
       <div v-for="(color, type) in nodeColors" :key="type" class="legend-item">
-        <div class="legend-color" :style="{backgroundColor: color}"></div>
+        <div class="legend-icon" v-html="getLegendIcon(type)"></div>
         <div class="legend-label">{{ type }}</div>
       </div>
     </div>
@@ -56,13 +56,12 @@ export default {
       currentZoomLevel: 1, // Track current zoom level
 
       nodeColors: {
-        'Application': '#F9696E',     // Red like in the image
-        'Deployment': '#F2A3B3',      // Pink like in the image
-        'Compute': '#5DCAD1',         // Light blue like in the image
-        'Resource': '#74B56D',        // Green like in the image
+        'Application': '#F9696E', // Red like in the image
+        'Deployment': '#F2A3B3', // Pink like in the image
+        'Compute': '#5DCAD1', // Light blue like in the image
+        'Resource': '#74B56D', // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
-        'InternetIP': '#E0E0E0',      // Light grey (updated from yellow/orange)
-        'Test': '#E47396'             // Purple-pink like in the image
+        'InternetIP': '#E0E0E0', // Light grey (updated from yellow/orange)
       },
 
       isRendering: false,
@@ -362,6 +361,19 @@ export default {
 
       // Use a higher alpha for better initial layout
       this.simulation.alpha(1).alphaDecay(0.02).restart();
+    },
+
+    /**
+     * Get a small version of the icon for the legend
+     * @param {string} type The node type
+     * @returns {string} SVG HTML string
+     */
+    getLegendIcon(type) {
+      // Get the icon SVG from networkIcons
+      const iconSvg = networkIcons[type] || networkIcons.default;
+
+      // Return the SVG with styling specific to the legend
+      return iconSvg.replace('<svg', `<svg style="width: 20px; height: 20px; color: ${this.nodeColors[type]}"`);
     },
 
     /**
@@ -699,14 +711,16 @@ export default {
 .legend-item {
   display: flex;
   align-items: center;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 }
 
-.legend-color {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 8px;
+.legend-icon {
+  width: 24px;
+  height: 24px;
+  margin-right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .legend-label {

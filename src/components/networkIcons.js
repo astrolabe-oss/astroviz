@@ -4,13 +4,13 @@
  * Network diagram icons as inline SVG paths
  */
 const networkIcons = {
-  // Cloud/Internet icon (AWS style)
+  // Cloud/Internet icon (updated with light grey fill and dark outline)
   InternetIP: `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 18">
-    <path d="M0,12 Q0,8 3,7 Q5,5 9,6 Q11,2 16,5 Q20,5 22,8 Q24,11 21,14 L3,14 Q0,14 0,12 Z" 
-          fill="#E0E0E0" stroke="#333333" stroke-width="1" />
-  </svg>
-`,
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 18">
+      <path d="M0,12 Q0,8 3,7 Q5,5 9,6 Q11,2 16,5 Q20,5 22,8 Q24,11 21,14 L3,14 Q0,14 0,12 Z" 
+            fill="#E0E0E0" stroke="#333333" stroke-width="1" />
+    </svg>
+  `,
 
   // Server/Compute icon (rack server)
   Compute: `
@@ -47,29 +47,29 @@ const networkIcons = {
     </svg>
   `,
 
-  // Load Balancer icon (square with 3 diverging arrows)
+  // Traffic Controller icon with arrows contained within the box
   TrafficController: `
-  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-    <!-- Main container - blue square with rounded corners -->
-    <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
-    
-    <!-- Input arrow from top (properly contained) -->
-    <line x1="12" y1="4.5" x2="12" y2="9" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
-    <polygon points="10,8 12,11 14,8" fill="#000" fill-opacity="0.6" />
-    
-    <!-- Output arrow to left (now inside the box) -->
-    <line x1="8" y1="12" x2="5" y2="12" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
-    <polygon points="7,10 4,12 7,14" fill="#000" fill-opacity="0.6" />
-    
-    <!-- Output arrow to right (now inside the box) -->
-    <line x1="16" y1="12" x2="19" y2="12" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
-    <polygon points="17,10 20,12 17,14" fill="#000" fill-opacity="0.6" />
-    
-    <!-- Output arrow to bottom (fully contained) -->
-    <line x1="12" y1="15" x2="12" y2="19" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
-    <polygon points="10,17 12,19.5 14,17" fill="#000" fill-opacity="0.6" />
-  </svg>
-`,
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+      <!-- Main container - blue square with rounded corners -->
+      <rect x="4" y="4" width="16" height="16" rx="2" fill="currentColor" />
+      
+      <!-- Input arrow from top (properly contained) -->
+      <line x1="12" y1="4.5" x2="12" y2="9" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
+      <polygon points="10,8 12,11 14,8" fill="#000" fill-opacity="0.6" />
+      
+      <!-- Output arrow to left (now inside the box) -->
+      <line x1="8" y1="12" x2="5" y2="12" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
+      <polygon points="7,10 4,12 7,14" fill="#000" fill-opacity="0.6" />
+      
+      <!-- Output arrow to right (now inside the box) -->
+      <line x1="16" y1="12" x2="19" y2="12" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
+      <polygon points="17,10 20,12 17,14" fill="#000" fill-opacity="0.6" />
+      
+      <!-- Output arrow to bottom (fully contained) -->
+      <line x1="12" y1="15" x2="12" y2="19" stroke="#000" stroke-opacity="0.6" stroke-width="1.5" />
+      <polygon points="10,17 12,19.5 14,17" fill="#000" fill-opacity="0.6" />
+    </svg>
+  `,
 
   // Deployment/Cluster icon (3 stacked squares with visible layers)
   Deployment: `
