@@ -584,11 +584,23 @@ export default {
             return `${size * 1.2}${unit}`;
           });
 
+      // Make non-highlighted nodes semi-transparent
+      this.g.selectAll('.node')
+          .filter(d => !connectedNodes.has(d.id))
+          .style('opacity', 0.3);
+
       // Highlight selected links
       this.g.selectAll('.link')
           .filter((d, i) => connectedLinks.includes(i))
           .attr('stroke-width', 3)
           .attr('stroke', '#4444ff');
+
+      // Make non-highlighted links transparent and dotted
+      this.g.selectAll('.link')
+          .filter((d, i) => !connectedLinks.includes(i))
+          .attr('stroke-width', 1)
+          .attr('stroke-dasharray', '3,3')
+          .attr('stroke-opacity', 0.2);
     },
 
     /**
@@ -616,6 +628,7 @@ export default {
                 node.select('svg').style('color', originalColor);
               }
             })
+            .style('opacity', 1) // Restore opacity
             .select('text')
             .style('font-weight', 'normal')
             .style('font-size', null);
@@ -623,7 +636,9 @@ export default {
         // Restore original link appearance
         this.g.selectAll('.link')
             .attr('stroke-width', 1.5)
-            .attr('stroke', '#999');
+            .attr('stroke', '#999')
+            .attr('stroke-dasharray', null) // Remove dotted style
+            .attr('stroke-opacity', 1); // Restore opacity
 
         // Clear selected node
         this.selectedNodeId = null;
