@@ -27,6 +27,7 @@
 
 <script>
 import * as d3 from 'd3';
+import networkIcons from './networkIcons';
 
 export default {
   name: 'D3NetworkGraph',
@@ -55,13 +56,13 @@ export default {
       currentZoomLevel: 1, // Track current zoom level
 
       nodeColors: {
-        'Application': '#F9696E', // Red like in the image
-        'Deployment': '#F2A3B3', // Pink like in the image
-        'Compute': '#5DCAD1', // Light blue like in the image
-        'Resource': '#74B56D', // Green like in the image
+        'Application': '#F9696E',     // Red like in the image
+        'Deployment': '#F2A3B3',      // Pink like in the image
+        'Compute': '#5DCAD1',         // Light blue like in the image
+        'Resource': '#74B56D',        // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
-        'InternetIP': '#F9BD58', // Yellow/orange like in the image
-        'Test': '#E47396' // Purple-pink like in the image
+        'InternetIP': '#E0E0E0',      // Light grey (updated from yellow/orange)
+        'Test': '#E47396'             // Purple-pink like in the image
       },
 
       isRendering: false,
@@ -308,133 +309,42 @@ export default {
           .call(this.drag())
           .on('click', (event, d) => this.onNodeClick(d));
 
-      // Add shapes based on node type
-      const self = this; // Store reference to component
-
+      // Add network icon shapes using SVG
+      const self = this;
       node.each(function(d) {
-        const nodeSize = nodeCount > 100 ? 8 : 12;
+        const nodeSize = nodeCount > 100 ? 14 : 18;
         const color = self.nodeColors[d.type] || '#ccc';
 
-        switch(d.type) {
-          case 'Compute':
-            // VM/Pod - Rectangle
-            d3.select(this).append('rect')
-                .attr('width', nodeSize * 1.8)
-                .attr('height', nodeSize)
-                .attr('x', -nodeSize * 0.9)
-                .attr('y', -nodeSize / 2)
-                .attr('rx', 2)
-                .attr('ry', 2)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
+        // Create group for the icon
+        const iconGroup = d3.select(this).append('g')
+            .attr('transform', `translate(${-nodeSize},${-nodeSize})`)
+            .attr('width', nodeSize * 2)
+            .attr('height', nodeSize * 2);
 
-          case 'Application':
-            // Codebase - Diamond (manually drawn)
-            const diamondSize = nodeSize * 1.2;
-            d3.select(this).append('path')
-                .attr('d', `M0,${-diamondSize} L${diamondSize},0 L0,${diamondSize} L${-diamondSize},0 Z`)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
+        // Get the appropriate icon SVG based on node type
+        const iconSvg = networkIcons[d.type] || networkIcons.default;
 
-          case 'Resource':
-            // Database - Cylinder shape
-            const cylWidth = nodeSize * 1.5;
-            const cylHeight = nodeSize * 1.2;
-            const ellipseRy = cylHeight * 0.25;
+        // Create a temporary div to hold the SVG content
+        const tempDiv = document.createElement('div');
+        tempDiv.innerHTML = iconSvg;
 
-            // Draw cylinder body
-            d3.select(this).append('path')
-                .attr('d', `M${-cylWidth/2},${-cylHeight/2 + ellipseRy}
-                          L${-cylWidth/2},${cylHeight/2 - ellipseRy}
-                          A${cylWidth/2},${ellipseRy} 0 1,0 ${cylWidth/2},${cylHeight/2 - ellipseRy}
-                          L${cylWidth/2},${-cylHeight/2 + ellipseRy}
-                          A${cylWidth/2},${ellipseRy} 0 1,1 ${-cylWidth/2},${-cylHeight/2 + ellipseRy}`)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
+        // Extract the SVG element and its child nodes
+        const svgElement = tempDiv.querySelector('svg');
+        const svgContent = svgElement.innerHTML;
 
-            // Top ellipse
-            d3.select(this).append('ellipse')
-                .attr('cx', 0)
-                .attr('cy', -cylHeight/2 + ellipseRy)
-                .attr('rx', cylWidth/2)
-                .attr('ry', ellipseRy)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
-
-          case 'TrafficController':
-            // Load Balancer - Hexagon (manually drawn)
-            const hexSize = nodeSize;
-            const hexPoints = [];
-            for (let i = 0; i < 6; i++) {
-              const angle = (Math.PI / 3) * i;
-              hexPoints.push([hexSize * Math.sin(angle), hexSize * Math.cos(angle)]);
-            }
-
-            const hexPath = 'M' + hexPoints.map(p => p.join(',')).join('L') + 'Z';
-            d3.select(this).append('path')
-                .attr('d', hexPath)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
-
-          case 'Deployment':
-            // ASG/Cluster - Star/Pentagon (manually drawn)
-            const pentSize = nodeSize;
-            const pentPoints = [];
-            for (let i = 0; i < 5; i++) {
-              const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
-              pentPoints.push([pentSize * Math.cos(angle), pentSize * Math.sin(angle)]);
-            }
-
-            const pentPath = 'M' + pentPoints.map(p => p.join(',')).join('L') + 'Z';
-            d3.select(this).append('path')
-                .attr('d', pentPath)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
-
-          case 'InternetIP':
-            // Internet/Cloud - Cloud shape
-            const cloudWidth = nodeSize * 2;
-            const cloudHeight = nodeSize * 1.5;
-
-            // Simple cloud shape using curves
-            d3.select(this).append('path')
-                .attr('d', `M${-cloudWidth/2},${cloudHeight*0.1}
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.4},-${cloudHeight*0.3}
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.6},${cloudHeight*0.1}
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.3},${cloudHeight*0.4}
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.3},${cloudHeight*0.4}
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.7},0
-                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.3},-${cloudHeight*0.6}z`)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-            break;
-
-          default:
-            // Default - Circle
-            d3.select(this).append('circle')
-                .attr('r', nodeSize)
-                .attr('fill', color)
-                .attr('stroke', d3.color(color).darker())
-                .attr('stroke-width', 1.5);
-        }
+        // Create a new SVG element and set its attributes
+        const newSvg = iconGroup.append('svg')
+            .attr('width', nodeSize * 2)
+            .attr('height', nodeSize * 2)
+            .attr('viewBox', svgElement.getAttribute('viewBox'))
+            .style('color', color) // This works with the "currentColor" fill in the icons
+            .html(svgContent);
       });
 
       // Add text labels
       node.append('text')
           .attr('class', 'node-label')
-          .attr('dx', nodeCount > 100 ? 10 : 15)
+          .attr('dx', nodeCount > 100 ? 15 : 20)
           .attr('dy', 4)
           .text(d => nodeCount > 200 ? '' : d.label)
           .attr('font-size', nodeCount > 100 ? '8px' : '10px');
