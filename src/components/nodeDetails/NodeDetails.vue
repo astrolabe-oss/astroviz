@@ -60,11 +60,16 @@
           <div v-for="(group, index) in groupedOutgoingRelationships" :key="`out-${index}`" class="relationship-group">
             <h5>{{ group.type }}</h5>
             <ul class="relationship-list">
-              <li v-for="(rel, relIndex) in group.relationships" :key="`out-${relIndex}`">
+              <li
+                  v-for="(rel, relIndex) in group.relationships"
+                  :key="`out-${relIndex}`"
+                  class="relationship-item"
+                  @click="selectNodeInGraph(rel.nodeId)"
+              >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                {{ rel.nodeName }}
+                <span class="node-link">{{ rel.nodeName }}</span>
               </li>
             </ul>
           </div>
@@ -80,11 +85,16 @@
           <div v-for="(group, index) in groupedIncomingRelationships" :key="`in-${index}`" class="relationship-group">
             <h5>{{ group.type }}</h5>
             <ul class="relationship-list">
-              <li v-for="(rel, relIndex) in group.relationships" :key="`in-${relIndex}`">
+              <li
+                  v-for="(rel, relIndex) in group.relationships"
+                  :key="`in-${relIndex}`"
+                  class="relationship-item"
+                  @click="selectNodeInGraph(rel.nodeId)"
+              >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                {{ rel.nodeName }}
+                <span class="node-link">{{ rel.nodeName }}</span>
               </li>
             </ul>
           </div>
@@ -196,6 +206,22 @@ export default {
       } else {
         // Otherwise, default to 'to' tab
         this.activeTab = 'to';
+      }
+    },
+
+    /**
+     * Select a node in the main graph by ID
+     * @param {string} nodeId ID of the node to select
+     */
+    selectNodeInGraph(nodeId) {
+      // Check if the node exists in the current filtered graph data
+      const nodeData = this.graphData.vertices[nodeId];
+
+      if (nodeData) {
+        // Emit an event to notify the parent components to select this node
+        this.$emit('select-node', nodeData);
+      } else {
+        console.warn(`Node with ID ${nodeId} not found in current graph data (may be filtered out)`);
       }
     },
 
@@ -371,11 +397,19 @@ export default {
   margin: 0;
 }
 
-.relationship-list li {
+.relationship-item {
   margin-bottom: 7px;
   display: flex;
   align-items: center;
   font-size: 13px;
+  cursor: pointer;
+  padding: 3px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.relationship-item:hover {
+  background-color: #eef5fd;
 }
 
 .node-type-badge {
@@ -388,5 +422,15 @@ export default {
   color: white;
   white-space: nowrap;
   text-shadow: 0 1px 1px rgba(0, 0, 0, 0.2);
+}
+
+.node-link {
+  color: #2c3e50;
+  text-decoration: none;
+  border-bottom: 1px dotted #ccc;
+  flex: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

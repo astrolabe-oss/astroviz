@@ -466,6 +466,56 @@ export default {
     },
 
     /**
+     * Select and highlight a node by its ID
+     * @param {string} nodeId ID of the node to select and highlight
+     */
+    selectAndHighlightNode(nodeId) {
+      // Clear any existing highlight
+      this.clearHighlight();
+
+      // Find the node in the current nodes
+      const node = this.currentNodes.find(n => n.id === nodeId);
+
+      if (node) {
+        console.log("D3: Selecting and highlighting node", node);
+
+        // Emit the node clicked event
+        this.onNodeClick(node);
+
+        // Highlight the node and its connections
+        this.highlightNode(nodeId);
+
+        // Center view on the selected node with animation
+        this.centerOnNode(node);
+      } else {
+        console.warn("D3: Node not found with ID", nodeId);
+      }
+    },
+
+    /**
+     * Center the view on a specific node
+     * @param {Object} node The node to center on
+     */
+    centerOnNode(node) {
+      if (!node || !node.x || !node.y) return;
+
+      const container = this.$refs.d3Container;
+      const width = container.clientWidth;
+      const height = container.clientHeight;
+
+      // Calculate the transform to center on this node
+      const scale = this.currentZoomLevel;
+      const x = width / 2 - node.x * scale;
+      const y = height / 2 - node.y * scale;
+
+      // Apply the transform with a smooth transition
+      this.svg.transition().duration(500).call(
+          this.zoom.transform,
+          d3.zoomIdentity.translate(x, y).scale(scale)
+      );
+    },
+
+    /**
      * Highlight a node and its connections
      * @param {string} nodeId ID of the node to highlight
      */
@@ -489,26 +539,6 @@ export default {
           connectedLinks.push(index);
         }
       });
-
-      // Prepare a highlighted color for selected node (brighter version)
-      const brightenColor = (color) => {
-        // Simple brightening algorithm for hex colors
-        if (color.startsWith('#')) {
-          // Convert to RGB
-          let r = parseInt(color.slice(1, 3), 16);
-          let g = parseInt(color.slice(3, 5), 16);
-          let b = parseInt(color.slice(5, 7), 16);
-
-          // Brighten (capped at 255)
-          r = Math.min(255, r + 40);
-          g = Math.min(255, g + 40);
-          b = Math.min(255, b + 40);
-
-          // Convert back to hex
-          return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
-        }
-        return color;
-      };
 
       // Apply highlight to nodes
       this.g.selectAll('.node')
@@ -585,9 +615,6 @@ export default {
               if (originalColor) {
                 node.select('svg').style('color', originalColor);
               }
-
-              // Remove highlight rings
-              node.selectAll('.highlight-ring').remove();
             })
             .select('text')
             .style('font-weight', 'normal')
@@ -680,5 +707,21 @@ export default {
   border-radius: 4px;
   background-color: #f9f9f9;
   overflow: hidden;
+}
+
+/* Style for the nodes and links */
+:deep(.link) {
+  transition: all 0.3s ease;
+}
+
+:deep(.node) {
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+:deep(.node-label) {
+  font-family: sans-serif;
+  pointer-events: none;
+  transition: all 0.3s ease;
 }
 </style>

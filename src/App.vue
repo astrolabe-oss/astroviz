@@ -1,4 +1,4 @@
-// src/App.vue
+// src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">
     <ConnectionHeader
@@ -27,6 +27,7 @@
       />
 
       <D3NetworkGraph
+          ref="networkGraph"
           :graph-data="filteredGraphData"
           :view-mode="viewMode"
           @node-clicked="onNodeClicked"
@@ -36,6 +37,7 @@
           :node="selectedNode"
           :graph-data="graphData"
           @close="selectedNode = null"
+          @select-node="onSelectConnectedNode"
       />
     </main>
   </div>
@@ -57,6 +59,7 @@ import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
 // Services and utilities
 import neo4jService from '@/services/neo4jService';
 import config from '@/config';
+import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
   name: 'App',
@@ -288,6 +291,30 @@ export default {
      */
     onNodeClicked(node) {
       this.selectedNode = node;
+    },
+
+    /**
+     * Handle selection of a connected node from the details panel
+     * @param {Object} nodeData Node data to select
+     */
+    onSelectConnectedNode(nodeData) {
+      console.log("APP: Selecting connected node", nodeData);
+
+      // First, check if the node is in the filtered graph data
+      const nodeId = findNodeIdByProperties(nodeData, this.filteredGraphData);
+
+      if (nodeId) {
+        // Set as the selected node
+        this.selectedNode = nodeData;
+
+        // Tell the graph visualization to highlight this node
+        if (this.$refs.networkGraph) {
+          this.$refs.networkGraph.selectNodeById(nodeId);
+        }
+      } else {
+        console.warn("APP: Connected node is not in current filtered view", nodeData);
+        // Optionally, could show a message to the user here
+      }
     }
   }
 };

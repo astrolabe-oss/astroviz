@@ -42,6 +42,7 @@ import GraphControls from './graph/GraphControls.vue';
 import GraphLegend from './graph/GraphLegend.vue';
 import GraphStats from './graph/GraphStats.vue';
 import RenderingStatus from './graph/RenderingStatus.vue';
+import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
   name: 'D3NetworkGraph',
@@ -95,6 +96,31 @@ export default {
      */
     onNodeClick(node) {
       this.$emit('node-clicked', node);
+    },
+
+    /**
+     * Select a node in the visualization by ID
+     * @param {string} nodeId The ID of the node to select
+     */
+    selectNodeById(nodeId) {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.selectAndHighlightNode(nodeId);
+      }
+    },
+
+    /**
+     * Select a node in the visualization by properties
+     * @param {Object} nodeData The node data to find and select
+     */
+    selectNodeByProperties(nodeData) {
+      // Find the node ID from the properties
+      const nodeId = findNodeIdByProperties(nodeData, this.graphData);
+
+      if (nodeId) {
+        this.selectNodeById(nodeId);
+      } else {
+        console.warn('D3NetworkGraph: Node not found with properties', nodeData);
+      }
     },
 
     /**
