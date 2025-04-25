@@ -61,6 +61,7 @@ export default {
         'Resource': '#74B56D', // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
         'InternetIP': '#F9BD58', // Yellow/orange like in the image
+        'Test': '#E47396' // Purple-pink like in the image
       },
 
       isRendering: false,
@@ -263,23 +264,18 @@ export default {
 
       // For larger graphs, use even more compact settings
       if (nodeCount > 100) {
-        // Update link distance - MUST use separate references to each force
         const linkForce = this.simulation.force('link');
         if (linkForce) linkForce.distance(40);
 
-        // Update charge strength - MUST use separate references
         const chargeForce = this.simulation.force('charge');
         if (chargeForce) chargeForce.strength(-100);
 
-        // Update collision radius - MUST use separate references
         const collisionForce = this.simulation.force('collision');
         if (collisionForce) collisionForce.radius(20);
 
-        // Update radial force strength - MUST use separate references
         const radialForce = this.simulation.force('radial');
         if (radialForce) radialForce.strength(0.1);
       } else {
-        // Default settings for smaller graphs
         const linkForce = this.simulation.force('link');
         if (linkForce) linkForce.distance(60);
 
@@ -312,19 +308,135 @@ export default {
           .call(this.drag())
           .on('click', (event, d) => this.onNodeClick(d));
 
-      // Add circles to node groups
-      node.append('circle')
-          .attr('r', nodeCount > 100 ? 8 : 12) // Smaller circles for larger graphs
-          .attr('fill', d => this.nodeColors[d.type] || '#ccc')
-          .attr('stroke', d => d3.color(this.nodeColors[d.type] || '#ccc').darker())
-          .attr('stroke-width', 1.5);
+      // Add shapes based on node type
+      const self = this; // Store reference to component
+
+      node.each(function(d) {
+        const nodeSize = nodeCount > 100 ? 8 : 12;
+        const color = self.nodeColors[d.type] || '#ccc';
+
+        switch(d.type) {
+          case 'Compute':
+            // VM/Pod - Rectangle
+            d3.select(this).append('rect')
+                .attr('width', nodeSize * 1.8)
+                .attr('height', nodeSize)
+                .attr('x', -nodeSize * 0.9)
+                .attr('y', -nodeSize / 2)
+                .attr('rx', 2)
+                .attr('ry', 2)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          case 'Application':
+            // Codebase - Diamond (manually drawn)
+            const diamondSize = nodeSize * 1.2;
+            d3.select(this).append('path')
+                .attr('d', `M0,${-diamondSize} L${diamondSize},0 L0,${diamondSize} L${-diamondSize},0 Z`)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          case 'Resource':
+            // Database - Cylinder shape
+            const cylWidth = nodeSize * 1.5;
+            const cylHeight = nodeSize * 1.2;
+            const ellipseRy = cylHeight * 0.25;
+
+            // Draw cylinder body
+            d3.select(this).append('path')
+                .attr('d', `M${-cylWidth/2},${-cylHeight/2 + ellipseRy}
+                          L${-cylWidth/2},${cylHeight/2 - ellipseRy}
+                          A${cylWidth/2},${ellipseRy} 0 1,0 ${cylWidth/2},${cylHeight/2 - ellipseRy}
+                          L${cylWidth/2},${-cylHeight/2 + ellipseRy}
+                          A${cylWidth/2},${ellipseRy} 0 1,1 ${-cylWidth/2},${-cylHeight/2 + ellipseRy}`)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+
+            // Top ellipse
+            d3.select(this).append('ellipse')
+                .attr('cx', 0)
+                .attr('cy', -cylHeight/2 + ellipseRy)
+                .attr('rx', cylWidth/2)
+                .attr('ry', ellipseRy)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          case 'TrafficController':
+            // Load Balancer - Hexagon (manually drawn)
+            const hexSize = nodeSize;
+            const hexPoints = [];
+            for (let i = 0; i < 6; i++) {
+              const angle = (Math.PI / 3) * i;
+              hexPoints.push([hexSize * Math.sin(angle), hexSize * Math.cos(angle)]);
+            }
+
+            const hexPath = 'M' + hexPoints.map(p => p.join(',')).join('L') + 'Z';
+            d3.select(this).append('path')
+                .attr('d', hexPath)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          case 'Deployment':
+            // ASG/Cluster - Star/Pentagon (manually drawn)
+            const pentSize = nodeSize;
+            const pentPoints = [];
+            for (let i = 0; i < 5; i++) {
+              const angle = (Math.PI * 2 / 5) * i - Math.PI / 2;
+              pentPoints.push([pentSize * Math.cos(angle), pentSize * Math.sin(angle)]);
+            }
+
+            const pentPath = 'M' + pentPoints.map(p => p.join(',')).join('L') + 'Z';
+            d3.select(this).append('path')
+                .attr('d', pentPath)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          case 'InternetIP':
+            // Internet/Cloud - Cloud shape
+            const cloudWidth = nodeSize * 2;
+            const cloudHeight = nodeSize * 1.5;
+
+            // Simple cloud shape using curves
+            d3.select(this).append('path')
+                .attr('d', `M${-cloudWidth/2},${cloudHeight*0.1}
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.4},-${cloudHeight*0.3}
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.6},${cloudHeight*0.1}
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 ${cloudHeight*0.3},${cloudHeight*0.4}
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.3},${cloudHeight*0.4}
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.7},0
+                          a${cloudHeight*0.4},${cloudHeight*0.4} 0 0,1 -${cloudHeight*0.3},-${cloudHeight*0.6}z`)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+            break;
+
+          default:
+            // Default - Circle
+            d3.select(this).append('circle')
+                .attr('r', nodeSize)
+                .attr('fill', color)
+                .attr('stroke', d3.color(color).darker())
+                .attr('stroke-width', 1.5);
+        }
+      });
 
       // Add text labels
       node.append('text')
           .attr('class', 'node-label')
           .attr('dx', nodeCount > 100 ? 10 : 15)
           .attr('dy', 4)
-          .text(d => nodeCount > 200 ? '' : d.label) // Hide labels on very large graphs
+          .text(d => nodeCount > 200 ? '' : d.label)
           .attr('font-size', nodeCount > 100 ? '8px' : '10px');
 
       // Add tooltips
@@ -711,10 +823,6 @@ export default {
 /* Style for the nodes and links */
 :deep(.link) {
   stroke-opacity: 0.6;
-}
-
-:deep(.node circle) {
-  stroke-width: 1.5px;
 }
 
 :deep(.node-label) {
