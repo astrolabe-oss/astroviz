@@ -69,7 +69,7 @@
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                <span class="node-link">{{ rel.nodeName }}</span>
+                <span class="node-link" :title="getNodeTooltip(rel)">{{ rel.nodeName }}</span>
               </li>
             </ul>
           </div>
@@ -94,7 +94,7 @@
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
                 </span>
-                <span class="node-link">{{ rel.nodeName }}</span>
+                <span class="node-link" :title="getNodeTooltip(rel)">{{ rel.nodeName }}</span>
               </li>
             </ul>
           </div>
@@ -194,6 +194,37 @@ export default {
      * Get color for node type badge
      */
     getNodeTypeColor,
+
+    /**
+     * Generate tooltip text for a node relationship
+     * @param {Object} rel The relationship object
+     * @returns {string} Tooltip text with complete node information
+     */
+    getNodeTooltip(rel) {
+      // Get the node from the graph data
+      const node = this.graphData.vertices[rel.nodeId];
+
+      if (!node) return rel.nodeName;
+
+      let tooltip = `${node.type}: ${rel.nodeName}`;
+
+      // Add address information if it exists (this is the main purpose of the tooltip)
+      if (node.address) {
+        tooltip += `\nAddress: ${node.address}`;
+      }
+
+      // Add app name if it exists
+      if (node.app_name && node.app_name !== rel.nodeName) {
+        tooltip += `\nApp: ${node.app_name}`;
+      }
+
+      // Add any additional key information
+      if (node.provider) {
+        tooltip += `\nProvider: ${node.provider}`;
+      }
+
+      return tooltip;
+    },
 
     /**
      * Set the initial active tab based on available connections
