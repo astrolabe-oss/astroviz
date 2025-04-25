@@ -44,7 +44,13 @@ export default {
       currentLinks: [],
 
       // Map to store fixed node positions
-      nodePositions: {}
+      nodePositions: {},
+
+      // Track the selected node ID
+      selectedNodeId: null,
+
+      // Store node colors for restoration
+      nodeOriginalColors: {}
     };
   },
 
@@ -134,7 +140,11 @@ export default {
             .attr('width', '100%')
             .attr('height', '100%')
             .attr('viewBox', `0 0 ${width} ${height}`)
-            .attr('preserveAspectRatio', 'xMidYMid meet');
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .on('click', () => {
+              // Clear highlight when clicking on the background
+              this.clearHighlight();
+            });
 
         // Create zoom behavior
         this.zoom = d3.zoom()
@@ -200,6 +210,10 @@ export default {
         }
 
         this.$emit('rendering-start');
+
+        // Reset selection state
+        this.selectedNodeId = null;
+        this.nodeOriginalColors = {};
 
         let visData;
 
@@ -324,13 +338,20 @@ export default {
           .append('g')
           .attr('class', 'node')
           .call(this.drag())
-          .on('click', (event, d) => this.onNodeClick(d));
+          .on('click', (event, d) => {
+            event.stopPropagation(); // Prevent click from reaching the SVG
+            this.onNodeClick(d);
+            this.highlightNode(d.id);
+          });
 
       // Add network icon shapes using SVG
       const self = this;
       node.each(function(d) {
         const nodeSize = nodeCount > 100 ? 14 : 18;
         const color = self.nodeColors[d.type] || '#ccc';
+
+        // Store original color for later restoration
+        self.nodeOriginalColors[d.id] = color;
 
         // Create group for the icon
         const iconGroup = d3.select(this).append('g')
@@ -445,6 +466,144 @@ export default {
     },
 
     /**
+     * Highlight a node and its connections
+     * @param {string} nodeId ID of the node to highlight
+     */
+    highlightNode(nodeId) {
+      // Clear any previous highlight
+      this.clearHighlight();
+
+      // Set the selected node
+      this.selectedNodeId = nodeId;
+
+      // Find all connected nodes
+      const connectedNodes = new Set([nodeId]);
+      const connectedLinks = [];
+
+      this.currentLinks.forEach((link, index) => {
+        if (link.source.id === nodeId) {
+          connectedNodes.add(link.target.id);
+          connectedLinks.push(index);
+        } else if (link.target.id === nodeId) {
+          connectedNodes.add(link.source.id);
+          connectedLinks.push(index);
+        }
+      });
+
+      // Prepare a highlighted color for selected node (brighter version)
+      const brightenColor = (color) => {
+        // Simple brightening algorithm for hex colors
+        if (color.startsWith('#')) {
+          // Convert to RGB
+          let r = parseInt(color.slice(1, 3), 16);
+          let g = parseInt(color.slice(3, 5), 16);
+          let b = parseInt(color.slice(5, 7), 16);
+
+          // Brighten (capped at 255)
+          r = Math.min(255, r + 40);
+          g = Math.min(255, g + 40);
+          b = Math.min(255, b + 40);
+
+          // Convert back to hex
+          return `#${r.toString(16).padStart(2, '0')}${g.toString(16).padStart(2, '0')}${b.toString(16).padStart(2, '0')}`;
+        }
+        return color;
+      };
+
+      // Apply highlight to nodes
+      this.g.selectAll('.node')
+          .filter(d => connectedNodes.has(d.id))
+          .each(function(d) {
+            const node = d3.select(this);
+            // Store original transform for later restoration
+            const currentTransform = node.attr('transform');
+            node.attr('data-original-transform', currentTransform);
+
+            // Scale up the node
+            const translate = currentTransform.match(/translate\(([^)]+)\)/)[1].split(',');
+            const x = parseFloat(translate[0]);
+            const y = parseFloat(translate[1]);
+
+            // Apply transform - bigger scale for selected node
+            if (d.id === nodeId) {
+              node.attr('transform', `translate(${x},${y}) scale(1.5)`)
+                  .style('filter', 'drop-shadow(0 0 5px #4444ff)');
+            } else {
+              node.attr('transform', `translate(${x},${y}) scale(1.3)`)
+                  .style('filter', 'drop-shadow(0 0 3px #4444ff)');
+            }
+
+            // Get the SVG icon element and change its color
+            const svgIcon = node.select('svg');
+            if (!svgIcon.empty()) {
+              // Store original color
+              const originalColor = svgIcon.style('color');
+              node.attr('data-original-color', originalColor);
+
+              // Apply purple color for connected nodes
+              const highlightColor = d.id === nodeId ? '#7030A0' : '#9966CC';  // Dark purple for selected, lighter purple for connected
+              svgIcon.style('color', highlightColor);
+            }
+          })
+          .select('text')
+          .style('font-weight', 'bold')
+          .style('font-size', function() {
+            const currentSize = d3.select(this).style('font-size');
+            const size = parseFloat(currentSize);
+            const unit = currentSize.replace(/[\d.]/g, '');
+            return `${size * 1.2}${unit}`;
+          });
+
+      // Highlight selected links
+      this.g.selectAll('.link')
+          .filter((d, i) => connectedLinks.includes(i))
+          .attr('stroke-width', 3)
+          .attr('stroke', '#4444ff');
+    },
+
+    /**
+     * Clear any highlighting
+     */
+    clearHighlight() {
+      if (this.selectedNodeId) {
+        // Restore original node appearance
+        this.g.selectAll('.node')
+            .each(function() {
+              const node = d3.select(this);
+
+              // Restore original transform
+              const originalTransform = node.attr('data-original-transform');
+              if (originalTransform) {
+                node.attr('transform', originalTransform);
+              }
+
+              // Remove drop shadow
+              node.style('filter', null);
+
+              // Restore original color
+              const originalColor = node.attr('data-original-color');
+              if (originalColor) {
+                node.select('svg').style('color', originalColor);
+              }
+
+              // Remove highlight rings
+              node.selectAll('.highlight-ring').remove();
+            })
+            .select('text')
+            .style('font-weight', 'normal')
+            .style('font-size', null);
+
+        // Restore original link appearance
+        this.g.selectAll('.link')
+            .attr('stroke-width', 1.5)
+            .attr('stroke', '#999');
+
+        // Clear selected node
+        this.selectedNodeId = null;
+      }
+    },
+
+    /**
      * Handle window resize
      */
     onResize() {
@@ -521,15 +680,5 @@ export default {
   border-radius: 4px;
   background-color: #f9f9f9;
   overflow: hidden;
-}
-
-/* Style for the nodes and links */
-:deep(.link) {
-  stroke-opacity: 0.6;
-}
-
-:deep(.node-label) {
-  font-family: sans-serif;
-  pointer-events: none;
 }
 </style>
