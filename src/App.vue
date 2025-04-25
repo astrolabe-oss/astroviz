@@ -107,7 +107,9 @@ export default {
      * Get filtered graph data based on current filters
      */
     filteredGraphData() {
-      console.log("APP: Computing filteredGraphData", this.filters);
+      // Use JSON.parse(JSON.stringify()) to avoid Vue reactivity tracking
+      // This prevents the infinite loop issue
+      console.log("APP: Computing filteredGraphData", JSON.parse(JSON.stringify(this.filters)));
 
       // If no filters are applied, return the full graph data
       if (!this.filters.appName && !this.filters.provider &&
@@ -137,7 +139,12 @@ export default {
       );
 
       console.log(`APP: Filtered from ${Object.keys(this.graphData.vertices).length} to ${Object.keys(filteredVertices).length} vertices`);
-      return { vertices: filteredVertices, edges: filteredEdges };
+
+      // Return a new object to ensure proper reactivity
+      return {
+        vertices: filteredVertices,
+        edges: filteredEdges
+      };
     },
 
     /**

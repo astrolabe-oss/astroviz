@@ -2,7 +2,7 @@
 <template>
   <div class="filter-bar">
     <ViewModeSelector v-model="localViewMode" />
-    <FilterControls v-model="localFilters" :uniqueValues="uniqueValues" />
+    <FilterControls :uniqueValues="uniqueValues" :value="localFilters" @input="handleFilterChange" />
   </div>
 </template>
 
@@ -47,26 +47,39 @@ export default {
   watch: {
     // Watch for changes in view mode
     localViewMode(newMode) {
-      this.$emit('update:viewMode', newMode);
-    },
-
-    // Watch for changes in filters
-    localFilters: {
-      handler(newFilters) {
-        this.$emit('update:filters', newFilters);
-      },
-      deep: true
+      if (newMode !== this.viewMode) {
+        this.$emit('update:viewMode', newMode);
+      }
     },
 
     // Watch for prop changes to update local values
     viewMode(newMode) {
-      this.localViewMode = newMode;
+      if (this.localViewMode !== newMode) {
+        this.localViewMode = newMode;
+      }
     },
+
     filters: {
       handler(newFilters) {
-        this.localFilters = { ...newFilters };
+        // Only update if the values are actually different
+        if (JSON.stringify(this.localFilters) !== JSON.stringify(newFilters)) {
+          this.localFilters = { ...newFilters };
+        }
       },
       deep: true
+    }
+  },
+
+  methods: {
+    /**
+     * Handle filter changes from FilterControls component
+     */
+    handleFilterChange(newFilters) {
+      // Only update if the values are actually different
+      if (JSON.stringify(this.localFilters) !== JSON.stringify(newFilters)) {
+        this.localFilters = { ...newFilters };
+        this.$emit('update:filters', { ...newFilters });
+      }
     }
   }
 };

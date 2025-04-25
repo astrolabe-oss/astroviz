@@ -3,7 +3,7 @@
   <div class="filters">
     <div class="filter-item">
       <label for="app-name">App Name:</label>
-      <select id="app-name" v-model="localFilters.appName">
+      <select id="app-name" v-model="localFilters.appName" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="app in uniqueValues.appNames" :key="app" :value="app">{{ app }}</option>
       </select>
@@ -11,7 +11,7 @@
 
     <div class="filter-item">
       <label for="provider">Provider:</label>
-      <select id="provider" v-model="localFilters.provider">
+      <select id="provider" v-model="localFilters.provider" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="provider in uniqueValues.providers" :key="provider" :value="provider">{{ provider }}</option>
       </select>
@@ -19,7 +19,7 @@
 
     <div class="filter-item">
       <label for="protocol-mux">Protocol Mux:</label>
-      <select id="protocol-mux" v-model="localFilters.protocolMux">
+      <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="mux in uniqueValues.protocolMuxes" :key="mux" :value="mux">{{ mux }}</option>
       </select>
@@ -27,7 +27,7 @@
 
     <div class="filter-item" v-if="uniqueValues.addresses.length > 0">
       <label for="address">Address:</label>
-      <select id="address" v-model="localFilters.address">
+      <select id="address" v-model="localFilters.address" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="addr in uniqueValues.addresses" :key="addr" :value="addr">{{ addr }}</option>
       </select>
@@ -54,39 +54,45 @@ export default {
 
   data() {
     return {
-      localFilters: { ...this.value }
+      localFilters: {
+        appName: this.value.appName || '',
+        provider: this.value.provider || '',
+        protocolMux: this.value.protocolMux || '',
+        address: this.value.address || ''
+      }
     };
   },
 
   watch: {
-    // Watch for changes in filters
-    'localFilters.appName'(newValue) {
-      const updatedFilters = { ...this.localFilters, appName: newValue };
-      this.$emit('input', updatedFilters);
-    },
-    'localFilters.provider'(newValue) {
-      const updatedFilters = { ...this.localFilters, provider: newValue };
-      this.$emit('input', updatedFilters);
-    },
-    'localFilters.protocolMux'(newValue) {
-      const updatedFilters = { ...this.localFilters, protocolMux: newValue };
-      this.$emit('input', updatedFilters);
-    },
-    'localFilters.address'(newValue) {
-      const updatedFilters = { ...this.localFilters, address: newValue };
-      this.$emit('input', updatedFilters);
-    },
-
     // Watch for prop changes to update local values
     value: {
       handler(newFilters) {
-        this.localFilters = { ...newFilters };
+        // Only update if values are actually different to prevent loops
+        if (this.localFilters.appName !== newFilters.appName ||
+            this.localFilters.provider !== newFilters.provider ||
+            this.localFilters.protocolMux !== newFilters.protocolMux ||
+            this.localFilters.address !== newFilters.address) {
+
+          this.localFilters = {
+            appName: newFilters.appName || '',
+            provider: newFilters.provider || '',
+            protocolMux: newFilters.protocolMux || '',
+            address: newFilters.address || ''
+          };
+        }
       },
       deep: true
     }
   },
 
   methods: {
+    /**
+     * Emit filter changes to parent component
+     */
+    emitFilterChange() {
+      this.$emit('input', { ...this.localFilters });
+    },
+
     /**
      * Reset all filters to initial state
      */
