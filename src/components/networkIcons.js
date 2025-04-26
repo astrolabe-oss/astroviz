@@ -1,14 +1,27 @@
+/**
+ * Copyright 2025 Lightwire, LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // networkIcons.js - SVG icons for network diagrams
 
 /**
  * Network diagram icons as inline SVG paths
  */
 const networkIcons = {
-  // Cloud/Internet icon (updated with light grey fill and dark outline)
-  InternetIP: `
+  // Public IP icon (light grey cloud with dark outline)
+  PublicIP: `
     <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 18">
       <path d="M0,12 Q0,8 3,7 Q5,5 9,6 Q11,2 16,5 Q20,5 22,8 Q24,11 21,14 L3,14 Q0,14 0,12 Z" 
             fill="#E0E0E0" stroke="#333333" stroke-width="1" />
+    </svg>
+  `,
+
+  // Unknown node icon (orange circle with question mark)
+  Unknown: `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+      <circle cx="12" cy="12" r="10" fill="#F9C96E" stroke="#666666" stroke-width="0.5" />
+      <text x="12" y="16" font-family="Arial, sans-serif" font-size="14" font-weight="bold" text-anchor="middle" fill="#666666">?</text>
     </svg>
   `,
 

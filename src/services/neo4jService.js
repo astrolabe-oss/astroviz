@@ -1,3 +1,8 @@
+/**
+ * Copyright 2025 Lightwire, LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
 // src/services/neo4jService.js
 import neo4j from 'neo4j-driver';
 import config from '@/config';

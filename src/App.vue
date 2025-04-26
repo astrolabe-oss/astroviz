@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">
@@ -103,7 +108,8 @@ export default {
         appName: '',
         provider: '',
         protocolMux: '',
-        address: ''
+        address: '',
+        publicIp: ''
       },
       selectedNode: null
     };
@@ -118,18 +124,25 @@ export default {
 
       // If no filters are applied, return the full graph data
       if (!this.filters.appName && !this.filters.provider &&
-          !this.filters.protocolMux && !this.filters.address) {
+          !this.filters.protocolMux && !this.filters.address && 
+          !this.filters.publicIp) {
         return this.graphData;
       }
 
       // Filter vertices
       const filteredVertices = {};
       Object.entries(this.graphData.vertices).forEach(([id, vertex]) => {
+        // Handle public IP filtering - "public" means has public_ip, "private" means no public_ip
+        const publicIpMatch = !this.filters.publicIp || 
+          (this.filters.publicIp === 'public' && vertex.public_ip) || 
+          (this.filters.publicIp === 'private' && !vertex.public_ip);
+        
         if (
             (!this.filters.appName || vertex.app_name === this.filters.appName) &&
             (!this.filters.provider || vertex.provider === this.filters.provider) &&
             (!this.filters.protocolMux || vertex.protocol_multiplexor === this.filters.protocolMux) &&
-            (!this.filters.address || vertex.address === this.filters.address)
+            (!this.filters.address || vertex.address === this.filters.address) &&
+            publicIpMatch
         ) {
           filteredVertices[id] = vertex;
         }
@@ -248,7 +261,7 @@ export default {
         const providers = new Set();
         const protocolMuxes = new Set();
         const addresses = new Set();
-
+        
         console.log(`APP: Processing ${Object.keys(this.graphData.vertices).length} vertices for filter values`);
         Object.values(this.graphData.vertices).forEach(vertex => {
           if (vertex.app_name) appNames.add(vertex.app_name);
@@ -256,7 +269,7 @@ export default {
           if (vertex.protocol_multiplexor) protocolMuxes.add(vertex.protocol_multiplexor);
           if (vertex.address) addresses.add(vertex.address);
         });
-
+        
         this.uniqueValues = {
           appNames: Array.from(appNames).sort(),
           providers: Array.from(providers).sort(),

@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/components/filter/FilterControls.vue
 <template>
   <div class="filters">
@@ -21,7 +26,7 @@
       <label for="protocol-mux">Protocol Mux:</label>
       <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
         <option value="">All</option>
-        <option v-for="mux in uniqueValues.protocolMuxes" :key="mux" :value="mux">{{ mux }}</option>
+        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux">{{ mux }}</option>
       </select>
     </div>
 
@@ -33,6 +38,15 @@
       </select>
     </div>
 
+    <div class="filter-item">
+      <label for="public-ip">IP Type:</label>
+      <select id="public-ip" v-model="localFilters.publicIp" @change="emitFilterChange">
+        <option value="">All</option>
+        <option value="public">Public</option>
+        <option value="private">Private</option>
+      </select>
+    </div>
+    
     <button @click="resetFilters" class="reset-button">Reset Filters</button>
   </div>
 </template>
@@ -54,32 +68,45 @@ export default {
 
   data() {
     return {
-      localFilters: {
-        appName: this.value.appName || '',
-        provider: this.value.provider || '',
-        protocolMux: this.value.protocolMux || '',
-        address: this.value.address || ''
-      }
+      localFilters: { ...this.value }
     };
   },
 
-  watch: {
-    // Watch for prop changes to update local values
-    value: {
-      handler(newFilters) {
-        // Only update if values are actually different to prevent loops
-        if (this.localFilters.appName !== newFilters.appName ||
-            this.localFilters.provider !== newFilters.provider ||
-            this.localFilters.protocolMux !== newFilters.protocolMux ||
-            this.localFilters.address !== newFilters.address) {
+  computed: {
+    /**
+     * Sort protocol multiplexors numerically instead of alphabetically
+     * @returns {Array} Sorted array of protocol multiplexors
+     */
+    sortedProtocolMuxes() {
+      if (!this.uniqueValues.protocolMuxes || !this.uniqueValues.protocolMuxes.length) {
+        return [];
+      }
 
-          this.localFilters = {
-            appName: newFilters.appName || '',
-            provider: newFilters.provider || '',
-            protocolMux: newFilters.protocolMux || '',
-            address: newFilters.address || ''
-          };
+      return [...this.uniqueValues.protocolMuxes].sort((a, b) => {
+        // Convert to integers for numerical sorting
+        const aInt = parseInt(a, 10);
+        const bInt = parseInt(b, 10);
+
+        // If both are valid numbers, sort numerically
+        if (!isNaN(aInt) && !isNaN(bInt)) {
+          return aInt - bInt;
         }
+
+        // If only one is a valid number, put numbers first
+        if (!isNaN(aInt)) return -1;
+        if (!isNaN(bInt)) return 1;
+
+        // Otherwise, fall back to string comparison
+        return a.localeCompare(b);
+      });
+    }
+  },
+
+  watch: {
+    // Sync prop changes with local data
+    value: {
+      handler(newVal) {
+        this.localFilters = { ...newVal };
       },
       deep: true
     }
@@ -94,16 +121,17 @@ export default {
     },
 
     /**
-     * Reset all filters to initial state
+     * Reset all filters to default state
      */
     resetFilters() {
       this.localFilters = {
         appName: '',
         provider: '',
         protocolMux: '',
-        address: ''
+        address: '',
+        publicIp: ''
       };
-      this.$emit('input', { ...this.localFilters });
+      this.emitFilterChange();
     }
   }
 };
@@ -114,70 +142,38 @@ export default {
   display: flex;
   flex-wrap: wrap;
   gap: 15px;
+  margin-bottom: 15px;
 }
 
 .filter-item {
   display: flex;
   flex-direction: column;
-  min-width: 180px;
+  min-width: 150px;
 }
 
 .filter-item label {
-  margin-bottom: 5px;
-  font-weight: bold;
-  font-size: 14px;
-  color: #555;
+  font-size: 12px;
+  margin-bottom: 4px;
+  color: #666;
 }
 
-select {
-  padding: 8px 10px;
+.filter-item select {
+  padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
-  background-color: white;
-  font-size: 14px;
-  transition: border-color 0.3s;
-}
-
-select:focus {
-  outline: none;
-  border-color: #4CAF50;
-  box-shadow: 0 0 0 2px rgba(76, 175, 80, 0.2);
 }
 
 .reset-button {
   align-self: flex-end;
-  margin-left: auto;
-  margin-top: auto;
-  padding: 8px 16px;
-  background-color: #4CAF50;
-  color: white;
-  border: none;
+  background-color: #f5f5f5;
+  border: 1px solid #ddd;
   border-radius: 4px;
+  padding: 8px 12px;
   cursor: pointer;
-  font-weight: bold;
-  transition: background-color 0.3s;
+  margin-top: auto;
 }
 
 .reset-button:hover {
-  background-color: #45a049;
-}
-
-.reset-button:active {
-  transform: translateY(1px);
-}
-
-@media (max-width: 768px) {
-  .filters {
-    flex-direction: column;
-  }
-
-  .filter-item {
-    width: 100%;
-  }
-
-  .reset-button {
-    margin-top: 15px;
-    width: 100%;
-  }
+  background-color: #e9e9e9;
 }
 </style>

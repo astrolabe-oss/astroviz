@@ -1,4 +1,10 @@
 <template>
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
+
   <div v-if="node" class="node-details">
     <h3>Node: <span class="node-type-header-badge" :style="{ backgroundColor: getNodeTypeColor(node.type) }">{{ node.type }}</span></h3>
     <button class="close-button" @click="closeDetails">×</button>
