@@ -761,8 +761,6 @@ export default {
           (d.data && d.data.properties && d.data.properties.public_ip === true);
         
         if (hasPublicIp) {
-          console.log('Adding public IP indicator to node:', d.id);
-          
           // Size of the cloud icon relative to the node - make it about 0.9x the node size
           const iconSize = nodeSize * 0.9;
           
