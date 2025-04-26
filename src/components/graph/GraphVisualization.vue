@@ -756,40 +756,25 @@ export default {
             // Extract just the essential information we want to display
             const appName = nodeData.app_name || '';
             const address = nodeData.address || '';
-            let port = '';
-            
-            // Extract port from address if it contains a colon
-            if (address && address.includes(':')) {
-              const parts = address.split(':');
-              port = parts[parts.length - 1]; // Get the last part after colon
-            }
             
             // Skip if we don't have anything to show
             if (!appName && !address) return;
             
-            // Create a label only containing the most important info
-            let labelText = '';
+            // Create an array of lines to display
+            const labelLines = [];
             
-            // App name if available (most important)
+            // App name is always shown first if available
             if (appName) {
-              labelText = appName;
+              labelLines.push(appName);
             }
             
-            // Address without port if we already have an app name, or full address otherwise
+            // Add address if available
             if (address) {
-              if (labelText) {
-                // We already have an app name, so just add the address on a new line
-                labelText += `\n${address}`;
-              } else {
-                // No app name, so the address is our primary label
-                labelText = address;
-              }
+              labelLines.push(address);
             }
             
-            // Add indicator if this is a directly selected node vs. connected node
-            if (this.selectedNodeIds.has(d.id)) {
-              labelText += '\n[Selected]';
-            }
+            // Skip if no lines to show
+            if (labelLines.length === 0) return;
             
             // Simple label without background
             const labelGroup = this.g.append('g')
@@ -797,17 +782,19 @@ export default {
                 .attr('data-node-id', d.id)
                 .attr('transform', `translate(${d.x + 20}, ${d.y})`);
             
-            // Split into lines
-            const lines = labelText.split('\n');
+            // Determine styling based on whether node is directly selected or just connected
+            const isSelected = this.selectedNodeIds.has(d.id);
+            const textColor = isSelected ? '#333' : '#666'; // Darker for selected, lighter for connected
+            const fontWeight = isSelected ? 'bold' : 'normal'; // Bold for selected
             
-            // Add text directly without background
-            lines.forEach((line, i) => {
+            // Add each line of text
+            labelLines.forEach((line, i) => {
               labelGroup.append('text')
                   .attr('x', 0)
                   .attr('y', i * 14) // Smaller line height
-                  .attr('fill', this.selectedNodeIds.has(d.id) ? '#333' : '#666') // Lighter color for connected nodes
+                  .attr('fill', textColor)
                   .attr('font-size', '11px')
-                  .attr('font-weight', this.selectedNodeIds.has(d.id) ? 'bold' : 'normal') // Bold for selected nodes
+                  .attr('font-weight', fontWeight)
                   .text(line)
                   .style('text-shadow', '0 0 3px white, 0 0 3px white, 0 0 3px white, 0 0 3px white'); // Add white glow for readability
             });
