@@ -112,7 +112,8 @@ export default {
         address: '',
         publicIp: ''
       },
-      selectedNode: null
+      selectedNode: null,
+      selectedNodes: [] // Array to track multiple selected nodes
     };
   },
 
@@ -297,28 +298,85 @@ export default {
     /**
      * Handle node click event
      * @param {Object} node The clicked node data
+     * @param {boolean} isShiftKey Whether the shift key was pressed during click
      */
-    onNodeClicked(node) {
+    onNodeClicked(node, isShiftKey) {
+      console.log("APP: Node clicked with shift key:", isShiftKey);
+      
+      // Always update the currently selected node for the details panel
       this.selectedNode = node;
+      
+      if (!this.$refs.networkGraph) {
+        console.warn("APP: Network graph reference not available");
+        return;
+      }
+      
+      // Find the node ID in the graph data for visualization
+      const nodeId = findNodeIdByProperties(node, this.graphData);
+      if (!nodeId) {
+        console.warn("APP: Could not find node ID for clicked node:", node);
+        return;
+      }
+      
+      // Multi-select handling with shift key
+      if (isShiftKey) {
+        // Check if this node is already selected to avoid duplicates
+        const nodeAlreadySelected = this.selectedNodes.some(
+          selectedNode => JSON.stringify(selectedNode) === JSON.stringify(node)
+        );
+        
+        // If not already selected, add to the selection
+        if (!nodeAlreadySelected) {
+          this.selectedNodes.push(node);
+          
+          // Tell the graph visualization to highlight this node without clearing others
+          this.$refs.networkGraph.selectNodeById(nodeId, true);
+        }
+      } else {
+        // Regular click (no shift) - replace the selection
+        this.selectedNodes = [node];
+        
+        // Tell the graph visualization to highlight only this node
+        this.$refs.networkGraph.selectNodeById(nodeId, false);
+      }
+      
+      console.log("APP: Selected nodes count:", this.selectedNodes.length);
     },
 
     /**
      * Handle selection of a connected node from the details panel
      * @param {Object} nodeData Node data to select
+     * @param {boolean} isShiftKey Whether shift key was pressed (optional)
      */
-    onSelectConnectedNode(nodeData) {
-      console.log("APP: Selecting connected node", nodeData);
-
+    onSelectConnectedNode(nodeData, isShiftKey = false) {
+      console.log("APP: Selecting connected node", nodeData, isShiftKey ? "with shift" : "");
+    
       // Find the node ID in the graph data
       const nodeId = findNodeIdByProperties(nodeData, this.graphData);
     
       if (nodeId) {
-        // Set as the selected node
+        // Always update the currently selected node for the details panel
         this.selectedNode = nodeData;
-    
+        
+        // Multi-select handling
+        if (isShiftKey) {
+          // Check if node already selected to avoid duplicates
+          const nodeAlreadySelected = this.selectedNodes.some(
+            selectedNode => JSON.stringify(selectedNode) === JSON.stringify(nodeData)
+          );
+          
+          // If not already selected, add to the selection
+          if (!nodeAlreadySelected) {
+            this.selectedNodes.push(nodeData);
+          }
+        } else {
+          // Regular selection - replace the selection
+          this.selectedNodes = [nodeData];
+        }
+        
         // Tell the graph visualization to highlight this node
         if (this.$refs.networkGraph) {
-          this.$refs.networkGraph.selectNodeById(nodeId);
+          this.$refs.networkGraph.selectNodeById(nodeId, isShiftKey);
         }
       } else {
         console.warn("APP: Connected node not found in graph data", nodeData);

@@ -105,18 +105,27 @@ export default {
     /**
      * Handle node click event from the visualization
      * @param {Object} node The clicked node data
+     * @param {Object} event The DOM event object
      */
-    onNodeClick(node) {
-      this.$emit('node-clicked', node);
+    onNodeClick(node, event) {
+      // Pass node data and shift key state to parent
+      this.$emit('node-clicked', node, event?.shiftKey);
     },
 
     /**
      * Select a node in the visualization by ID
      * @param {string} nodeId The ID of the node to select
+     * @param {boolean} appendToSelection Whether to add to existing selection
      */
-    selectNodeById(nodeId) {
+    selectNodeById(nodeId, appendToSelection = false) {
       if (this.$refs.visualization) {
-        this.$refs.visualization.selectAndHighlightNode(nodeId);
+        if (this.$refs.visualization.highlightNode) {
+          // Use highlightNode directly if available
+          this.$refs.visualization.highlightNode(nodeId, appendToSelection);
+        } else if (this.$refs.visualization.selectAndHighlightNode) {
+          // Fall back to selectAndHighlightNode if highlightNode isn't available
+          this.$refs.visualization.selectAndHighlightNode(nodeId, appendToSelection);
+        }
       }
     },
 

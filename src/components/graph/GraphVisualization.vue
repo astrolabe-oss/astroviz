@@ -59,8 +59,8 @@ export default {
       // Map to store fixed node positions
       nodePositions: {},
 
-      // Track the selected node ID
-      selectedNodeId: null,
+      // Track selected node IDs (multi-selection mode)
+      selectedNodeIds: new Set(),
 
       // Store node colors for restoration
       nodeOriginalColors: {},
@@ -171,9 +171,13 @@ export default {
             .attr('height', '100%')
             .attr('viewBox', `0 0 ${width} ${height}`)
             .attr('preserveAspectRatio', 'xMidYMid meet')
-            .on('click', () => {
-              // Clear highlight when clicking on the background
-              this.clearHighlight();
+            .on('click', (event) => {
+              // Only clear highlight when not pressing shift key
+              if (!event.shiftKey) {
+                this.clearHighlight();
+                // Make sure we reset the selectedNodeIds
+                this.selectedNodeIds.clear();
+              }
             });
 
         // Create zoom behavior
@@ -242,7 +246,7 @@ export default {
         this.$emit('rendering-start');
 
         // Reset selection state
-        this.selectedNodeId = null;
+        this.selectedNodeIds.clear();
         this.nodeOriginalColors = {};
 
         let visData;
@@ -381,8 +385,8 @@ export default {
           .call(this.drag())
           .on('click', (event, d) => {
             event.stopPropagation(); // Prevent click from reaching the SVG
-            this.onNodeClick(d);
-            this.highlightNode(d.id);
+            this.onNodeClick(d, event);
+            this.highlightNode(d.id, event.shiftKey);
           });
 
       // Add network icon shapes using SVG
@@ -511,35 +515,40 @@ export default {
     /**
      * Handle node click event
      * @param {Object} node The clicked node data
+     * @param {Object} event The original DOM event
      */
-    onNodeClick(node) {
-      // Emit node clicked event
-      this.$emit('node-clicked', node.data);
+    onNodeClick(node, event) {
+      // Emit node clicked event with the node data and shift key state
+      this.$emit('node-clicked', node.data, event);
     },
 
     /**
      * Select and highlight a node by its ID
      * @param {string} nodeId ID of the node to select and highlight
+     * @param {boolean} appendToSelection Whether to add to existing selection
      */
-    selectAndHighlightNode(nodeId) {
-      // Clear any existing highlight
-      this.clearHighlight();
-
+    selectAndHighlightNode(nodeId, appendToSelection = false) {
+      // Only clear existing highlight if not appending
+      if (!appendToSelection) {
+        this.clearHighlight();
+      }
+    
       // Find the node in the current nodes
       const node = this.currentNodes.find(n => n.id === nodeId);
-
+    
       if (node) {
         console.log("D3: Selecting and highlighting node", node);
-
-        // Emit the node clicked event
-        this.onNodeClick(node);
-
-        // Add a class to mark this as the selected node
+    
+        // Emit the node clicked event (without causing recursive loop)
+        // Don't call onNodeClick as it would trigger another highlight
+        
+        // Add a class to mark this as a selected node
         this.g.selectAll('.node')
-            .classed('selected-node', d => d.id === nodeId);
+            .classed('selected-node', d => d.id === nodeId || 
+              (appendToSelection && this.selectedNodeIds.has(d.id)));
     
         // Highlight the node and its connections
-        this.highlightNode(nodeId);
+        this.highlightNode(nodeId, appendToSelection);
     
         // Center view on the selected node with animation
         this.centerOnNode(node);
@@ -580,42 +589,64 @@ export default {
     /**
      * Highlight a node and its connections
      * @param {string} nodeId ID of the node to highlight
+     * @param {boolean} appendToSelection Whether to add to existing selection
      */
-    highlightNode(nodeId) {
-      // Clear any previous highlight
-      this.clearHighlight();
-
-      // Set the selected node
+    highlightNode(nodeId, appendToSelection = false) {
+      console.log("D3: Highlighting node", nodeId, "append =", appendToSelection);
+      
+      // Store all connected nodes and links across all selections
+      let allConnectedNodes = new Set();
+      let allConnectedLinks = [];
+      
+      // Only clear existing highlight if not appending
+      if (!appendToSelection) {
+        this.clearHighlight();
+        this.selectedNodeIds.clear(); // Clear the set when not appending
+      } else {
+        // If appending, start with current highlighted connections
+        this.selectedNodeIds.forEach(id => {
+          // Find connections for each selected node
+          const connections = this.getConnectedNodes(id);
+          connections.nodes.forEach(nodeId => allConnectedNodes.add(nodeId));
+          allConnectedLinks.push(...connections.links);
+        });
+      }
+      
+      // Add the new node to the selection
       this.selectedNodeId = nodeId;
-
-      // Find all connected nodes
-      const connectedNodes = new Set([nodeId]);
-      const connectedLinks = [];
-
-      this.currentLinks.forEach((link, index) => {
-        if (link.source.id === nodeId) {
-          connectedNodes.add(link.target.id);
-          connectedLinks.push(index);
-        } else if (link.target.id === nodeId) {
-          connectedNodes.add(link.source.id);
-          connectedLinks.push(index);
-        }
-      });
-
-      // Apply highlight to nodes
+      this.selectedNodeIds.add(nodeId);
+      
+      // Get connected nodes and links for the current selection
+      const { nodes: connectedNodes, links: connectedLinks } = this.getConnectedNodes(nodeId);
+      
+      // Add to our complete set of connected elements
+      connectedNodes.forEach(id => allConnectedNodes.add(id));
+      allConnectedLinks.push(...connectedLinks);
+      
+      console.log("D3: Total selected nodes:", this.selectedNodeIds.size, 
+                 "Connected nodes:", allConnectedNodes.size,
+                 "Connected links:", allConnectedLinks.length);
+      
+      // Apply highlight to all connected nodes
       this.g.selectAll('.node')
           .filter(d => connectedNodes.has(d.id))
           .each(function(d) {
             const node = d3.select(this);
+            
+            // Skip if this node is already transformed (for multi-select)
+            if (appendToSelection && node.attr('data-original-transform')) {
+              return;
+            }
+            
             // Store original transform for later restoration
             const currentTransform = node.attr('transform');
             node.attr('data-original-transform', currentTransform);
-
+    
             // Scale up the node
             const translate = currentTransform.match(/translate\(([^)]+)\)/)[1].split(',');
             const x = parseFloat(translate[0]);
             const y = parseFloat(translate[1]);
-
+    
             // Apply transform - bigger scale for selected node
             if (d.id === nodeId) {
               node.attr('transform', `translate(${x},${y}) scale(1.5)`)
@@ -624,14 +655,16 @@ export default {
               node.attr('transform', `translate(${x},${y}) scale(1.3)`)
                   .style('filter', 'drop-shadow(0 0 3px #4444ff)');
             }
-
+    
             // Get the SVG icon element and change its color
             const svgIcon = node.select('svg');
             if (!svgIcon.empty()) {
-              // Store original color
-              const originalColor = svgIcon.style('color');
-              node.attr('data-original-color', originalColor);
-
+              // Store original color if not already stored
+              if (!node.attr('data-original-color')) {
+                const originalColor = svgIcon.style('color');
+                node.attr('data-original-color', originalColor);
+              }
+    
               // Apply purple color for connected nodes
               const highlightColor = d.id === nodeId ? '#7030A0' : '#9966CC';  // Dark purple for selected, lighter purple for connected
               svgIcon.style('color', highlightColor);
@@ -652,24 +685,75 @@ export default {
             const unit = currentSize.replace(/[\d.]/g, '');
             return `${size * 1.2}${unit}`;
           });
-
-      // Make non-highlighted nodes semi-transparent
-      this.g.selectAll('.node')
-          .filter(d => !connectedNodes.has(d.id))
-          .style('opacity', 0.3);
-
-      // Highlight selected links
+      
+      // Update opacity for all nodes - keep all connected nodes fully opaque
+      this.updateNodesOpacity(allConnectedNodes);
+    
+      // Highlight all connected links
       this.g.selectAll('.link')
           .filter((d, i) => connectedLinks.includes(i))
           .attr('stroke-width', 3)
           .attr('stroke', '#4444ff');
-
-      // Make non-highlighted links transparent and dotted
+    
+      // Update link styling for all links
+      this.updateLinksVisibility(allConnectedLinks);
+    },
+    
+    /**
+     * Get the connected nodes and links for a given node ID
+     * @param {string} nodeId ID of the node
+     * @returns {Object} Object with sets of connected nodes and links
+     */
+    getConnectedNodes(nodeId) {
+      const connectedNodes = new Set([nodeId]);
+      const connectedLinks = [];
+    
+      this.currentLinks.forEach((link, index) => {
+        if (link.source.id === nodeId) {
+          connectedNodes.add(link.target.id);
+          connectedLinks.push(index);
+        } else if (link.target.id === nodeId) {
+          connectedNodes.add(link.source.id);
+          connectedLinks.push(index);
+        }
+      });
+      
+      return { nodes: connectedNodes, links: connectedLinks };
+    },
+    
+    /**
+     * Update all nodes opacity based on connected nodes
+     * @param {Set} connectedNodes Set of connected node IDs that should be fully opaque
+     */
+    updateNodesOpacity(connectedNodes) {
+      // Reset all nodes to semi-transparent first
+      this.g.selectAll('.node')
+          .style('opacity', 0.3);
+          
+      // Then make connected nodes fully opaque
+      this.g.selectAll('.node')
+          .filter(d => connectedNodes.has(d.id))
+          .style('opacity', 1);
+    },
+    
+    /**
+     * Update all links visibility based on connected links
+     * @param {Array} connectedLinks Array of connected link indices that should be highlighted
+     */
+    updateLinksVisibility(connectedLinks) {
+      // Reset all links to faded first
       this.g.selectAll('.link')
-          .filter((d, i) => !connectedLinks.includes(i))
           .attr('stroke-width', 1)
           .attr('stroke-dasharray', '3,3')
           .attr('stroke-opacity', 0.2);
+          
+      // Then highlight connected links
+      this.g.selectAll('.link')
+          .filter((d, i) => connectedLinks.includes(i))
+          .attr('stroke-width', 3)
+          .attr('stroke', '#4444ff')
+          .attr('stroke-dasharray', null)
+          .attr('stroke-opacity', 1);
     },
     
     /**
@@ -807,6 +891,9 @@ export default {
      * Clear any highlighting
      */
     clearHighlight() {
+      // Log for debugging
+      console.log("D3: Clearing all highlights");
+      
       // Restore original node appearance
       this.g.selectAll('.node')
           .each(function() {
@@ -816,6 +903,8 @@ export default {
             const originalTransform = node.attr('data-original-transform');
             if (originalTransform) {
               node.attr('transform', originalTransform);
+              // Clear the stored transform data
+              node.attr('data-original-transform', null);
             }
     
             // Remove drop shadow
@@ -834,6 +923,9 @@ export default {
                 // Restore question mark to original color and weight
                 svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
               }
+              
+              // Clear the stored color data
+              node.attr('data-original-color', null);
             }
           })
           .style('opacity', 1) // Restore opacity
@@ -851,6 +943,8 @@ export default {
     
       // Clear selected node
       this.selectedNodeId = null;
+      // Clear the set of selected nodes
+      this.selectedNodeIds.clear();
     },
 
     /**

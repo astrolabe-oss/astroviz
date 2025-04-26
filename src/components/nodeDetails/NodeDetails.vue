@@ -69,7 +69,7 @@
                   v-for="(rel, relIndex) in group.relationships"
                   :key="`out-${relIndex}`"
                   class="relationship-item"
-                  @click="selectNodeInGraph(rel)"
+                  @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
               >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
@@ -96,7 +96,7 @@
                   v-for="(rel, relIndex) in group.relationships"
                   :key="`in-${relIndex}`"
                   class="relationship-item"
-                  @click="selectNodeInGraph(rel)"
+                  @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
               >
                 <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                   {{ rel.nodeType }}
@@ -268,14 +268,17 @@ export default {
     /**
      * Select a node in the main graph
      * @param {Object} rel The relationship object containing nodeId and node type information
+     * @param {boolean} isShiftKey Whether the shift key was pressed during click
      */
-    selectNodeInGraph(rel) {
+    selectNodeInGraph(rel, isShiftKey = false) {
       // Get the node data directly using the nodeId from the relationship
       const nodeData = this.graphData.vertices[rel.nodeId];
-
+    
       if (nodeData) {
+        console.log("NodeDetails: Selecting node with shift key:", isShiftKey);
         // Emit an event to notify the parent components to select this node
-        this.$emit('select-node', nodeData);
+        // Pass the shift key state to support multi-selection
+        this.$emit('select-node', nodeData, isShiftKey);
       } else {
         console.warn(`Node with ID ${rel.nodeId} not found in current graph data (may be filtered out)`);
       }
