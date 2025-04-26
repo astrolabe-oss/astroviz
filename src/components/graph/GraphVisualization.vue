@@ -3,6 +3,9 @@
   <div id="d3-container" ref="d3Container"></div>
 </template>
 
+      // Add secondary cloud icon for nodes with public_ip = true
+      this.addSecondaryIcons(node);
+
 <script>
 import * as d3 from 'd3';
 import networkIcons from '../networkIcons';
@@ -50,7 +53,10 @@ export default {
       selectedNodeId: null,
 
       // Store node colors for restoration
-      nodeOriginalColors: {}
+      nodeOriginalColors: {},
+      
+      // Node size for rendering
+      nodeSize: 18
     };
   },
 
@@ -234,6 +240,12 @@ export default {
         this.currentNodes = visData.nodes;
         this.currentLinks = visData.links;
 
+        // Debug: Check for nodes with public_ip=true
+        const nodesWithPublicIp = visData.nodes.filter(node => 
+          (node.data && node.data.public_ip === true) || 
+          (node.properties && node.properties.public_ip === true));
+        console.log('Nodes with public_ip=true:', nodesWithPublicIp.length);
+        
         // Update simulation
         this.updateSimulation(visData);
 
@@ -346,37 +358,44 @@ export default {
 
       // Add network icon shapes using SVG
       const self = this;
+      
+      // Set nodeSize based on graph size - do this ONCE before the loop
+      this.nodeSize = nodeCount > 100 ? 14 : 18;
+      
       node.each(function(d) {
-        const nodeSize = nodeCount > 100 ? 14 : 18;
         const color = self.nodeColors[d.type] || '#ccc';
-
+      
         // Store original color for later restoration
         self.nodeOriginalColors[d.id] = color;
-
+      
         // Create group for the icon
         const iconGroup = d3.select(this).append('g')
-            .attr('transform', `translate(${-nodeSize},${-nodeSize})`)
-            .attr('width', nodeSize * 2)
-            .attr('height', nodeSize * 2);
-
+            .attr('transform', `translate(${-self.nodeSize},${-self.nodeSize})`)
+            .attr('width', self.nodeSize * 2)
+            .attr('height', self.nodeSize * 2)
+            .attr('class', 'node-icon-group');
+      
         // Get the appropriate icon SVG based on node type
         const iconSvg = networkIcons[d.type] || networkIcons.default;
-
+      
         // Create a temporary div to hold the SVG content
         const tempDiv = document.createElement('div');
         tempDiv.innerHTML = iconSvg;
-
+      
         // Extract the SVG element and its child nodes
         const svgElement = tempDiv.querySelector('svg');
         const svgContent = svgElement.innerHTML;
-
+      
         // Create a new SVG element and set its attributes
         const newSvg = iconGroup.append('svg')
-            .attr('width', nodeSize * 2)
-            .attr('height', nodeSize * 2)
+            .attr('width', self.nodeSize * 2)
+            .attr('height', self.nodeSize * 2)
             .attr('viewBox', svgElement.getAttribute('viewBox'))
             .style('color', color) // This works with the "currentColor" fill in the icons
             .html(svgContent);
+            
+        // Store the node size as a data attribute for later use
+        d3.select(this).attr('data-node-size', self.nodeSize);
       });
 
       // Add text labels
@@ -393,6 +412,10 @@ export default {
             return `Type: ${d.type}\nName: ${d.label}`;
           });
 
+      // Add secondary cloud icon for nodes with public_ip = true
+      console.log('Adding secondary icons to nodes');
+      this.addSecondaryIcons(node);
+      
       // Update simulation
       this.simulation
           .nodes(data.nodes)
@@ -604,6 +627,69 @@ export default {
     },
 
     /**
+     * Add cloud icon annotation for nodes with public_ip = true
+     */
+    addSecondaryIcons(nodeSelection) {
+      const self = this;
+      
+      // Add cloud icons only to nodes with public_ip = true
+      nodeSelection.each(function(d) {
+        // Get the node size from the data attribute or use the global value
+        const nodeSize = d3.select(this).attr('data-node-size') || self.nodeSize;
+        
+        // Check all possible paths for public_ip
+        const hasPublicIp = 
+          (d.data && d.data.public_ip === true) || 
+          (d.properties && d.properties.public_ip === true) ||
+          (d.public_ip === true) ||
+          (d.data && d.data.properties && d.data.properties.public_ip === true);
+        
+        if (hasPublicIp) {
+          console.log('Adding public IP indicator to node:', d.id);
+          
+          // Size of the cloud icon relative to the node - make it about 0.9x the node size
+          const iconSize = nodeSize * 0.9;
+          
+          // Position in the upper right corner with 50% overlap
+          const iconX = nodeSize / 2;   // 50% to the right of center  
+          const iconY = -nodeSize / 2;  // 50% above center
+          
+          // Create a group for the cloud icon to ensure proper positioning
+          const indicatorGroup = d3.select(this).append('g')
+            .attr('class', 'public-ip-indicator-group')
+            .attr('transform', `translate(${iconX}, ${iconY})`) // Position in the upper right quadrant
+            .attr('pointer-events', 'none'); // Ensure it doesn't interfere with interactions
+          
+          // Get the cloud icon from networkIcons
+          const cloudIconSvg = networkIcons.InternetIP;
+          
+          // Create a temporary div to hold the SVG content
+          const tempDiv = document.createElement('div');
+          tempDiv.innerHTML = cloudIconSvg;
+          
+          // Extract the SVG element and its content
+          const svgElement = tempDiv.querySelector('svg');
+          const svgContent = svgElement.innerHTML;
+          const originalViewBox = svgElement.getAttribute('viewBox') || '0 0 24 24';
+          
+          // Create a new SVG element for the cloud icon
+          // We need to center the icon on the translate point
+          const cloudIcon = indicatorGroup.append('svg')
+            .attr('width', iconSize)
+            .attr('height', iconSize * 0.75) // Maintain original aspect ratio (0.75)
+            .attr('viewBox', originalViewBox)
+            .attr('x', -iconSize / 2)  // Center horizontally on the translate point
+            .attr('y', -iconSize * 0.75 / 2) // Center vertically on the translate point
+            .html(svgContent);
+            
+          // Add a tooltip to show "Public IP" on hover
+          indicatorGroup.append('title')
+            .text('Public IP');
+        }
+      });
+    },
+    
+    /**
      * Clear any highlighting
      */
     clearHighlight() {
@@ -709,6 +795,50 @@ export default {
       );
 
       this.$emit('zoom-change', this.currentZoomLevel);
+      
+      // Debug: Log information about nodes with public_ip
+      this.debugNodeData();
+    },
+    
+    /**
+     * Debug helper to inspect node data structure
+     */
+    debugNodeData() {
+      console.log('Total nodes:', this.currentNodes.length);
+      
+      // Check for public_ip in various possible locations in node data
+      const publicIpNodes = this.currentNodes.filter(node => {
+        const hasPublicIp = 
+          (node.data && node.data.public_ip === true) || 
+          (node.properties && node.properties.public_ip === true) ||
+          (node.public_ip === true) ||
+          (node.data && node.data.properties && node.data.properties.public_ip === true);
+        return hasPublicIp;
+      });
+      
+      console.log('Nodes with public_ip:', publicIpNodes.length);
+      
+      if (publicIpNodes.length > 0) {
+        // Print a more complete dump of the first node
+        const sampleNode = publicIpNodes[0];
+        console.log('Sample node with public_ip:', sampleNode);
+        console.log('Node properties:', JSON.stringify(sampleNode.properties || {}));
+        console.log('Node data:', JSON.stringify(sampleNode.data || {}));
+        
+        // Check where the public_ip property is actually located
+        if (sampleNode.data && sampleNode.data.public_ip === true) {
+          console.log('Found public_ip at: node.data.public_ip');
+        }
+        if (sampleNode.properties && sampleNode.properties.public_ip === true) {
+          console.log('Found public_ip at: node.properties.public_ip');
+        }
+        if (sampleNode.public_ip === true) {
+          console.log('Found public_ip at: node.public_ip');
+        }
+        if (sampleNode.data && sampleNode.data.properties && sampleNode.data.properties.public_ip === true) {
+          console.log('Found public_ip at: node.data.properties.public_ip');
+        }
+      }
     }
   }
 };
@@ -734,9 +864,28 @@ export default {
   transition: all 0.3s ease;
 }
 
+:deep(.node-icon-group) {
+  /* Ensure icon rendering is consistent */
+  pointer-events: all;
+}
+
+:deep(.public-ip-indicator-group) {
+  pointer-events: none;
+  opacity: 0.9;
+}
+
 :deep(.node-label) {
   font-family: sans-serif;
   pointer-events: none;
   transition: all 0.3s ease;
+}
+
+:deep(.public-ip-annotation) {
+  pointer-events: none;
+  transition: all 0.3s ease;
+}
+
+:deep(.public-ip-annotation-inner) {
+  pointer-events: none;
 }
 </style>
