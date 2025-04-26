@@ -36,6 +36,11 @@ export default {
     nodeColors: {
       type: Object,
       required: true
+    },
+    // Set of node IDs that should be highlighted
+    highlightedNodeIds: {
+      type: Set,
+      default: () => new Set()
     }
   },
 
@@ -100,6 +105,18 @@ export default {
       } catch (error) {
         console.error("D3: Error in viewMode watcher", error);
       }
+    },
+    highlightedNodeIds: {
+      handler(newVal) {
+        console.log("D3: Highlighted nodes changed", newVal?.size);
+        try {
+          // Apply highlighting to filtered nodes
+          this.highlightFilteredNodes(newVal);
+        } catch (error) {
+          console.error("D3: Error in highlightedNodeIds watcher", error);
+        }
+      },
+      deep: true
     }
   },
 
@@ -135,6 +152,8 @@ export default {
     transformToApplicationView,
     getNodeLabel,
 
+    // The updateNodeHighlighting method has been replaced by highlightFilteredNodes
+  
     /**
      * Initialize the D3 visualization
      */
@@ -256,6 +275,11 @@ export default {
 
         // Notify parent component about rendering completion
         setTimeout(() => {
+          // Apply highlighting based on current highlighted nodes
+          if (this.highlightedNodeIds && this.highlightedNodeIds.size > 0) {
+            this.highlightFilteredNodes(this.highlightedNodeIds);
+          }
+          
           this.$emit('rendering-complete', {
             nodeCount: this.currentNodes.length,
             linkCount: this.currentLinks.length
@@ -510,11 +534,21 @@ export default {
         // Emit the node clicked event
         this.onNodeClick(node);
 
+        // Add a class to mark this as the selected node
+        this.g.selectAll('.node')
+            .classed('selected-node', d => d.id === nodeId);
+    
         // Highlight the node and its connections
         this.highlightNode(nodeId);
-
+    
         // Center view on the selected node with animation
         this.centerOnNode(node);
+        
+        // If we have filtered nodes, re-apply that highlighting
+        if (this.highlightedNodeIds && this.highlightedNodeIds.size > 0) {
+          // Re-apply filter highlighting but preserve selected node's connections
+          this.highlightFilteredNodes(this.highlightedNodeIds);
+        }
       } else {
         console.warn("D3: Node not found with ID", nodeId);
       }
@@ -601,6 +635,13 @@ export default {
               // Apply purple color for connected nodes
               const highlightColor = d.id === nodeId ? '#7030A0' : '#9966CC';  // Dark purple for selected, lighter purple for connected
               svgIcon.style('color', highlightColor);
+              
+              // For Unknown nodes, also change the circle fill color and make question mark more visible
+              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
+                svgIcon.select('circle').attr('fill', highlightColor);
+                // Make the question mark white and bolder for better visibility
+                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
+              }
             }
           })
           .select('text')
@@ -628,6 +669,76 @@ export default {
           .filter((d, i) => !connectedLinks.includes(i))
           .attr('stroke-width', 1)
           .attr('stroke-dasharray', '3,3')
+          .attr('stroke-opacity', 0.2);
+    },
+    
+    /**
+     * Highlight multiple nodes based on filter criteria
+     * @param {Set} nodeIds Set of node IDs to highlight
+     */
+    highlightFilteredNodes(nodeIds) {
+      // If there are no nodes to highlight, do nothing
+      if (!nodeIds || nodeIds.size === 0) {
+        this.clearHighlight();
+        return;
+      }
+      
+      // Don't clear previous highlight if we have a selected node
+      if (!this.selectedNodeId) {
+        this.clearHighlight();
+      }
+      
+      console.log(`D3: Highlighting ${nodeIds.size} filtered nodes`);
+      
+      // Apply highlight to nodes that match filter
+      this.g.selectAll('.node')
+          .filter(d => nodeIds.has(d.id))
+          .each(function(d) {
+            const node = d3.select(this);
+            
+            // Don't modify if this is already the selected node
+            if (node.classed('selected-node')) {
+              return;
+            }
+            
+            // Store original color if not already stored
+            if (!node.attr('data-original-color')) {
+              const svgIcon = node.select('svg');
+              if (!svgIcon.empty()) {
+                const originalColor = svgIcon.style('color');
+                node.attr('data-original-color', originalColor);
+              }
+            }
+            
+            // Get the SVG icon element and change its color to purple
+            const svgIcon = node.select('svg');
+            if (!svgIcon.empty()) {
+              svgIcon.style('color', '#9966CC'); // Light purple for filtered nodes
+              
+              // For Unknown nodes, also change the circle fill color and make question mark more visible
+              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
+                svgIcon.select('circle').attr('fill', '#9966CC');
+                // Make the question mark white and bolder for better visibility
+                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
+              }
+            }
+            
+            // Add drop shadow
+            node.style('filter', 'drop-shadow(0 0 3px #4444ff)');
+          });
+      
+      // Make non-filtered nodes semi-transparent
+      this.g.selectAll('.node')
+          .filter(d => !nodeIds.has(d.id) && d.id !== this.selectedNodeId)
+          .style('opacity', 0.3);
+      
+      // If we have a selected node, keep its connections highlighted
+      if (this.selectedNodeId) {
+        return;
+      }
+          
+      // Make all links semi-transparent for better focus on filtered nodes
+      this.g.selectAll('.link')
           .attr('stroke-opacity', 0.2);
     },
 
@@ -698,42 +809,50 @@ export default {
      * Clear any highlighting
      */
     clearHighlight() {
-      if (this.selectedNodeId) {
-        // Restore original node appearance
-        this.g.selectAll('.node')
-            .each(function() {
-              const node = d3.select(this);
-
-              // Restore original transform
-              const originalTransform = node.attr('data-original-transform');
-              if (originalTransform) {
-                node.attr('transform', originalTransform);
+      // Restore original node appearance
+      this.g.selectAll('.node')
+          .each(function() {
+            const node = d3.select(this);
+    
+            // Restore original transform
+            const originalTransform = node.attr('data-original-transform');
+            if (originalTransform) {
+              node.attr('transform', originalTransform);
+            }
+    
+            // Remove drop shadow
+            node.style('filter', null);
+    
+            // Restore original color
+            const originalColor = node.attr('data-original-color');
+            if (originalColor) {
+              const svgIcon = node.select('svg');
+              svgIcon.style('color', originalColor);
+              
+              // Reset circle fill color and text styling for Unknown nodes
+              const d = d3.select(this).datum();
+              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
+                svgIcon.select('circle').attr('fill', '#F9C96E'); // Restore to original orange
+                // Restore question mark to original color and weight
+                svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
               }
-
-              // Remove drop shadow
-              node.style('filter', null);
-
-              // Restore original color
-              const originalColor = node.attr('data-original-color');
-              if (originalColor) {
-                node.select('svg').style('color', originalColor);
-              }
-            })
-            .style('opacity', 1) // Restore opacity
-            .select('text')
-            .style('font-weight', 'normal')
-            .style('font-size', null);
-
-        // Restore original link appearance
-        this.g.selectAll('.link')
-            .attr('stroke-width', 1.5)
-            .attr('stroke', '#999')
-            .attr('stroke-dasharray', null) // Remove dotted style
-            .attr('stroke-opacity', 1); // Restore opacity
-
-        // Clear selected node
-        this.selectedNodeId = null;
-      }
+            }
+          })
+          .style('opacity', 1) // Restore opacity
+          .classed('selected-node', false) // Remove selected class
+          .select('text')
+          .style('font-weight', 'normal')
+          .style('font-size', null);
+    
+      // Restore original link appearance
+      this.g.selectAll('.link')
+          .attr('stroke-width', 1.5)
+          .attr('stroke', '#999')
+          .attr('stroke-dasharray', null) // Remove dotted style
+          .attr('stroke-opacity', 1); // Restore opacity
+    
+      // Clear selected node
+      this.selectedNodeId = null;
     },
 
     /**

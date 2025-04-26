@@ -35,6 +35,7 @@
           ref="networkGraph"
           :graph-data="filteredGraphData"
           :view-mode="viewMode"
+          :highlighted-node-ids="highlightedNodeIds"
           @node-clicked="onNodeClicked"
       />
 
@@ -122,15 +123,23 @@ export default {
     filteredGraphData() {
       console.log("APP: Computing filteredGraphData", JSON.parse(JSON.stringify(this.filters)));
 
-      // If no filters are applied, return the full graph data
+      // We'll always return the full graph data, but compute highlighted nodes
+      return this.graphData;
+    },
+    
+    /**
+     * Get set of node IDs that match current filters
+     */
+    highlightedNodeIds() {
+      // If no filters are applied, return empty set (no highlights)
       if (!this.filters.appName && !this.filters.provider &&
           !this.filters.protocolMux && !this.filters.address && 
           !this.filters.publicIp) {
-        return this.graphData;
+        return new Set();
       }
-
-      // Filter vertices
-      const filteredVertices = {};
+    
+      // Find vertices that match filters
+      const matchingNodeIds = new Set();
       Object.entries(this.graphData.vertices).forEach(([id, vertex]) => {
         // Handle public IP filtering - "public" means has public_ip, "private" means no public_ip
         const publicIpMatch = !this.filters.publicIp || 
@@ -144,25 +153,12 @@ export default {
             (!this.filters.address || vertex.address === this.filters.address) &&
             publicIpMatch
         ) {
-          filteredVertices[id] = vertex;
+          matchingNodeIds.add(id);
         }
       });
-
-      // Get IDs of included nodes
-      const includedNodeIds = new Set(Object.keys(filteredVertices));
-
-      // Filter edges to only include those between visible nodes
-      const filteredEdges = this.graphData.edges.filter(edge =>
-          includedNodeIds.has(edge.start_node) && includedNodeIds.has(edge.end_node)
-      );
-
-      console.log(`APP: Filtered from ${Object.keys(this.graphData.vertices).length} to ${Object.keys(filteredVertices).length} vertices`);
-
-      // Return a new object to ensure proper reactivity
-      return {
-        vertices: filteredVertices,
-        edges: filteredEdges
-      };
+    
+      console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.graphData.vertices).length} vertices`);
+      return matchingNodeIds;
     },
 
     /**
@@ -313,20 +309,19 @@ export default {
     onSelectConnectedNode(nodeData) {
       console.log("APP: Selecting connected node", nodeData);
 
-      // First, check if the node is in the filtered graph data
-      const nodeId = findNodeIdByProperties(nodeData, this.filteredGraphData);
-
+      // Find the node ID in the graph data
+      const nodeId = findNodeIdByProperties(nodeData, this.graphData);
+    
       if (nodeId) {
         // Set as the selected node
         this.selectedNode = nodeData;
-
+    
         // Tell the graph visualization to highlight this node
         if (this.$refs.networkGraph) {
           this.$refs.networkGraph.selectNodeById(nodeId);
         }
       } else {
-        console.warn("APP: Connected node is not in current filtered view", nodeData);
-        // Optionally, could show a message to the user here
+        console.warn("APP: Connected node not found in graph data", nodeData);
       }
     }
   }
