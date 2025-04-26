@@ -633,7 +633,6 @@ export default {
       }
       
       // Add the new node to the selection
-      this.selectedNodeId = nodeId;
       this.selectedNodeIds.add(nodeId);
       
       // Get connected nodes and links for the current selection
@@ -864,8 +863,8 @@ export default {
         return;
       }
       
-      // Don't clear previous highlight if we have a selected node
-      if (!this.selectedNodeId) {
+      // Don't clear previous highlight if we have selected nodes
+      if (this.selectedNodeIds.size === 0) {
         this.clearHighlight();
       }
       
@@ -910,11 +909,11 @@ export default {
       
       // Make non-filtered nodes semi-transparent
       this.g.selectAll('.node')
-          .filter(d => !nodeIds.has(d.id) && d.id !== this.selectedNodeId)
+          .filter(d => !nodeIds.has(d.id) && !this.selectedNodeIds.has(d.id))
           .style('opacity', 0.3);
       
-      // If we have a selected node, keep its connections highlighted
-      if (this.selectedNodeId) {
+      // If we have selected nodes, keep their connections highlighted
+      if (this.selectedNodeIds.size > 0) {
         return;
       }
           
@@ -1039,8 +1038,6 @@ export default {
           .attr('stroke-opacity', 1); // Restore opacity
 
       this.g.selectAll('.node-detail-label').remove();
-      // Clear selected node
-      this.selectedNodeId = null;
       // Clear the set of selected nodes
       this.selectedNodeIds.clear();
     },
