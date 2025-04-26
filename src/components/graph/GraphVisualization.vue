@@ -510,6 +510,23 @@ export default {
         this.simulation.nodes(this.currentNodes);
         this.simulation.alpha(0.3).restart();
       }
+          
+      // Update any node detail label positions
+      const nodeMap = new Map();
+      this.currentNodes.forEach(node => {
+        nodeMap.set(node.id, node);
+      });
+      
+      this.g.selectAll('.node-detail-label')
+          .each(function() {
+            // Extract node ID from the class attribute if available
+            const label = d3.select(this);
+            const nodeId = label.attr('data-node-id');
+            if (nodeId && nodeMap.has(nodeId)) {
+              const node = nodeMap.get(nodeId);
+              label.attr('transform', `translate(${node.x + 25}, ${node.y - 15})`);
+            }
+          });
     },
 
     /**
@@ -561,6 +578,9 @@ export default {
       } else {
         console.warn("D3: Node not found with ID", nodeId);
       }
+          
+      // Remove any node detail labels
+      this.g.selectAll('.node-detail-label').remove();
     },
 
     /**
@@ -697,6 +717,83 @@ export default {
     
       // Update link styling for all links
       this.updateLinksVisibility(allConnectedLinks);
+      
+      // Show node labels for all selected nodes
+      this.showSelectedNodeLabels();
+    },
+    
+    /**
+     * Show simplified labels for all selected nodes
+     * Displays just address and app name
+     */
+    showSelectedNodeLabels() {
+      // Remove any existing node detail labels first
+      this.g.selectAll('.node-detail-label').remove();
+      
+      if (this.selectedNodeIds.size === 0) return;
+      
+      console.log("D3: Showing simplified labels for", this.selectedNodeIds.size, "selected nodes");
+      
+      // Find all nodes that are currently selected
+      this.g.selectAll('.node')
+          .filter(d => this.selectedNodeIds.has(d.id))
+          .each((d) => {
+            const nodeData = d.data || d;
+            
+            // Extract just the essential information we want to display
+            const appName = nodeData.app_name || '';
+            const address = nodeData.address || '';
+            let port = '';
+            
+            // Extract port from address if it contains a colon
+            if (address && address.includes(':')) {
+              const parts = address.split(':');
+              port = parts[parts.length - 1]; // Get the last part after colon
+            }
+            
+            // Skip if we don't have anything to show
+            if (!appName && !address) return;
+            
+            // Create a label only containing the most important info
+            let labelText = '';
+            
+            // App name if available (most important)
+            if (appName) {
+              labelText = appName;
+            }
+            
+            // Address without port if we already have an app name, or full address otherwise
+            if (address) {
+              if (labelText) {
+                // We already have an app name, so just add the address on a new line
+                labelText += `\n${address}`;
+              } else {
+                // No app name, so the address is our primary label
+                labelText = address;
+              }
+            }
+            
+            // Simple label without background
+            const labelGroup = this.g.append('g')
+                .attr('class', 'node-detail-label')
+                .attr('data-node-id', d.id)
+                .attr('transform', `translate(${d.x + 20}, ${d.y})`);
+            
+            // Split into lines
+            const lines = labelText.split('\n');
+            
+            // Add text directly without background
+            lines.forEach((line, i) => {
+              labelGroup.append('text')
+                  .attr('x', 0)
+                  .attr('y', i * 14) // Smaller line height
+                  .attr('fill', '#333')
+                  .attr('font-size', '11px')
+                  .attr('font-weight', 'bold')
+                  .text(line)
+                  .style('text-shadow', '0 0 3px white, 0 0 3px white, 0 0 3px white, 0 0 3px white'); // Add white glow for readability
+            });
+          });
     },
     
     /**
@@ -940,7 +1037,8 @@ export default {
           .attr('stroke', '#999')
           .attr('stroke-dasharray', null) // Remove dotted style
           .attr('stroke-opacity', 1); // Restore opacity
-    
+
+      this.g.selectAll('.node-detail-label').remove();
       // Clear selected node
       this.selectedNodeId = null;
       // Clear the set of selected nodes
@@ -1069,6 +1167,18 @@ export default {
   background-color: #f9f9f9;
   overflow: hidden;
 }
+  
+  /* Node detail labels (applied through D3) */
+  :deep(.node-detail-label) {
+  pointer-events: none; /* Prevent interfering with clicks */
+  z-index: 10;
+  }
+  
+  :deep(.node-detail-label text) {
+  font-family: 'Avenir', Helvetica, Arial, sans-serif;
+  pointer-events: none;
+  user-select: none;
+  }
 
 /* Style for the nodes and links */
 :deep(.link) {
