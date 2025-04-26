@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/components/graph/GraphVisualization.vue
 <template>
   <div id="d3-container" ref="d3Container"></div>

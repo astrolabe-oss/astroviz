@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">

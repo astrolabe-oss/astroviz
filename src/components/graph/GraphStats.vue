@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/components/graph/GraphStats.vue
 <template>
   <div class="graph-stats" v-if="show">

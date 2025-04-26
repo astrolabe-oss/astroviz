@@ -1,4 +1,9 @@
 /**
+ * Copyright 2025 Lightwire, LLC
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/**
  * @type {import('@vue/cli-service').ProjectOptions}
  */
 module.exports = {

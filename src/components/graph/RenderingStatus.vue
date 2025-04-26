@@ -1,3 +1,8 @@
+<!--
+  Copyright 2025 Lightwire, LLC
+  SPDX-License-Identifier: Apache-2.0
+-->
+
 // src/components/graph/RenderingStatus.vue
 <template>
   <div class="rendering-status" v-if="isRendering">
