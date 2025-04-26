@@ -33,6 +33,15 @@
       </select>
     </div>
 
+    <div class="filter-item">
+      <label for="public-ip">IP Type:</label>
+      <select id="public-ip" v-model="localFilters.publicIp" @change="emitFilterChange">
+        <option value="">All</option>
+        <option value="public">Public</option>
+        <option value="private">Private</option>
+      </select>
+    </div>
+    
     <button @click="resetFilters" class="reset-button">Reset Filters</button>
   </div>
 </template>
@@ -114,7 +123,8 @@ export default {
         appName: '',
         provider: '',
         protocolMux: '',
-        address: ''
+        address: '',
+        publicIp: ''
       };
       this.emitFilterChange();
     }
