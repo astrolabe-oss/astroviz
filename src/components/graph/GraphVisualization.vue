@@ -660,8 +660,8 @@ export default {
             .attr('transform', `translate(${iconX}, ${iconY})`) // Position in the upper right quadrant
             .attr('pointer-events', 'none'); // Ensure it doesn't interfere with interactions
           
-          // Get the cloud icon from networkIcons
-          const cloudIconSvg = networkIcons.InternetIP;
+          // Get the Public IP icon from networkIcons
+          const cloudIconSvg = networkIcons.PublicIP;
           
           // Create a temporary div to hold the SVG content
           const tempDiv = document.createElement('div');

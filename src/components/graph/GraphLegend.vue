@@ -28,8 +28,11 @@ export default {
      * @returns {string} SVG HTML string
      */
     getLegendIcon(type) {
+      // Special case for 'Public IP' which should use the PublicIP icon
+      const iconKey = type === 'Public IP' ? 'PublicIP' : type;
+      
       // Get the icon SVG from networkIcons
-      const iconSvg = networkIcons[type] || networkIcons.default;
+      const iconSvg = networkIcons[iconKey] || networkIcons.default;
 
       // Return the SVG with styling specific to the legend
       return iconSvg.replace('<svg', `<svg style="width: 20px; height: 20px; color: ${this.nodeColors[type]}"`);

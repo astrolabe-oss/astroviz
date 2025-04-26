@@ -78,7 +78,8 @@ export default {
         'Compute': '#5DCAD1', // Light blue like in the image
         'Resource': '#74B56D', // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
-        'InternetIP': '#E0E0E0', // Light grey (updated from yellow/orange)
+        'Public IP': '#E0E0E0', // Keep Public IP in legend but not as a node type
+        'Unknown': '#F9C96E', // Orange for unknown nodes
       },
 
       isRendering: false,
