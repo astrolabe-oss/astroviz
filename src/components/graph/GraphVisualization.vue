@@ -722,7 +722,7 @@ export default {
     },
     
     /**
-     * Show simplified labels for all selected nodes
+     * Show simplified labels for all selected nodes and their connected nodes
      * Displays just address and app name
      */
     showSelectedNodeLabels() {
@@ -731,11 +731,25 @@ export default {
       
       if (this.selectedNodeIds.size === 0) return;
       
-      console.log("D3: Showing simplified labels for", this.selectedNodeIds.size, "selected nodes");
+      // Create a set of all node IDs to show labels for
+      const nodesToLabelSet = new Set();
       
-      // Find all nodes that are currently selected
+      // Add all selected nodes to the set
+      this.selectedNodeIds.forEach(nodeId => {
+        nodesToLabelSet.add(nodeId);
+        
+        // Also add connected nodes to the set
+        const { nodes: connectedNodes } = this.getConnectedNodes(nodeId);
+        connectedNodes.forEach(connectedId => {
+          nodesToLabelSet.add(connectedId);
+        });
+      });
+      
+      console.log("D3: Showing simplified labels for", nodesToLabelSet.size, "nodes (selected and connected)");
+      
+      // Find all nodes that are in our nodesToLabel set
       this.g.selectAll('.node')
-          .filter(d => this.selectedNodeIds.has(d.id))
+          .filter(d => nodesToLabelSet.has(d.id))
           .each((d) => {
             const nodeData = d.data || d;
             
@@ -772,6 +786,11 @@ export default {
               }
             }
             
+            // Add indicator if this is a directly selected node vs. connected node
+            if (this.selectedNodeIds.has(d.id)) {
+              labelText += '\n[Selected]';
+            }
+            
             // Simple label without background
             const labelGroup = this.g.append('g')
                 .attr('class', 'node-detail-label')
@@ -786,9 +805,9 @@ export default {
               labelGroup.append('text')
                   .attr('x', 0)
                   .attr('y', i * 14) // Smaller line height
-                  .attr('fill', '#333')
+                  .attr('fill', this.selectedNodeIds.has(d.id) ? '#333' : '#666') // Lighter color for connected nodes
                   .attr('font-size', '11px')
-                  .attr('font-weight', 'bold')
+                  .attr('font-weight', this.selectedNodeIds.has(d.id) ? 'bold' : 'normal') // Bold for selected nodes
                   .text(line)
                   .style('text-shadow', '0 0 3px white, 0 0 3px white, 0 0 3px white, 0 0 3px white'); // Add white glow for readability
             });
