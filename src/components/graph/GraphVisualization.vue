@@ -699,10 +699,17 @@ export default {
           .select('text')
           .style('font-weight', 'bold')
           .style('font-size', function() {
-            const currentSize = d3.select(this).style('font-size');
-            const size = parseFloat(currentSize);
-            const unit = currentSize.replace(/[\d.]/g, '');
-            return `${size * 1.2}${unit}`;
+            const textEl = d3.select(this);
+            // Check if we've already stored the original font size
+            if (!textEl.attr('data-original-font-size')) {
+              const currentSize = textEl.style('font-size');
+              textEl.attr('data-original-font-size', currentSize);
+            }
+            // Use the stored original size to calculate the enhanced size
+            const originalSize = textEl.attr('data-original-font-size');
+            const size = parseFloat(originalSize);
+            const unit = originalSize.replace(/[\d.]/g, '');
+            return `${size * 1.2}${unit}`; // Apply 1.2x sizing once
           });
       
       // Update opacity for all nodes - keep all connected nodes fully opaque
@@ -1033,8 +1040,19 @@ export default {
           .style('opacity', 1) // Restore opacity
           .classed('selected-node', false) // Remove selected class
           .select('text')
-          .style('font-weight', 'normal')
-          .style('font-size', null);
+          .each(function() {
+            const textEl = d3.select(this);
+            // Restore original font size if stored
+            const originalSize = textEl.attr('data-original-font-size');
+            if (originalSize) {
+              textEl.style('font-size', originalSize);
+              // Clear the stored original size
+              textEl.attr('data-original-font-size', null);
+            } else {
+              textEl.style('font-size', null);
+            }
+            textEl.style('font-weight', 'normal');
+          });
     
       // Restore original link appearance
       this.g.selectAll('.link')
