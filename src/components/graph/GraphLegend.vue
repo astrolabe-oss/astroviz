@@ -1,9 +1,22 @@
 // src/components/graph/GraphLegend.vue
 <template>
   <div class="legend">
-    <div v-for="(color, type) in nodeColors" :key="type" class="legend-item">
-      <div class="legend-icon" v-html="getLegendIcon(type)"></div>
-      <div class="legend-label">{{ type }}</div>
+    <!-- Node Types Section -->
+    <div class="legend-section">
+      <div class="legend-heading">Node Types</div>
+      <div v-for="type in nodeTypes" :key="type" class="legend-item">
+        <div class="legend-icon" v-html="getLegendIcon(type)"></div>
+        <div class="legend-label">{{ type }}</div>
+      </div>
+    </div>
+    
+    <!-- Annotations Section -->
+    <div class="legend-section">
+      <div class="legend-heading">Annotations</div>
+      <div v-for="type in annotationTypes" :key="type" class="legend-item">
+        <div class="legend-icon" v-html="getLegendIcon(type)"></div>
+        <div class="legend-label">{{ type }}</div>
+      </div>
     </div>
   </div>
 </template>
@@ -18,6 +31,24 @@ export default {
     nodeColors: {
       type: Object,
       required: true
+    }
+  },
+  
+  computed: {
+    /**
+     * Returns only node type icons (excluding 'Public IP')
+     * @returns {Array} Array of node type names
+     */
+    nodeTypes() {
+      return Object.keys(this.nodeColors).filter(type => type !== 'Public IP');
+    },
+    
+    /**
+     * Returns only annotation icons (currently just 'Public IP')
+     * @returns {Array} Array of annotation type names
+     */
+    annotationTypes() {
+      return ['Public IP'];
     }
   },
 
@@ -51,6 +82,23 @@ export default {
   border-radius: 4px;
   box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
   z-index: 10;
+}
+
+.legend-section {
+  margin-bottom: 12px;
+}
+
+.legend-section:last-child {
+  margin-bottom: 0;
+}
+
+.legend-heading {
+  font-size: 13px;
+  font-weight: bold;
+  margin-bottom: 8px;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 4px;
 }
 
 .legend-item {
