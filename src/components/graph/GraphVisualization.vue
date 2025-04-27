@@ -8,9 +8,6 @@
   <div id="d3-container" ref="d3Container"></div>
 </template>
 
-      // Add secondary cloud icon for nodes with public_ip = true
-      this.addSecondaryIcons(node);
-
 <script>
 import * as d3 from 'd3';
 import networkIcons from '../networkIcons';
@@ -471,8 +468,9 @@ export default {
       this.g.selectAll('.node')
           .attr('transform', d => `translate(${d.x},${d.y})`);
           
-      // Update edge label positions
+      // Update label positions
       this.updateEdgeLabelPositions();
+      this.updateNodeDetailPositions();
     },
 
     /**
@@ -488,6 +486,17 @@ export default {
           .on('drag', (event, d) => {
             d.fx = event.x;
             d.fy = event.y;
+            
+            // Update node label position immediately during drag
+            this.g.selectAll('.node-label')
+                .filter(labelData => labelData.id === d.id)
+                .attr('x', d.x)
+                .attr('y', d.y + this.nodeSize + 14);
+            
+            // Update any node detail labels for this node immediately during drag
+            this.g.selectAll('.node-detail-label')
+                .filter(labelData => labelData.id === d.id)
+                .attr('transform', `translate(${d.x + 20}, ${d.y})`);
           })
           .on('end', (event, d) => {
             if (!event.active) this.simulation.alphaTarget(0);
@@ -514,22 +523,8 @@ export default {
         this.simulation.alpha(0.3).restart();
       }
           
-      // Update any node detail label positions
-      const nodeMap = new Map();
-      this.currentNodes.forEach(node => {
-        nodeMap.set(node.id, node);
-      });
-      
-      this.g.selectAll('.node-detail-label')
-          .each(function() {
-            // Extract node ID from the class attribute if available
-            const label = d3.select(this);
-            const nodeId = label.attr('data-node-id');
-            if (nodeId && nodeMap.has(nodeId)) {
-              const node = nodeMap.get(nodeId);
-              label.attr('transform', `translate(${node.x + 25}, ${node.y - 15})`);
-            }
-          });
+      // Node detail labels will be updated automatically in the next tick
+      // via updateNodeDetailPositions, so no manual update needed here
     },
 
     /**
@@ -792,11 +787,16 @@ export default {
             // Skip if no lines to show
             if (labelLines.length === 0) return;
             
-            // Simple label without background
+            // Calculate label position (to the right of the node)
+            const labelX = d.x + 20;
+            const labelY = d.y;
+            
+            // Create a group for the label and bind the node data to it
             const labelGroup = this.g.append('g')
+                .datum(d) // Bind the node data to the label for updates in tick
                 .attr('class', 'node-detail-label')
                 .attr('data-node-id', d.id)
-                .attr('transform', `translate(${d.x + 20}, ${d.y})`);
+                .attr('transform', `translate(${labelX}, ${labelY})`);
             
             // Determine styling based on whether node is directly selected or just connected
             const isSelected = this.selectedNodeIds.has(d.id);
@@ -1183,31 +1183,22 @@ export default {
       });
     },
     
+    // This duplicate method is removed, as we already have updateEdgeLabelPositions defined above
+    
     /**
-     * Update the position of edge labels when nodes move
+     * Update the position of node detail labels when nodes move
      * This is called during simulation ticks
      */
-    updateEdgeLabelPositions() {
-      if (this.selectedNodeIds.size === 0) return;
-      
-      // Update all edge label groups
-      this.g.selectAll('g.edge-label').each((d, i, nodes) => {
-        const labelGroup = d3.select(nodes[i]);
-        const linkIndex = parseInt(labelGroup.attr('data-link-index'));
-        
-        if (!isNaN(linkIndex) && this.currentLinks[linkIndex]) {
-          const link = this.currentLinks[linkIndex];
-          const sourceNode = link.source;
-          const targetNode = link.target;
+    updateNodeDetailPositions() {
+      // Update all node detail label positions
+      this.g.selectAll('.node-detail-label').each(function(d) {
+        if (d && d.x !== undefined && d.y !== undefined) {
+          // Position to the right of the node
+          const labelX = d.x + 20;
+          const labelY = d.y;
           
-          if (sourceNode && targetNode) {
-            // Calculate new position (40% of the way from source to target)
-            const posX = sourceNode.x + (targetNode.x - sourceNode.x) * 0.4;
-            const posY = sourceNode.y + (targetNode.y - sourceNode.y) * 0.4;
-            
-            // Update group position
-            labelGroup.attr('transform', `translate(${posX},${posY})`);
-          }
+          // Update the label position
+          d3.select(this).attr('transform', `translate(${labelX}, ${labelY})`);
         }
       });
     },
@@ -1279,6 +1270,11 @@ export default {
       
       // Debug: Log information about nodes with public_ip
       this.debugNodeData();
+        
+      // Update node label positions
+      this.g.selectAll('.node-label')
+        .attr('x', d => d.x)
+        .attr('y', d => d.y + this.nodeSize + 12);
     },
     
     /**
@@ -1342,7 +1338,7 @@ export default {
   }
   
   :deep(.node-detail-label text) {
-  font-family: 'Avenir', Helvetica, Arial, sans-serif;
+    font-family: 'Inter', 'Avenir', Helvetica, Arial, sans-serif;
   pointer-events: none;
   user-select: none;
   }
