@@ -1,10 +1,10 @@
-<svg viewBox="-10 0 410 250" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
-  <!-- Command prompt text - extreme left aligned with adjusted viewBox -->
-  <text x="0" y="50" font-family="'Courier New', monospace" font-size="24" fill="#000000">
-    <tspan x="0" y="50">$</tspan>
-    <tspan x="20" y="50"> astroviz</tspan>
-    <tspan x="145" y="50"> ></tspan>
-    <tspan id="cursor" x="165" y="50">_</tspan>
+<svg viewBox="0 50 400 180" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+  <!-- Text positioned at left with padding -->
+  <text x="10" y="75" font-family="'Courier New', monospace" font-size="28" fill="#444444">
+    <tspan x="10" y="75">$</tspan>
+    <tspan x="30" y="75"> astroviz</tspan>
+    <tspan x="170" y="75"> ></tspan>
+    <tspan id="cursor" x="190" y="75">_</tspan>
   </text>
 
   <!-- Blinking cursor animation -->
@@ -20,9 +20,6 @@
 
   <!-- Iris circle - now offset to right -->
   <circle cx="220" cy="150" r="45" fill="#d0d0d0" stroke="#b0b0b0" stroke-width="2"/>
-
-  <!-- Removing the dark pupil background -->
-
 
   <!-- Cluster of central nodes - tighter together and shifted right to form pupil -->
   <rect x="230" y="145" width="7" height="7" fill="#5ad7e3" rx="1.5" ry="1.5"/>
@@ -64,17 +61,17 @@
   <rect x="260" y="132" width="6" height="6" fill="#4a90e2" rx="1" ry="1"/>
 
   <!-- Additional teal nodes -->
-  <rect x="170" y="140" width="6" height="6" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="255" y="160" width="6" height="6" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="260" y="125" width="6" height="6" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="240" y="120" width="6" height="6" fill="#4ac6d2" rx="1" ry="1"/>
+  <rect x="170" y="140" width="6" height="6" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="255" y="160" width="6" height="6" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="260" y="125" width="6" height="6" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="240" y="120" width="6" height="6" fill="#5ad7e3" rx="1" ry="1"/>
 
   <!-- Additional red nodes -->
-  <rect x="205" y="120" width="6" height="6" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="195" y="145" width="6" height="6" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="210" y="170" width="6" height="6" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="245" y="170" width="6" height="6" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="260" y="152" width="6" height="6" fill="#e64c66" rx="1" ry="1"/>
+  <rect x="205" y="120" width="6" height="6" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="195" y="145" width="6" height="6" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="210" y="170" width="6" height="6" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="245" y="170" width="6" height="6" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="260" y="152" width="6" height="6" fill="#ff5d77" rx="1" ry="1"/>
 
   <!-- Outer network -->
   <rect x="300" y="125" width="4" height="4" fill="#4a90e2" rx="1" ry="1"/>
@@ -87,14 +84,14 @@
   <rect x="295" y="130" width="4" height="4" fill="#4a90e2" rx="1" ry="1"/>
 
   <!-- Additional outer network nodes -->
-  <rect x="285" y="115" width="4" height="4" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="150" y="135" width="4" height="4" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="165" y="180" width="4" height="4" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="275" y="180" width="4" height="4" fill="#4ac6d2" rx="1" ry="1"/>
-  <rect x="315" y="135" width="4" height="4" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="125" y="160" width="4" height="4" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="150" y="115" width="4" height="4" fill="#e64c66" rx="1" ry="1"/>
-  <rect x="320" y="165" width="4" height="4" fill="#e64c66" rx="1" ry="1"/>
+  <rect x="285" y="115" width="4" height="4" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="150" y="135" width="4" height="4" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="165" y="180" width="4" height="4" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="275" y="180" width="4" height="4" fill="#5ad7e3" rx="1" ry="1"/>
+  <rect x="315" y="135" width="4" height="4" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="125" y="160" width="4" height="4" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="150" y="115" width="4" height="4" fill="#ff5d77" rx="1" ry="1"/>
+  <rect x="320" y="165" width="4" height="4" fill="#ff5d77" rx="1" ry="1"/>
 
   <!-- Connecting lines - central to mid -->
   <line x1="225" y1="145" x2="240" y2="125" stroke="#a0a0a0" stroke-width="0.8"/>

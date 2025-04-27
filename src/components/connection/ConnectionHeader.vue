@@ -38,23 +38,18 @@ export default {
   align-items: center;
   justify-content: center;
   width: 100%;
-  height: 100%;
+  height: 80px; /* Fixed height instead of 100% */
+  padding: 0;
+  margin: 0;
 }
 
 .logo {
-  width: 100%;
-  max-width: 250px;
-  min-width: 200px;
-  height: auto;
+  width: 220px; /* Fixed width for better control */
+  height: 85px; /* Fixed height that matches the SVG's aspect ratio */
   display: block;
   padding: 0;
   margin: 0;
-  transform: translateY(8px); /* Move the logo down slightly */
-}
-
-/* Ensure SVG renders properly */
-.logo svg {
-  width: 100%;
-  height: auto;
+  object-fit: contain;
+  object-position: left;
 }
 </style>

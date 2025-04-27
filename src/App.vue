@@ -435,10 +435,13 @@ export default {
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 10px;
+  padding: 8px 6px;
   display: flex;
   align-items: center;
   justify-content: center;
+  height: 90px;
+  overflow: visible;
+  box-sizing: border-box;
 }
 
 .filter-container {
@@ -446,13 +449,14 @@ export default {
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 10px 15px;
+  padding: 6px 15px;
   overflow: hidden;
-  height: fit-content;
+  height: 90px;
   display: flex;
   flex-direction: row;
   align-items: flex-start;
   gap: 8px;
+  box-sizing: border-box;
 }
 
 .connect-container {
