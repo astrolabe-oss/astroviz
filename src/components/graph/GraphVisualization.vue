@@ -59,11 +59,17 @@ export default {
       // Track selected node IDs (multi-selection mode)
       selectedNodeIds: new Set(),
 
+      // Track the most recently selected node ID
+      lastSelectedNodeId: null,
+  
       // Store node colors for restoration
       nodeOriginalColors: {},
       
       // Node size for rendering
-      nodeSize: 18
+      nodeSize: 18,
+      
+      // Larger node size for selected nodes
+      selectedNodeSize: 24
     };
   },
 
@@ -321,6 +327,9 @@ export default {
           }
         });
       }
+      
+      // Force update to apply styles and bring selected elements to front
+      this.tick();
     },
 
     /**
@@ -503,6 +512,79 @@ export default {
             // Keep fx and fy set to maintain the node's position
             // We no longer set d.fx = null; d.fy = null;
           });
+      
+      // Make the selected node's detail label larger and bring it to front
+      this.enhanceSelectedNodeDetail(nodeId);
+      
+      // Force a tick to update all positions and z-ordering
+      if (this.simulation) {
+        this.tick();
+      }
+    },
+    
+    /**
+     * Enhance the selected node's detail label and icon
+     * Makes them larger and brings them to front
+     * @param {string} selectedNodeId The ID of the selected node
+     */
+    enhanceSelectedNodeDetail(selectedNodeId) {
+      // Find the node detail label for the selected node
+      const detailLabels = this.g.selectAll('.node-detail-label');
+      
+      // Reset all detail labels first
+      detailLabels
+        .style('font-size', null)
+        .style('font-weight', null);
+      
+      // Select all node icons and reset them
+      this.g.selectAll('.node-icon')
+        .attr('width', 20)
+        .attr('height', 20)
+        .attr('x', d => d.x - 10)
+        .attr('y', d => d.y - 10);
+      
+      // Find the selected node's detail label and enhance it
+      detailLabels.each(function(d) {
+        if (d && d.id === selectedNodeId) {
+          // Get the label element
+          const label = d3.select(this);
+          
+          // Make it larger and bold
+          label.style('font-size', '14px')
+               .style('font-weight', 'bold');
+               
+          // Bring to front using D3's raise method
+          label.raise();
+        }
+      });
+      
+      // Find the selected node's icon and make it larger
+      this.g.selectAll('.node-icon').each(function(d) {
+        if (d && d.id === selectedNodeId) {
+          const icon = d3.select(this);
+          
+          // Make icon larger
+          icon.attr('width', 24)
+              .attr('height', 24)
+              .attr('x', d.x - 12)
+              .attr('y', d.y - 12);
+              
+          // Bring to front
+          icon.raise();
+        }
+      });
+      
+      // Also bring the node circle itself to front
+      this.g.selectAll('.node').each(function(d) {
+        if (d && d.id === selectedNodeId) {
+          // Make node slightly larger
+          const node = d3.select(this);
+          node.attr('r', 22); // Larger radius than default
+          
+          // Bring to front
+          node.raise();
+        }
+      });
     },
 
     /**
@@ -1190,6 +1272,7 @@ export default {
      * This is called during simulation ticks
      */
     updateNodeDetailPositions() {
+      const self = this;
       // Update all node detail label positions
       this.g.selectAll('.node-detail-label').each(function(d) {
         if (d && d.x !== undefined && d.y !== undefined) {
@@ -1197,8 +1280,73 @@ export default {
           const labelX = d.x + 20;
           const labelY = d.y;
           
+          // Check if this is the selected node
+          const isSelected = self.selectedNodeIds.has(d.id);
+          
+          // Get the label element
+          const label = d3.select(this);
+          
           // Update the label position
-          d3.select(this).attr('transform', `translate(${labelX}, ${labelY})`);
+          label.attr('transform', `translate(${labelX}, ${labelY})`);
+          
+          // Make selected node label visibly larger
+          if (isSelected) {
+            // Find the text element within this label group
+            const textElement = label.select('text');
+            textElement.style('font-size', '16px')
+                      .style('font-weight', 'bold')
+                      .style('stroke-width', '3px'); // Thicker outline for better readability
+            
+            // Bring the label to the front
+            label.raise();
+            
+            // Also make the corresponding node circle larger and bring it to front
+            self.g.selectAll('.node').each(function(nodeData) {
+              if (nodeData.id === d.id) {
+                const nodeElement = d3.select(this);
+                // Make the node 50% larger than normal
+                nodeElement.attr('r', self.nodeSize * 1.5);
+                // Bring to front
+                nodeElement.raise();
+              }
+            });
+            
+            // Also make the node icon larger and bring to front
+            self.g.selectAll('.node-icon').each(function(nodeData) {
+              if (nodeData.id === d.id) {
+                const iconElement = d3.select(this);
+                // Make the icon larger
+                iconElement.attr('width', 30)
+                          .attr('height', 30)
+                          .attr('x', nodeData.x - 15)
+                          .attr('y', nodeData.y - 15);
+                // Bring to front
+                iconElement.raise();
+              }
+            });
+          } else {
+            // Reset to normal style for non-selected nodes
+            const textElement = label.select('text');
+            textElement.style('font-size', '12px')
+                      .style('font-weight', 'normal')
+                      .style('stroke-width', '2px');
+          }
+          
+          // Make selected node label more prominent
+          if (isSelected) {
+            // Make label larger and bold
+            label.classed('selected-node-label', true)
+                 .style('font-size', '14px')
+                 .style('font-weight', 'bold');
+                 
+            // Bring the selected label to the front
+            label.raise();
+          } else {
+            // Reset to normal style
+            label.classed('selected-node-label', false)
+                 .style('font-size', null)
+                 .style('font-weight', null);
+          }
         }
       });
     },
@@ -1266,6 +1414,9 @@ export default {
           d3.zoomIdentity.translate(width / 3, height / 3).scale(0.5)
       );
 
+            // Apply sizes based on selection state
+            this.updateNodeSizes();
+            
       this.$emit('zoom-change', this.currentZoomLevel);
       
       // Debug: Log information about nodes with public_ip
@@ -1275,6 +1426,32 @@ export default {
       this.g.selectAll('.node-label')
         .attr('x', d => d.x)
         .attr('y', d => d.y + this.nodeSize + 12);
+          
+      // Reset last selected node ID
+      this.lastSelectedNodeId = null;
+      
+      // Reset node sizes
+      this.updateNodeSizes();
+    },
+    
+    /**
+     * Update node sizes based on selection state
+     * Makes selected nodes larger and brings them to front
+     */
+    updateNodeSizes() {
+      this.g.selectAll('.node').each((d) => {
+        const isSelected = this.selectedNodeIds.has(d.id);
+        const nodeElement = d3.select(`#node-${d.id}`);
+        
+        // Set node size
+        const nodeSize = isSelected ? this.selectedNodeSize : this.nodeSize;
+        nodeElement.attr('r', nodeSize);
+        
+        // Bring selected nodes to front
+        if (isSelected && d.id === this.lastSelectedNodeId) {
+          nodeElement.raise();
+        }
+      });
     },
     
     /**
