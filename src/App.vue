@@ -47,6 +47,11 @@
         <div class="connection-info">
           Connected to: {{ connectionInfo }}
           <button @click="disconnect" class="disconnect-button">Disconnect</button>
+          <button @click="refreshGraphData" class="refresh-button" title="Refresh graph data">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
+            </svg>
+          </button>
         </div>
       </div>
       
@@ -182,7 +187,7 @@ export default {
       console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.graphData.vertices).length} vertices`);
       return matchingNodeIds;
     },
-
+    
     /**
      * Get formatted connection info string
      */
@@ -199,6 +204,36 @@ export default {
   },
 
   methods: {
+    /**
+     * Refresh graph data from Neo4j
+     */
+    async refreshGraphData() {
+      try {
+        console.log("APP: Refreshing graph data");
+        this.loading = true;
+        this.loadingStatus = "Refreshing graph data...";
+        this.loadingProgress = 10;
+        
+        // Re-fetch the graph data from neo4jService
+        const freshData = await neo4jService.fetchGraphData((status, progress) => {
+          this.loadingStatus = status;
+          this.loadingProgress = progress;
+        });
+        
+        // Update the graph data
+        this.graphData = freshData;
+        
+        // Hide loading state
+        this.loading = false;
+        
+        console.log("APP: Graph data refreshed successfully");
+      } catch (error) {
+        console.error("Failed to refresh graph data:", error);
+        this.connectionError = error.message;
+        this.loading = false;
+      }
+    },
+    
     /**
      * Connect to Neo4j database
      */
@@ -522,6 +557,63 @@ export default {
 
 .disconnect-button:hover {
   background-color: #d32f2f;
+}
+
+.refresh-button {
+  padding: 5px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  margin-left: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+}
+
+.refresh-button:hover {
+  background-color: #388e3c;
+}
+
+.refresh-button {
+  padding: 5px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  margin-left: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+}
+
+.refresh-button:hover {
+  background-color: #388e3c;
+}
+
+.refresh-button {
+  padding: 5px;
+  background-color: #4caf50;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  margin-left: 8px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 28px;
+  width: 28px;
+}
+
+.refresh-button:hover {
+  background-color: #388e3c;
 }
 
 .view-mode-wrapper {
