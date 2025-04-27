@@ -470,6 +470,9 @@ export default {
 
       this.g.selectAll('.node')
           .attr('transform', d => `translate(${d.x},${d.y})`);
+          
+      // Update edge label positions
+      this.updateEdgeLabelPositions();
     },
 
     /**
@@ -726,6 +729,12 @@ export default {
       
       // Show node labels for all selected nodes
       this.showSelectedNodeLabels();
+      
+      // Show labels for edges (only outgoing connections)
+      this.showEdgeLabels();
+      
+      // Show labels for edges (only outgoing connections)
+      this.showEdgeLabels();
     },
     
     /**
@@ -1061,11 +1070,148 @@ export default {
           .attr('stroke-dasharray', null) // Remove dotted style
           .attr('stroke-opacity', 1); // Restore opacity
 
+      // Remove all node and edge labels
+      // Remove all node and edge labels
       this.g.selectAll('.node-detail-label').remove();
+      this.g.selectAll('.edge-label').remove();
+      
+      this.g.selectAll('.edge-label').remove();
+      
       // Clear the set of selected nodes
       this.selectedNodeIds.clear();
     },
 
+    /**
+     * Update the position of edge labels when nodes move
+     * This is called during simulation ticks
+     */
+    updateEdgeLabelPositions() {
+      if (this.selectedNodeIds.size === 0) return;
+      
+      // Update all edge label groups
+      this.g.selectAll('g.edge-label').each((d, i, nodes) => {
+        const labelGroup = d3.select(nodes[i]);
+        const linkIndex = parseInt(labelGroup.attr('data-link-index'));
+        const direction = labelGroup.attr('data-direction');
+        
+        if (!isNaN(linkIndex) && this.currentLinks[linkIndex]) {
+          const link = this.currentLinks[linkIndex];
+          const sourceNode = link.source;
+          const targetNode = link.target;
+          
+          if (sourceNode && targetNode) {
+            // Different positions based on whether it's outgoing or incoming
+            const positionRatio = (direction === 'outgoing') ? 0.4 : 0.6;
+            
+            // Calculate new position
+            const posX = sourceNode.x + (targetNode.x - sourceNode.x) * positionRatio;
+            const posY = sourceNode.y + (targetNode.y - sourceNode.y) * positionRatio;
+            
+            // Update group position
+            labelGroup.attr('transform', `translate(${posX},${posY})`);
+          }
+        }
+      });
+    },
+    
+    /**
+     * Show labels for edges of selected nodes (both outgoing and incoming connections)
+     */
+    showEdgeLabels() {
+      // Remove any existing edge labels
+      this.g.selectAll('.edge-label').remove();
+    
+      // For each selected node, show labels for its connections
+      this.selectedNodeIds.forEach(nodeId => {
+        // Get all connected links
+        const { links: connectedLinkIndices } = this.getConnectedNodes(nodeId);
+        
+        // Process each connected link
+        connectedLinkIndices.forEach(linkIndex => {
+          const link = this.currentLinks[linkIndex];
+          if (!link) return;
+          
+          // Get the source and target nodes
+          const sourceNode = link.source;
+          const targetNode = link.target;
+          
+          // Determine if this is an outgoing or incoming connection
+          const isOutgoing = sourceNode.id === nodeId;
+          
+          // The relationship type will be our label with directional indicator
+          const labelText = link.type || 'CONNECTED_TO';
+          
+          // Position the label differently based on direction
+          // For outgoing: 40% of the way from source to target
+          // For incoming: 60% of the way from source to target (closer to target)
+          const positionRatio = isOutgoing ? 0.4 : 0.6;
+          const posX = sourceNode.x + (targetNode.x - sourceNode.x) * positionRatio;
+          const posY = sourceNode.y + (targetNode.y - sourceNode.y) * positionRatio;
+          
+          // Calculate label width based on text length
+          const labelWidth = labelText.length * 5 + 10;
+          
+          // Create a group for the label
+          const labelGroup = this.g.append('g')
+            .attr('class', 'edge-label')
+            .attr('data-link-index', linkIndex)
+            .attr('data-direction', isOutgoing ? 'outgoing' : 'incoming')
+            .attr('transform', `translate(${posX},${posY})`);
+          
+          // Add a background rectangle for better visibility
+          labelGroup.append('rect')
+            .attr('x', -labelWidth/2)
+            .attr('y', -9)
+            .attr('width', labelWidth)
+            .attr('height', 18)
+            .attr('rx', 3) // Rounded corners
+            .attr('ry', 3)
+            .attr('fill', 'white')
+            .attr('opacity', 0.85);
+          
+          // Add the text label
+          labelGroup.append('text')
+            .attr('x', 0)
+            .attr('y', 2)
+            .attr('text-anchor', 'middle')
+            .attr('alignment-baseline', 'middle')
+            .attr('fill', '#9966CC') // Light purple like connected nodes
+            .attr('font-size', '10px')
+            .attr('font-weight', 'bold')
+            .text(labelText);
+        });
+      });
+    },
+    
+    /**
+     * Update the position of edge labels when nodes move
+     * This is called during simulation ticks
+     */
+    updateEdgeLabelPositions() {
+      if (this.selectedNodeIds.size === 0) return;
+      
+      // Update all edge label groups
+      this.g.selectAll('g.edge-label').each((d, i, nodes) => {
+        const labelGroup = d3.select(nodes[i]);
+        const linkIndex = parseInt(labelGroup.attr('data-link-index'));
+        
+        if (!isNaN(linkIndex) && this.currentLinks[linkIndex]) {
+          const link = this.currentLinks[linkIndex];
+          const sourceNode = link.source;
+          const targetNode = link.target;
+          
+          if (sourceNode && targetNode) {
+            // Calculate new position (40% of the way from source to target)
+            const posX = sourceNode.x + (targetNode.x - sourceNode.x) * 0.4;
+            const posY = sourceNode.y + (targetNode.y - sourceNode.y) * 0.4;
+            
+            // Update group position
+            labelGroup.attr('transform', `translate(${posX},${posY})`);
+          }
+        }
+      });
+    },
+    
     /**
      * Handle window resize
      */
