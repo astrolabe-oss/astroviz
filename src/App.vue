@@ -27,7 +27,9 @@
       </div>
       
       <div class="filter-container">
-        <ViewModeSelector v-model="viewMode" />
+        <div class="view-mode-wrapper">
+          <ViewModeSelector v-model="viewMode" />
+        </div>
         <FilterControls 
           :uniqueValues="uniqueValues" 
           :value="filters" 
@@ -425,7 +427,7 @@ export default {
 .header-row {
   display: flex;
   gap: 20px;
-  margin-bottom: 20px;
+  margin-bottom: 30px;
 }
 
 .logo-container {
@@ -444,7 +446,13 @@ export default {
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-  padding: 15px;
+  padding: 10px 15px;
+  overflow: hidden;
+  height: fit-content;
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
 }
 
 .connect-container {
@@ -508,5 +516,16 @@ export default {
 
 .disconnect-button:hover {
   background-color: #d32f2f;
+}
+
+.view-mode-wrapper {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  margin-right: 15px;
+  flex-shrink: 0;
+  border-right: 1px solid #ddd;
+  padding: 4px 15px 4px 5px;
+  min-width: 150px;
 }
 </style>

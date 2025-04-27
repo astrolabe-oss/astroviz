@@ -53,10 +53,10 @@ export default {
 <style scoped>
 .view-controls {
   display: flex;
-  gap: 20px;
+  flex-direction: column;
+  gap: 10px;
   margin-bottom: 5px;
   padding-bottom: 8px;
-  border-bottom: 1px solid #e0e0e0;
 }
 
 .view-mode-label {

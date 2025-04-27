@@ -10,7 +10,7 @@
       <label for="app-name">App Name:</label>
       <select id="app-name" v-model="localFilters.appName" @change="emitFilterChange">
         <option value="">All</option>
-        <option v-for="app in uniqueValues.appNames" :key="app" :value="app">{{ app }}</option>
+        <option v-for="app in uniqueValues.appNames" :key="app" :value="app" :title="app">{{ app }}</option>
       </select>
     </div>
 
@@ -18,7 +18,7 @@
       <label for="provider">Provider:</label>
       <select id="provider" v-model="localFilters.provider" @change="emitFilterChange">
         <option value="">All</option>
-        <option v-for="provider in uniqueValues.providers" :key="provider" :value="provider">{{ provider }}</option>
+        <option v-for="provider in uniqueValues.providers" :key="provider" :value="provider" :title="provider">{{ provider }}</option>
       </select>
     </div>
 
@@ -26,7 +26,7 @@
       <label for="protocol-mux">Protocol Mux:</label>
       <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
         <option value="">All</option>
-        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux">{{ mux }}</option>
+        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux" :title="mux">{{ mux }}</option>
       </select>
     </div>
 
@@ -34,7 +34,7 @@
       <label for="address">Address:</label>
       <select id="address" v-model="localFilters.address" @change="emitFilterChange">
         <option value="">All</option>
-        <option v-for="addr in uniqueValues.addresses" :key="addr" :value="addr">{{ addr }}</option>
+        <option v-for="addr in uniqueValues.addresses" :key="addr" :value="addr" :title="addr">{{ addr }}</option>
       </select>
     </div>
 
@@ -47,7 +47,10 @@
       </select>
     </div>
     
-    <button @click="resetFilters" class="reset-button">Reset Filters</button>
+    <div class="filter-item reset-container">
+      <label>&nbsp;</label>
+      <button @click="resetFilters" class="reset-button">Reset Filters</button>
+    </div>
   </div>
 </template>
 
@@ -140,16 +143,18 @@ export default {
 <style scoped>
 .filters {
   display: flex;
-  flex-wrap: wrap;
-  gap: 12px;
-  margin-top: 10px;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 0;
+  width: 100%;
 }
 
 .filter-item {
   display: flex;
   flex-direction: column;
-  min-width: 140px;
-  flex-grow: 1;
+  min-width: 120px;
+  flex: 1;
 }
 
 .filter-item label {
@@ -157,6 +162,7 @@ export default {
   margin-bottom: 4px;
   color: #555;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .filter-item select {
@@ -165,19 +171,26 @@ export default {
   border-radius: 4px;
   background-color: white;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  text-overflow: ellipsis;
+  width: 100%;
+}
+
+.reset-container {
+  min-width: auto;
+  flex: 0 0 auto;
 }
 
 .reset-button {
-  align-self: flex-end;
   background-color: #e8e8e8;
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 8px 12px;
   cursor: pointer;
-  margin-top: auto;
   font-size: 12px;
   font-weight: 500;
   color: #666;
+  height: 35px;
+  white-space: nowrap;
 }
 
 .reset-button:hover {
