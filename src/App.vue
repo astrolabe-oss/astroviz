@@ -6,13 +6,6 @@
 // src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">
-    <ConnectionHeader
-        :connected="connected"
-        :connectionInfo="connectionInfo"
-        @connect="connect"
-        @disconnect="disconnect"
-    />
-
     <ConnectionError
         :error="connectionError"
         @retry="connect"
@@ -24,13 +17,37 @@
         :progress="loadingProgress"
     />
 
-    <main v-if="connected" class="main-content">
-      <FilterBar
-          :unique-values="uniqueValues"
-          :view-mode.sync="viewMode"
-          :filters.sync="filters"
-      />
+    <div class="header-row">
+      <div class="logo-container">
+        <ConnectionHeader
+            :connected="connected"
+            @connect="connect"
+            @disconnect="disconnect"
+        />
+      </div>
+      
+      <div class="filter-container">
+        <ViewModeSelector v-model="viewMode" />
+        <FilterControls 
+          :uniqueValues="uniqueValues" 
+          :value="filters" 
+          @input="updateFilters" 
+        />
+      </div>
+      
+      <div class="connect-container" v-if="!connected">
+        <button @click="connect" class="connect-button">Connect to Neo4j</button>
+      </div>
+    </div>
 
+    <main v-if="connected" class="main-content">
+      <div class="connection-overlay">
+        <div class="connection-info">
+          Connected to: {{ connectionInfo }}
+          <button @click="disconnect" class="disconnect-button">Disconnect</button>
+        </div>
+      </div>
+      
       <D3NetworkGraph
           ref="networkGraph"
           :graph-data="filteredGraphData"
@@ -56,8 +73,9 @@ import ConnectionError from '@/components/connection/ConnectionError.vue';
 import LoadingOverlay from '@/components/connection/LoadingOverlay.vue';
 
 // Existing components
-import FilterBar from '@/components/FilterBar.vue';
 import D3NetworkGraph from '@/components/D3NetworkGraph.vue';
+import FilterControls from '@/components/filter/FilterControls.vue';
+import ViewModeSelector from '@/components/filter/ViewModeSelector.vue';
 
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
@@ -74,7 +92,8 @@ export default {
     ConnectionHeader,
     ConnectionError,
     LoadingOverlay,
-    FilterBar,
+    FilterControls,
+    ViewModeSelector,
     D3NetworkGraph,
     NodeDetails
   },
@@ -381,6 +400,13 @@ export default {
       } else {
         console.warn("APP: Connected node not found in graph data", nodeData);
       }
+    },
+    
+    /**
+     * Update filters from FilterControls component
+     */
+    updateFilters(newFilters) {
+      this.filters = { ...newFilters };
     }
   }
 };
@@ -396,8 +422,91 @@ export default {
   padding: 20px;
 }
 
+.header-row {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 20px;
+}
+
+.logo-container {
+  flex: 0 0 250px;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.filter-container {
+  flex: 1;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  padding: 15px;
+}
+
+.connect-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 15px;
+}
+
 .main-content {
   position: relative;
   min-height: 80vh;
+  background-color: #f8f9fa;
+  border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.connection-overlay {
+  position: absolute;
+  top: 15px;
+  right: 15px;
+  z-index: 100;
+}
+
+.connection-info {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background-color: rgba(255, 255, 255, 0.9);
+  padding: 8px 12px;
+  border-radius: 6px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  font-size: 14px;
+}
+
+.connect-button, .disconnect-button {
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-weight: bold;
+  cursor: pointer;
+  border: none;
+  transition: background-color 0.2s;
+}
+
+.connect-button {
+  background-color: #4CAF50;
+  color: white;
+}
+
+.connect-button:hover {
+  background-color: #45a049;
+}
+
+.disconnect-button {
+  background-color: #f44336;
+  color: white;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+
+.disconnect-button:hover {
+  background-color: #d32f2f;
 }
 </style>

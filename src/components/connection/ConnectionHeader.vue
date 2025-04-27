@@ -5,14 +5,9 @@
 
 // src/components/connection/ConnectionHeader.vue
 <template>
-  <header class="header">
-    <h1>Astrolabe Network Visualizer</h1>
-    <div v-if="connected" class="connection-info">
-      Connected to: {{ connectionInfo }}
-      <button @click="disconnect" class="disconnect-button">Disconnect</button>
-    </div>
-    <button v-else @click="connect" class="connect-button">Connect to Neo4j</button>
-  </header>
+  <div class="logo-wrapper">
+    <img src="/logo.svg" alt="AstroViz Logo" class="logo" />
+  </div>
 </template>
 
 <script>
@@ -23,10 +18,6 @@ export default {
     connected: {
       type: Boolean,
       required: true
-    },
-    connectionInfo: {
-      type: String,
-      default: ''
     }
   },
 
@@ -42,45 +33,28 @@ export default {
 </script>
 
 <style scoped>
-.header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 20px;
-  border-bottom: 1px solid #ddd;
-  padding-bottom: 10px;
-}
-
-.connection-info {
+.logo-wrapper {
   display: flex;
   align-items: center;
-  gap: 10px;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
 }
 
-.connect-button, .disconnect-button {
-  padding: 8px 16px;
-  border-radius: 4px;
-  font-weight: bold;
-  cursor: pointer;
-  border: none;
-  transition: background-color 0.2s;
+.logo {
+  width: 100%;
+  max-width: 250px;
+  min-width: 200px;
+  height: auto;
+  display: block;
+  padding: 0;
+  margin: 0;
+  transform: translateY(8px); /* Move the logo down slightly */
 }
 
-.connect-button {
-  background-color: #4CAF50;
-  color: white;
-}
-
-.connect-button:hover {
-  background-color: #45a049;
-}
-
-.disconnect-button {
-  background-color: #f44336;
-  color: white;
-}
-
-.disconnect-button:hover {
-  background-color: #d32f2f;
+/* Ensure SVG renders properly */
+.logo svg {
+  width: 100%;
+  height: auto;
 }
 </style>

@@ -141,39 +141,47 @@ export default {
 .filters {
   display: flex;
   flex-wrap: wrap;
-  gap: 15px;
-  margin-bottom: 15px;
+  gap: 12px;
+  margin-top: 10px;
 }
 
 .filter-item {
   display: flex;
   flex-direction: column;
-  min-width: 150px;
+  min-width: 140px;
+  flex-grow: 1;
 }
 
 .filter-item label {
   font-size: 12px;
   margin-bottom: 4px;
-  color: #666;
+  color: #555;
+  font-weight: 500;
 }
 
 .filter-item select {
   padding: 8px;
   border: 1px solid #ddd;
   border-radius: 4px;
+  background-color: white;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
 }
 
 .reset-button {
   align-self: flex-end;
-  background-color: #f5f5f5;
+  background-color: #e8e8e8;
   border: 1px solid #ddd;
   border-radius: 4px;
   padding: 8px 12px;
   cursor: pointer;
   margin-top: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
 }
 
 .reset-button:hover {
-  background-color: #e9e9e9;
+  background-color: #d8d8d8;
+  color: #333;
 }
 </style>

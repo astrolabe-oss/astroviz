@@ -1,7 +1,7 @@
-# Special and Fun Astrolabe Visualizer
+# AstroViz
 A powerful visualization tool for Astrolabe's Neo4j graph database, leveraging D3.js force-directed graph layout for improved performance and flexibility.
 
-<img src="./logo.svg?sanitize=true" alt="Astroviz Network Visualization" width="600">
+<img src="public/logo.svg?sanitize=true" alt="AstroViz Network Visualization" width="600">
 
 ## Features
 

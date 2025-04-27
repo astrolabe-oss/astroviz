@@ -6,7 +6,9 @@
 // src/components/FilterBar.vue
 <template>
   <div class="filter-bar">
-    <ViewModeSelector v-model="localViewMode" />
+    <div class="filter-bar-top">
+      <ViewModeSelector v-model="localViewMode" />
+    </div>
     <FilterControls :uniqueValues="uniqueValues" :value="localFilters" @input="handleFilterChange" />
   </div>
 </template>
@@ -97,5 +99,11 @@ export default {
   padding: 15px;
   margin-bottom: 20px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.filter-bar-top {
+  display: flex;
+  justify-content: flex-start;
+  margin-bottom: 15px;
 }
 </style>

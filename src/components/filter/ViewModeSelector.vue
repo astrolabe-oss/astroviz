@@ -54,8 +54,8 @@ export default {
 .view-controls {
   display: flex;
   gap: 20px;
-  margin-bottom: 15px;
-  padding-bottom: 15px;
+  margin-bottom: 5px;
+  padding-bottom: 8px;
   border-bottom: 1px solid #e0e0e0;
 }
 
@@ -65,6 +65,7 @@ export default {
   cursor: pointer;
   position: relative;
   user-select: none;
+  font-size: 14px;
 }
 
 .view-mode-label input {
@@ -76,9 +77,9 @@ export default {
 .radio-button {
   position: relative;
   display: inline-block;
-  width: 18px;
-  height: 18px;
-  margin-right: 8px;
+  width: 16px;
+  height: 16px;
+  margin-right: 6px;
   border: 2px solid #ccc;
   border-radius: 50%;
   box-sizing: border-box;
@@ -94,8 +95,8 @@ export default {
   position: absolute;
   top: 3px;
   left: 3px;
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
   background-color: #4CAF50;
 }
