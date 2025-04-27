@@ -1,0 +1,12 @@
+<svg viewBox="0 50 200 30" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <!-- Text positioned at left with padding -->
+    <text x="0" y="75" font-family="'Courier New', monospace" font-size="28" fill="#444444">
+        <tspan x="0" y="75">$</tspan>
+        <tspan x="20" y="75"> astroviz</tspan>
+        <tspan x="160" y="75"> ></tspan>
+        <tspan id="cursor" x="180" y="75">_</tspan>
+    </text>
+
+    <!-- Blinking cursor animation -->
+    <animate xlink:href="#cursor" attributeName="opacity" values="0;1;1;0" dur="1.5s" repeatCount="indefinite" />
+</svg>
