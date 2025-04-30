@@ -39,69 +39,135 @@ export function transformToDetailedView(graphData) {
 }
 
 /**
- * Transform graph data to application level view
+ * Transform graph data to application level view based on app_name attribute
  * @param {Object} graphData The filtered graph data
  * @returns {Object} Transformed data for visualization
  */
 export function transformToApplicationView(graphData) {
     console.log("UTILS: transformToApplicationView called");
 
-    const appNodes = {};
-    const deploymentToAppMap = {};
-    const computeToAppMap = {};
+    // Create a map of app_name -> virtual application node
+    const appNameMap = {};
+    // Create a map of nodeId -> app_name for quick lookups
+    const nodeToAppNameMap = {};
 
-    // First pass - identify all Applications and create nodes
+    // First pass - identify all unique app_names and create virtual application nodes
     Object.entries(graphData.vertices).forEach(([id, vertex]) => {
-        if (vertex.type === 'Application') {
-            appNodes[id] = {
-                id,
-                label: vertex.name || `App: ${vertex.app_name || id}`,
+        // Determine the application identifier with fallbacks
+        let appIdentifier;
+        if (vertex.app_name) {
+            appIdentifier = vertex.app_name;
+        } else if (vertex.name) {
+            appIdentifier = vertex.name;
+        } else if (vertex.address) {
+            appIdentifier = vertex.address;
+        } else {
+            appIdentifier = "ERROR";
+        }
+        
+        // Map this node ID to its app identifier
+        nodeToAppNameMap[id] = appIdentifier;
+        
+        // Create a virtual application node if it doesn't exist yet
+        if (!appNameMap[appIdentifier]) {
+            appNameMap[appIdentifier] = {
+                id: `app-${appIdentifier}`, // Create a virtual ID for the application
+                label: `App: ${appIdentifier}`,
                 type: 'Application',
-                data: vertex
+                app_name: appIdentifier,
+                data: {
+                    type: 'Application',
+                    app_name: appIdentifier,
+                    name: appIdentifier,
+                    virtual: true, // Mark as a virtual node
+                    components: [] // Will store all component nodes
+                }
             };
         }
+        
+        // Add this node as a component of the application
+        appNameMap[appIdentifier].data.components.push({
+            id,
+            type: vertex.type,
+            ...vertex
+        });
     });
 
-    // Second pass - find deployment-to-application relationships
-    graphData.edges.forEach(edge => {
-        if (edge.type === 'IMPLEMENTS') {
-            deploymentToAppMap[edge.start_node] = edge.end_node;
-        }
+    // Intermediate pass - calculate aggregated properties for each application
+    Object.values(appNameMap).forEach(appNode => {
+        const components = appNode.data.components;
+        
+        // Skip if no components
+        if (!components.length) return;
+        
+        // Calculate platform aggregation (same or 'mixed')
+        const platforms = new Set(components.map(c => c.platform).filter(Boolean));
+        appNode.data.platform = platforms.size === 1 ? [...platforms][0] : 'mixed';
+        
+        // Calculate provider aggregation (same or 'mixed')
+        const providers = new Set(components.map(c => c.provider).filter(Boolean));
+        appNode.data.provider = providers.size === 1 ? [...providers][0] : 'mixed';
+        
+        // Set public_ip to true if any component has public_ip
+        appNode.data.public_ip = components.some(c => c.public_ip === true);
+        
+        // Add component type counts
+        const typeCounts = {};
+        components.forEach(c => {
+            typeCounts[c.type] = (typeCounts[c.type] || 0) + 1;
+        });
+        appNode.data.typeCounts = typeCounts;
+        
+        // Add aggregated properties to the top level for easier access
+        appNode.platform = appNode.data.platform;
+        appNode.provider = appNode.data.provider;
+        appNode.public_ip = appNode.data.public_ip;
+        appNode.componentCount = components.length;
     });
 
-    // Third pass - find compute-to-deployment relationships
-    graphData.edges.forEach(edge => {
-        if (edge.type === 'MEMBER_OF') {
-            const deploymentId = edge.end_node;
-            const appId = deploymentToAppMap[deploymentId];
-            if (appId) {
-                computeToAppMap[edge.start_node] = appId;
-            }
-        }
-    });
-
-    // Fourth pass - create app-to-app connections based on compute connections
+    // Final pass - create app-to-app connections based on any connections between components
     const appConnections = {};
     graphData.edges.forEach(edge => {
-        if (edge.type === 'CALLS') {
-            const sourceAppId = computeToAppMap[edge.start_node];
-            const targetAppId = computeToAppMap[edge.end_node];
+        const sourceAppIdentifier = nodeToAppNameMap[edge.start_node];
+        const targetAppIdentifier = nodeToAppNameMap[edge.end_node];
 
-            if (sourceAppId && targetAppId && sourceAppId !== targetAppId) {
-                const connKey = `${sourceAppId}-${targetAppId}`;
+        // Only create connections if both nodes have identifiers and they're different
+        if (sourceAppIdentifier && targetAppIdentifier && sourceAppIdentifier !== targetAppIdentifier) {
+            const sourceAppId = `app-${sourceAppIdentifier}`;
+            const targetAppId = `app-${targetAppIdentifier}`;
+            const connKey = `${sourceAppId}-${targetAppId}`;
+            
+            // Create connection if it doesn't exist yet
+            if (!appConnections[connKey]) {
                 appConnections[connKey] = {
                     source: sourceAppId,
                     target: targetAppId,
-                    type: 'CALLS'
+                    type: edge.type,
+                    // Store information about what kind of edge this represents
+                    data: {
+                        edgeType: edge.type,
+                        connectedComponents: [{
+                            sourceId: edge.start_node,
+                            targetId: edge.end_node
+                        }]
+                    }
                 };
+            } else {
+                // Add this connection to the existing edge's data
+                appConnections[connKey].data.connectedComponents.push({
+                    sourceId: edge.start_node,
+                    targetId: edge.end_node
+                });
             }
         }
     });
 
-    const nodes = Object.values(appNodes);
+    const nodes = Object.values(appNameMap);
     const links = Object.values(appConnections);
 
     console.log(`UTILS: Application view has ${nodes.length} nodes and ${links.length} links`);
+    console.log("UTILS: Virtual application nodes created:", nodes.map(n => n.app_name).join(", "));
+    
     return { nodes, links };
 }
 
