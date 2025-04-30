@@ -407,6 +407,19 @@ export default {
         // Store original color for later restoration
         self.nodeOriginalColors[d.id] = color;
       
+        // Check if this is a virtual application node
+        const isVirtual = d.type === 'Application' && d.virtual === true;
+        
+        // Draw dashed circle for virtual application nodes
+        if (isVirtual) {
+          d3.select(this).append('circle')
+            .attr('r', self.nodeSize * 1.3)
+            .attr('fill', 'none')
+            .attr('stroke', color)
+            .attr('stroke-dasharray', '3,3')
+            .attr('class', 'virtual-node-circle');
+        }
+      
         // Create group for the icon
         const iconGroup = d3.select(this).append('g')
             .attr('transform', `translate(${-self.nodeSize},${-self.nodeSize})`)
@@ -431,6 +444,7 @@ export default {
             .attr('height', self.nodeSize * 2)
             .attr('viewBox', svgElement.getAttribute('viewBox'))
             .style('color', color) // This works with the "currentColor" fill in the icons
+            .style('opacity', isVirtual ? 0.50 : 1) // 25% transparent for virtual nodes
             .html(svgContent);
             
         // Store the node size as a data attribute for later use

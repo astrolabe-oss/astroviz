@@ -50,6 +50,8 @@ export function transformToApplicationView(graphData) {
     const appNameMap = {};
     // Create a map of nodeId -> app_name for quick lookups
     const nodeToAppNameMap = {};
+    // Track which app identifiers have a real Application node
+    const realApplications = new Set();
 
     // First pass - identify all unique app_names and create virtual application nodes
     Object.entries(graphData.vertices).forEach(([id, vertex]) => {
@@ -68,10 +70,19 @@ export function transformToApplicationView(graphData) {
         // Map this node ID to its app identifier
         nodeToAppNameMap[id] = appIdentifier;
         
+        // Track if this is a real Application node
+        if (vertex.type === 'Application') {
+            realApplications.add(appIdentifier);
+        }
+        
         // Create a virtual application node if it doesn't exist yet
         if (!appNameMap[appIdentifier]) {
+            // If we're creating a node for a real Application, use its ID instead of a generated one
+            const isRealApp = vertex.type === 'Application';
+            const nodeId = isRealApp ? id : `app-${appIdentifier}`;
+            
             appNameMap[appIdentifier] = {
-                id: `app-${appIdentifier}`, // Create a virtual ID for the application
+                id: nodeId,
                 label: `App: ${appIdentifier}`,
                 type: 'Application',
                 app_name: appIdentifier,
@@ -79,10 +90,20 @@ export function transformToApplicationView(graphData) {
                     type: 'Application',
                     app_name: appIdentifier,
                     name: appIdentifier,
-                    virtual: true, // Mark as a virtual node
+                    virtual: !isRealApp, // Only mark as virtual if not a real Application
                     components: [] // Will store all component nodes
                 }
             };
+            
+            // If this is a real Application node, copy its properties to the app node
+            if (isRealApp) {
+                // Copy all vertex properties to the app node
+                Object.entries(vertex).forEach(([key, value]) => {
+                    if (key !== 'type' && key !== 'app_name') { // Don't overwrite these
+                        appNameMap[appIdentifier].data[key] = value;
+                    }
+                });
+            }
         }
         
         // Add this node as a component of the application
@@ -99,6 +120,12 @@ export function transformToApplicationView(graphData) {
         
         // Skip if no components
         if (!components.length) return;
+        
+        // Check if this is a real Application (not virtual)
+        const isRealApp = realApplications.has(appNode.app_name);
+        
+        // Update virtual flag based on whether there's a real Application
+        appNode.data.virtual = !isRealApp;
         
         // Calculate platform aggregation (same or 'mixed')
         const platforms = new Set(components.map(c => c.platform).filter(Boolean));
@@ -123,6 +150,7 @@ export function transformToApplicationView(graphData) {
         appNode.provider = appNode.data.provider;
         appNode.public_ip = appNode.data.public_ip;
         appNode.componentCount = components.length;
+        appNode.virtual = appNode.data.virtual;
     });
 
     // Final pass - create app-to-app connections based on any connections between components
@@ -133,8 +161,13 @@ export function transformToApplicationView(graphData) {
 
         // Only create connections if both nodes have identifiers and they're different
         if (sourceAppIdentifier && targetAppIdentifier && sourceAppIdentifier !== targetAppIdentifier) {
-            const sourceAppId = `app-${sourceAppIdentifier}`;
-            const targetAppId = `app-${targetAppIdentifier}`;
+            const sourceAppNode = appNameMap[sourceAppIdentifier];
+            const targetAppNode = appNameMap[targetAppIdentifier];
+            
+            if (!sourceAppNode || !targetAppNode) return;
+            
+            const sourceAppId = sourceAppNode.id;
+            const targetAppId = targetAppNode.id;
             const connKey = `${sourceAppId}-${targetAppId}`;
             
             // Create connection if it doesn't exist yet
@@ -166,7 +199,7 @@ export function transformToApplicationView(graphData) {
     const links = Object.values(appConnections);
 
     console.log(`UTILS: Application view has ${nodes.length} nodes and ${links.length} links`);
-    console.log("UTILS: Virtual application nodes created:", nodes.map(n => n.app_name).join(", "));
+    console.log("UTILS: Virtual application nodes created:", nodes.map(n => `${n.app_name}${n.virtual ? ' (virtual)' : ''}`).join(", "));
     
     return { nodes, links };
 }
