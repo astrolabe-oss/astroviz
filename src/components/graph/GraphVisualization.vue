@@ -11,7 +11,7 @@
 <script>
 import * as d3 from 'd3';
 import networkIcons from '../networkIcons';
-import { transformToDetailedView, transformToApplicationView, getNodeLabel } from './graphTransformUtils';
+import { transformNeo4JDataForD3, getNodeLabel } from './graphTransformUtils';
 
 export default {
   name: 'GraphVisualization',
@@ -151,8 +151,7 @@ export default {
 
   methods: {
     // Utility functions for graph transformations
-    transformToDetailedView,
-    transformToApplicationView,
+    transformNeo4JDataForD3,
     getNodeLabel,
 
     // The updateNodeHighlighting method has been replaced by highlightFilteredNodes
@@ -256,9 +255,14 @@ export default {
 
         // Transform data based on view mode
         if (this.viewMode === 'application') {
-          visData = this.transformToApplicationView(this.graphData);
+          // For application view, first get aggregated data using neo4jService
+          const neo4jService = require('@/services/neo4jService').default;
+          const aggregatedData = neo4jService.aggregateDataForApplicationView(this.graphData);
+          
+          // Then pass this aggregated data to the transform function
+          visData = this.transformNeo4JDataForD3(aggregatedData);
         } else {
-          visData = this.transformToDetailedView(this.graphData);
+          visData = this.transformNeo4JDataForD3(this.graphData);
         }
 
         // Store node positions before updating
@@ -273,8 +277,7 @@ export default {
 
         // Debug: Check for nodes with public_ip=true
         const nodesWithPublicIp = visData.nodes.filter(node => 
-          (node.data && node.data.public_ip === true) || 
-          (node.properties && node.properties.public_ip === true));
+          node.data && node.data.public_ip === true);
         console.log('Nodes with public_ip=true:', nodesWithPublicIp.length);
         
         // Update simulation
@@ -408,7 +411,7 @@ export default {
         self.nodeOriginalColors[d.id] = color;
       
         // Check if this is a virtual application node
-        const isVirtual = d.type === 'Application' && d.virtual === true;
+        const isVirtual = d.type === 'Application' && d.data.virtual === true;
         
         // Draw dashed circle for virtual application nodes
         if (isVirtual) {
@@ -1052,11 +1055,7 @@ export default {
         const nodeSize = d3.select(this).attr('data-node-size') || self.nodeSize;
         
         // Check all possible paths for public_ip
-        const hasPublicIp = 
-          (d.data && d.data.public_ip === true) || 
-          (d.properties && d.properties.public_ip === true) ||
-          (d.public_ip === true) ||
-          (d.data && d.data.properties && d.data.properties.public_ip === true);
+        const hasPublicIp = d.data && d.data.public_ip === true;
         
         if (hasPublicIp) {
           // Size of the cloud icon relative to the node - make it about 0.9x the node size
@@ -1474,15 +1473,10 @@ export default {
     debugNodeData() {
       console.log('Total nodes:', this.currentNodes.length);
       
-      // Check for public_ip in various possible locations in node data
-      const publicIpNodes = this.currentNodes.filter(node => {
-        const hasPublicIp = 
-          (node.data && node.data.public_ip === true) || 
-          (node.properties && node.properties.public_ip === true) ||
-          (node.public_ip === true) ||
-          (node.data && node.data.properties && node.data.properties.public_ip === true);
-        return hasPublicIp;
-      });
+      // Check for public_ip only in node.data
+      const publicIpNodes = this.currentNodes.filter(node => 
+        node.data && node.data.public_ip === true
+      );
       
       console.log('Nodes with public_ip:', publicIpNodes.length);
       
@@ -1490,22 +1484,7 @@ export default {
         // Print a more complete dump of the first node
         const sampleNode = publicIpNodes[0];
         console.log('Sample node with public_ip:', sampleNode);
-        console.log('Node properties:', JSON.stringify(sampleNode.properties || {}));
         console.log('Node data:', JSON.stringify(sampleNode.data || {}));
-        
-        // Check where the public_ip property is actually located
-        if (sampleNode.data && sampleNode.data.public_ip === true) {
-          console.log('Found public_ip at: node.data.public_ip');
-        }
-        if (sampleNode.properties && sampleNode.properties.public_ip === true) {
-          console.log('Found public_ip at: node.properties.public_ip');
-        }
-        if (sampleNode.public_ip === true) {
-          console.log('Found public_ip at: node.public_ip');
-        }
-        if (sampleNode.data && sampleNode.data.properties && sampleNode.data.properties.public_ip === true) {
-          console.log('Found public_ip at: node.data.properties.public_ip');
-        }
       }
     }
   }
