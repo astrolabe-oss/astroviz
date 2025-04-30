@@ -65,7 +65,8 @@
 
       <NodeDetails
           :node="selectedNode"
-          :graph-data="graphData"
+          :graph-data="filteredGraphData"
+          :view-mode="viewMode"
           @close="selectedNode = null"
           @select-node="onSelectConnectedNode"
       />
@@ -145,12 +146,13 @@ export default {
 
   computed: {
     /**
-     * Get filtered graph data based on current filters
+     * Get filtered graph data based on current filters and view mode
      */
     filteredGraphData() {
-      console.log("APP: Computing filteredGraphData", JSON.parse(JSON.stringify(this.filters)));
-
-      // We'll always return the full graph data, but compute highlighted nodes
+      console.log(`APP: Computing filteredGraphData with view mode: ${this.viewMode}`, JSON.parse(JSON.stringify(this.filters)));
+      if (this.viewMode === 'application') {
+        return neo4jService.aggregateDataForApplicationView(this.graphData);
+      }
       return this.graphData;
     },
     
@@ -205,6 +207,35 @@ export default {
 
   methods: {
     /**
+     * Fetch graph data from Neo4j service - consolidated method
+     * @param {string} viewMode view mode
+     * @param {Function} statusCallback Optional callback for status updates
+     * @param {Function} progressCallback Optional callback for progress updates
+     * @returns {Promise<Object>} Promise resolving to graph data
+     */
+    async fetchGraphFromNeo4j(viewMode, statusCallback, progressCallback) {
+      console.log(`APP: Fetching graph data from Neo4j service with view mode: ${viewMode}`);
+      let graphData = await neo4jService.fetchGraphData((status, progress) => {
+        // Update the component's loading status and progress
+        this.loadingStatus = status;
+        this.loadingProgress = progress;
+        
+        // Call the callbacks if provided
+        if (statusCallback && typeof statusCallback === 'function') {
+          statusCallback(status);
+        }
+        if (progressCallback && typeof progressCallback === 'function') {
+          progressCallback(progress);
+        }
+      });
+      if (viewMode === 'application') {
+        graphData = neo4jService.aggregateDataForApplicationView(graphData);
+      }
+      console.log(`APP: Using application view with ${Object.keys(graphData.vertices).length} nodes and ${graphData.edges.length} edges`);
+      return graphData
+    },
+    
+    /**
      * Refresh graph data from Neo4j
      */
     async refreshGraphData() {
@@ -214,11 +245,8 @@ export default {
         this.loadingStatus = "Refreshing graph data...";
         this.loadingProgress = 10;
         
-        // Re-fetch the graph data from neo4jService
-        const freshData = await neo4jService.fetchGraphData((status, progress) => {
-          this.loadingStatus = status;
-          this.loadingProgress = progress;
-        });
+        // Call the consolidated method
+        const freshData = await this.fetchGraphFromNeo4j(this.viewMode);
         
         // Update the graph data
         this.graphData = freshData;
@@ -293,12 +321,12 @@ export default {
         console.log("APP: Preparing to fetch data");
         this.loadingStatus = "Fetching graph data...";
         this.loadingProgress = 10;
-        const graphData = await neo4jService.fetchGraphData(
-            (status, progress) => {
-              console.log(`APP: Progress update - ${status} (${progress}%)`);
-              this.loadingStatus = status;
-              this.loadingProgress = progress;
-            }
+        
+        // Call the consolidated method with status logging callback
+        const graphData = await this.fetchGraphFromNeo4j(this.viewMode,
+          (status) => {
+            console.log(`APP: Progress update - ${status} (${this.loadingProgress}%)`);
+          }
         );
 
         console.log("APP: Data fetch complete, processing data");

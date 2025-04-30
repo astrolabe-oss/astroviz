@@ -301,6 +301,10 @@ class Neo4jService {
             // Calculate provider aggregation (same or 'mixed')
             const providers = new Set(components.map(c => c.provider).filter(Boolean));
             appNode.provider = providers.size === 1 ? [...providers][0] : 'mixed';
+
+            // Calculate provider aggregation (same or 'mixed')
+            const protocol_mux = new Set(components.map(c => c.protocol_multiplexor).filter(Boolean));
+            appNode.protocol_multiplexor = protocol_mux.size === 1 ? [...protocol_mux][0] : 'mixed';
             
             // Set public_ip to true if any component has public_ip
             appNode.public_ip = components.some(c => c.public_ip === true);
