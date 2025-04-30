@@ -49,11 +49,11 @@ export default {
     },
     
     /**
-     * Returns only annotation icons (currently just 'Public IP')
+     * Returns only annotation icons (currently just 'Public IP' and 'Virtual Application')
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP'];
+      return ['Public IP', 'Virtual'];
     }
   },
 
@@ -64,6 +64,23 @@ export default {
      * @returns {string} SVG HTML string
      */
     getLegendIcon(type) {
+      if (type === 'Virtual') {
+        // For Virtual Nodes, use the Application icon with dashed circle and transparency
+        const appColor = this.nodeColors['Application'];
+
+        // Calculate the circle radius - should be 1.3x the icon size/2
+        const iconSize = 12;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${iconSize}" fill="none" stroke="${appColor}" stroke-dasharray="3,3" />
+                    <g transform="translate(-${iconSize * .75}, -${iconSize * .75}) scale(${18 / 24})" style="color: ${appColor}; opacity: 0.5;">
+                      ${networkIcons['Application']}
+                    </g>
+                  </g>
+                </svg>`;
+      }
+      
       // Special case for 'Public IP' which should use the PublicIP icon
       const iconKey = type === 'Public IP' ? 'PublicIP' : type;
       
