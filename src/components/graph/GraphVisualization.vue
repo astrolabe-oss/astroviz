@@ -253,17 +253,8 @@ export default {
 
         let visData;
 
-        // Transform data based on view mode
-        if (this.viewMode === 'application') {
-          // For application view, first get aggregated data using neo4jService
-          const neo4jService = require('@/services/neo4jService').default;
-          const aggregatedData = neo4jService.aggregateDataForApplicationView(this.graphData);
-          
-          // Then pass this aggregated data to the transform function
-          visData = this.transformNeo4JDataForD3(aggregatedData);
-        } else {
-          visData = this.transformNeo4JDataForD3(this.graphData);
-        }
+        // No need to transform based on view mode - data is already transformed in App.vue
+        visData = this.transformNeo4JDataForD3(this.graphData);
 
         // Store node positions before updating
         this.saveNodePositions();
