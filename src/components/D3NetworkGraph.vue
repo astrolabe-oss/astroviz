@@ -91,6 +91,7 @@ export default {
         'TrafficController': '#4A98E3', // Blue like in the image
         'Public IP': '#E0E0E0', // Keep Public IP in legend but not as a node type
         'Unknown': '#F9C96E', // Orange for unknown nodes
+        'Private Datacenter': 'rgba(240, 240, 245, 0.8)', // Add datacenter container to legend
       },
 
       isRendering: false,
