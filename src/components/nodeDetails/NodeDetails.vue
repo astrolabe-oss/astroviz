@@ -31,14 +31,14 @@
 
     <!-- Components Section for Application view -->
     <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
-      <div class="connections-container components-container">
-        <div class="connections-header components-header">
-          <h5>Components</h5>
+      <div class="connections-container component-inventory-container">
+        <div class="connections-header component-inventory-header">
+          <h5>Component Inventory</h5>
         </div>
         
         <div class="tab-content">
           <div v-if="nodeComponents.length === 0" class="no-connections">
-            No components
+            No component inventory
           </div>
           <div v-else>
             <div v-for="(group, index) in groupedNodeComponents" :key="`component-group-${index}`" class="relationship-group">
