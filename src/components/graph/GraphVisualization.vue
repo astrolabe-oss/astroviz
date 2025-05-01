@@ -53,6 +53,16 @@ export default {
       currentNodes: [],
       currentLinks: [],
 
+      // Store public and private nodes separately
+      publicNodes: [],
+      privateNodes: [],
+      
+      // Datacenter container properties
+      datacenterContainer: null,
+      datacenterRadius: 150,
+      datacenterCenterX: 0,
+      datacenterCenterY: 0,
+  
       // Map to store fixed node positions
       nodePositions: {},
 
@@ -101,6 +111,9 @@ export default {
     viewMode() {
       console.log("D3: View mode changed");
       try {
+        // First remove any existing datacenter container to prevent ghosts
+        this.removeDatacenterContainer();
+        
         if (this.graphData && this.graphData.vertices &&
             Object.keys(this.graphData.vertices).length > 0) {
           this.updateVisualization();
@@ -144,8 +157,17 @@ export default {
     // Clean up
     window.removeEventListener('resize', this.onResize);
 
+    // Remove datacenter container
+    this.removeDatacenterContainer();
+    
+    // Stop simulation
     if (this.simulation) {
       this.simulation.stop();
+    }
+    
+    // Clear SVG content
+    if (this.g) {
+      this.g.selectAll('*').remove();
     }
   },
 
@@ -221,11 +243,15 @@ export default {
             .force('charge', d3.forceManyBody().strength(-150))
             // Center force
             .force('center', d3.forceCenter(width / 2, height / 2))
-            // Smaller collision radius
-            .force('collision', d3.forceCollide().radius(25))
+            // Larger collision radius to prevent nodes from getting too close
+            .force('collision', d3.forceCollide().radius(30))
             // Add a radial force to keep nodes within a certain radius
             .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.05))
             .on('tick', this.tick);
+            
+        // Set datacenter center position
+        this.datacenterCenterX = width / 2;
+        this.datacenterCenterY = height / 2 + 50;
 
         console.log("D3: Visualization initialized with compact force layout");
       } catch (error) {
@@ -251,28 +277,38 @@ export default {
         this.selectedNodeIds.clear();
         this.nodeOriginalColors = {};
 
+        // Remove any existing datacenter container before redrawing
+        this.removeDatacenterContainer();
+    
         let visData;
-
+    
         // No need to transform based on view mode - data is already transformed in App.vue
         visData = this.transformNeo4JDataForD3(this.graphData);
-
+    
         // Store node positions before updating
         this.saveNodePositions();
-
+    
         // Apply any saved positions to the new nodes
         this.applyNodePositions(visData.nodes);
-
+    
         // Store current nodes and links
         this.currentNodes = visData.nodes;
         this.currentLinks = visData.links;
-
-        // Debug: Check for nodes with public_ip=true
-        const nodesWithPublicIp = visData.nodes.filter(node => 
+    
+        // Separate private and public nodes
+        this.publicNodes = visData.nodes.filter(node => 
           node.data && node.data.public_ip === true);
-        console.log('Nodes with public_ip=true:', nodesWithPublicIp.length);
+        this.privateNodes = visData.nodes.filter(node => 
+          !node.data || node.data.public_ip !== true);
+          
+        console.log('Nodes with public_ip=true:', this.publicNodes.length);
+        console.log('Nodes with public_ip=false:', this.privateNodes.length);
         
-        // Update simulation
+        // Update simulation with new node data
         this.updateSimulation(visData);
+        
+        // Add datacenter container after nodes are created
+        this.addDatacenterContainer();
 
         // Notify parent component about rendering completion
         setTimeout(() => {
@@ -325,16 +361,186 @@ export default {
       // Force update to apply styles and bring selected elements to front
       this.tick();
     },
+    
+    /**
+     * Remove all datacenter container elements
+     */
+    removeDatacenterContainer() {
+      if (this.g) {
+        // Remove all datacenter-related elements
+        this.g.selectAll('.datacenter-container').remove();
+        this.g.selectAll('.datacenter-container-glow').remove();
+        this.g.selectAll('.datacenter-label').remove();
+        
+        // Reset datacenter container reference
+        this.datacenterContainer = null;
+        
+        console.log("D3: Removed datacenter container elements");
+      }
+    },
+    
+    /**
+     * Add datacenter container for private nodes
+     */
+    addDatacenterContainer() {
+      // First remove any existing datacenter elements
+      this.removeDatacenterContainer();
+      
+      // Calculate container position based on visualization center
+      const container = this.$refs.d3Container;
+      const width = container.clientWidth;
+      const height = container.clientHeight || 600;
+      
+      // Set datacenter center slightly below the center of the visualization
+      this.datacenterCenterX = width / 2;
+      this.datacenterCenterY = height / 2 + 50;
+      
+      // Adjust datacenter radius based on number of private nodes
+      this.datacenterRadius = Math.max(150, Math.sqrt(this.privateNodes.length) * 40);
+      
+      // Create datacenter container
+      this.datacenterContainer = this.g.append('circle')
+        .attr('class', 'datacenter-container')
+        .attr('cx', this.datacenterCenterX)
+        .attr('cy', this.datacenterCenterY)
+        .attr('r', this.datacenterRadius)
+        .attr('fill', 'rgba(240, 240, 245, 0.8)')
+        .attr('stroke', '#666')
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', '5,5')
+        .lower(); // Ensure container is behind nodes
+        
+      // Add a subtle outer glow to make boundary more visible
+      this.g.append('circle')
+        .attr('class', 'datacenter-container-glow')
+        .attr('cx', this.datacenterCenterX)
+        .attr('cy', this.datacenterCenterY)
+        .attr('r', this.datacenterRadius + 2)
+        .attr('fill', 'none')
+        .attr('stroke', 'rgba(100, 100, 150, 0.3)')
+        .attr('stroke-width', 6)
+        .attr('filter', 'blur(4px)')
+        .lower(); // Keep behind main container
+        
+      // Add datacenter label
+      this.g.append('text')
+        .attr('class', 'datacenter-label')
+        .attr('x', this.datacenterCenterX)
+        .attr('y', this.datacenterCenterY - this.datacenterRadius - 10)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#333')
+        .attr('font-weight', 'bold')
+        .text('Private Datacenter')
+        .lower(); // Keep label behind nodes
+        
+      // Apply additional forces for private nodes to stay in datacenter
+      this.updateSimulationForces();
+      
+      console.log("D3: Added datacenter container for private nodes");
+    },
 
+    /**
+     * Update simulation forces to handle datacenter containment
+     */
+    updateSimulationForces() {
+      if (!this.simulation) return;
+      
+      // Clear previous forces
+      this.simulation.force('datacenter', null);
+      this.simulation.force('boundary-repulsion', null);
+      
+      // Add force to keep private nodes inside datacenter and public nodes outside
+      this.simulation.force('datacenter', (alpha) => {
+        const dcCenterX = this.datacenterCenterX;
+        const dcCenterY = this.datacenterCenterY;
+        const dcRadius = this.datacenterRadius;
+        
+        // Apply to each node
+        this.currentNodes.forEach(node => {
+          // Skip nodes with fixed positions
+          if (node.fx !== undefined && node.fy !== undefined) return;
+          
+          const isPrivate = !node.data || node.data.public_ip !== true;
+          
+          if (isPrivate) {
+            // For private nodes - keep inside datacenter
+            const dx = node.x - dcCenterX;
+            const dy = node.y - dcCenterY;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            // If node is outside datacenter, pull it back in
+            if (distance > dcRadius - 20) {
+              const scale = (dcRadius - 20) / distance;
+              node.x = dcCenterX + dx * scale;
+              node.y = dcCenterY + dy * scale;
+            }
+          } else {
+            // For public nodes - keep outside datacenter with larger buffer
+            const dx = node.x - dcCenterX;
+            const dy = node.y - dcCenterY;
+            const distance = Math.sqrt(dx*dx + dy*dy);
+            
+            // If node is inside datacenter or too close (buffer of 60px), push it out
+            const publicNodeBuffer = 60; // Increased buffer for public nodes
+            if (distance < dcRadius + publicNodeBuffer) {
+              const scale = (dcRadius + publicNodeBuffer) / Math.max(distance, 1);
+              node.x = dcCenterX + dx * scale;
+              node.y = dcCenterY + dy * scale;
+            }
+          }
+        });
+      });
+      
+      // Add a special force that adds repulsion between public nodes and datacenter boundary
+      this.simulation.force('boundary-repulsion', (alpha) => {
+        const dcCenterX = this.datacenterCenterX;
+        const dcCenterY = this.datacenterCenterY;
+        const dcRadius = this.datacenterRadius;
+        const bufferZone = 80; // Zone where repulsion starts
+        
+        // Get public nodes
+        const publicNodes = this.currentNodes.filter(node => 
+          node.data && node.data.public_ip === true && 
+          node.fx === undefined && node.fy === undefined);
+          
+        // For each public node, add repulsion from the datacenter boundary
+        publicNodes.forEach(node => {
+          const dx = node.x - dcCenterX;
+          const dy = node.y - dcCenterY;
+          const distance = Math.sqrt(dx*dx + dy*dy);
+          
+          // If node is in buffer zone, add repulsive force
+          if (distance < dcRadius + bufferZone && distance > dcRadius) {
+            // Calculate repulsion strength (stronger when closer to boundary)
+            const repulsionStrength = alpha * 5 * (1 - ((distance - dcRadius) / bufferZone));
+            
+            // Normalize direction vector
+            const nx = dx / distance;
+            const ny = dy / distance;
+            
+            // Apply repulsive force
+            node.x += nx * repulsionStrength;
+            node.y += ny * repulsionStrength;
+          }
+        });
+      });
+      
+      // Restart simulation with updated forces
+      this.simulation.alpha(0.3).restart();
+    },
+    
     /**
      * Update D3 force simulation with new data
      * @param {Object} data The visualization data (nodes and links)
      */
     updateSimulation(data) {
-      // Clear existing elements
+      // Clear all existing elements to prevent ghost artifacts
       this.g.selectAll('.link').remove();
       this.g.selectAll('.node').remove();
       this.g.selectAll('.node-label').remove();
+      this.g.selectAll('.datacenter-container').remove();
+      this.g.selectAll('.datacenter-container-glow').remove();
+      this.g.selectAll('.datacenter-label').remove();
 
       // Adjust force parameters based on graph size
       const nodeCount = data.nodes.length;
@@ -610,6 +816,23 @@ export default {
 
         // Update the simulation with the unfixed nodes
         this.simulation.nodes(this.currentNodes);
+        
+        // Update datacenter center position
+        this.datacenterCenterX = width / 2;
+        this.datacenterCenterY = height / 2 + 50;
+        
+        // Update datacenter container position
+        if (this.datacenterContainer) {
+          this.datacenterContainer
+            .attr('cx', this.datacenterCenterX)
+            .attr('cy', this.datacenterCenterY);
+            
+          // Update datacenter label position
+          this.g.select('.datacenter-label')
+            .attr('x', this.datacenterCenterX)
+            .attr('y', this.datacenterCenterY - this.datacenterRadius - 10);
+        }
+        
         this.simulation.alpha(0.3).restart();
       }
           
@@ -1536,6 +1759,16 @@ export default {
 }
 
 :deep(.public-ip-annotation-inner) {
+  pointer-events: none;
+}
+
+.datacenter-container {
+  pointer-events: none;
+  transition: r 0.3s ease;
+}
+
+.datacenter-label {
+  font-size: 14px;
   pointer-events: none;
 }
 </style>
