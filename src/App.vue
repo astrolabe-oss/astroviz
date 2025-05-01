@@ -136,7 +136,7 @@ export default {
       },
 
       // Visualization state
-      viewMode: 'detailed',
+      viewMode: localStorage.getItem('viewMode') || 'detailed',
       filters: {
         appName: '',
         provider: '',
@@ -149,6 +149,16 @@ export default {
     };
   },
 
+  watch: {
+    /**
+     * Watch for changes in viewMode to save to localStorage
+     */
+    viewMode(newValue) {
+      console.log(`APP: View mode changed to ${newValue}, saving to localStorage`);
+      localStorage.setItem('viewMode', newValue);
+    }
+  },
+  
   computed: {
     /**
      * Get filtered graph data based on current filters and view mode
