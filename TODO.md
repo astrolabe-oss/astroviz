@@ -2,6 +2,7 @@ FEATURE
 * [ ] Refactor: Upgrade Vue 2 -> Vue 3
 * [x] Filter: Filter should highlight instead of actually filtering
 * [x] GRAPH - Highlight: shift click to add to highlights
+* [x] FILTER - remember view mode for page refreshes
 * [~] APP VIEW
   * [x] basic app view
   * [x] sub-connections missing in app view
@@ -9,7 +10,6 @@ FEATURE
   * [ ] highlighting broken
   * [ ] subgraph, circle packing?
 * [ ] FILTER - filter can toggle between highlight and actual filter
-* [ ] VIEW MODE - remember view mode for page refreshes
 
 
 BUGS
