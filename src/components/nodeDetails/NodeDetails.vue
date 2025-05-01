@@ -254,6 +254,11 @@ export default {
       type: Object,
       required: true
     },
+    // Raw graph data for additional lookups
+    rawGraphData: {
+      type: Object,
+      required: true
+    },
     viewMode: {
       type: String,
       default: 'detailed'
