@@ -39,6 +39,7 @@
         <ComponentGraph
           :components="nodeComponents"
           :nodeColors="nodeColors"
+          :rawGraphData="rawGraphData"
         />
       </div>
     </div>

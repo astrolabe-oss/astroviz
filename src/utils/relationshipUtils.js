@@ -101,3 +101,72 @@ export function groupRelationshipsByType(relationships) {
     // Convert to array and sort alphabetically by relationship type
     return Object.values(groupedByType).sort((a, b) => a.type.localeCompare(b.type));
 }
+
+/**
+ * Find relationships between components in a component subgraph
+ * @param {Array} components Array of components to find relationships for
+ * @param {Object} rawGraphData The raw graph data containing all vertices and edges
+ * @returns {Array} Array of link objects with source and target IDs
+ */
+export function findComponentRelationships(components, rawGraphData) {
+    if (!components || !components.length || !rawGraphData || !rawGraphData.edges) {
+        return [];
+    }
+
+    const links = [];
+    const componentMap = {};
+
+    // Create a map of component IDs to their index position in the nodes array
+    // This is important because the D3 force layout works with indices
+    components.forEach((component, index) => {
+        // Use originalData if available, otherwise use the component itself
+        const componentData = component.originalData || component;
+        
+        // Store the component's data and its index in the nodes array
+        componentMap[index] = {
+            data: componentData,
+            index: index
+        };
+    });
+
+    // For each component, find relationships with other components in this set
+    Object.entries(componentMap).forEach(([sourceIndex, sourceInfo]) => {
+        const sourceComponent = sourceInfo.data;
+        
+        // Skip if no valid component data
+        if (!sourceComponent) return;
+        
+        // Find all relationships for this component in the raw graph data
+        const relationships = processNodeRelationships(sourceComponent, rawGraphData, 'both');
+        
+        // For each relationship, check if the target is another component in our set
+        relationships.forEach(rel => {
+            const targetNodeId = rel.nodeId;
+            
+            // Check if any component in our map has this as target
+            for (const [targetIndex, targetInfo] of Object.entries(componentMap)) {
+                if (sourceIndex === targetIndex) continue; // Skip self-relationships
+                
+                const targetComponent = targetInfo.data;
+                if (!targetComponent) continue;
+                
+                // Check if this target component is the one from the relationship
+                const targetComponentId = targetComponent.id || 
+                    findNodeIdByProperties(targetComponent, rawGraphData);
+                    
+                if (targetComponentId === targetNodeId) {
+                    // Found a relationship between two components in our set
+                    links.push({
+                        source: parseInt(sourceIndex),
+                        target: parseInt(targetIndex),
+                        value: 1,
+                        type: rel.type
+                    });
+                    break; // Move to next relationship
+                }
+            }
+        });
+    });
+    
+    return links;
+}

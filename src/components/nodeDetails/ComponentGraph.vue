@@ -11,6 +11,7 @@
 
 <script>
 import * as d3 from 'd3';
+import { findComponentRelationships } from '@/utils/relationshipUtils';
 import { getNodeTypeColor } from '@/utils/nodeUtils';
 import networkIcons from '../networkIcons';
 
@@ -23,6 +24,10 @@ export default {
       required: true
     },
     nodeColors: {
+      type: Object,
+      required: true
+    },
+    rawGraphData: {
       type: Object,
       required: true
     }
@@ -108,26 +113,27 @@ export default {
       }));
 
       // Create links between components based on type proximity
-      // This is a simple approach to group similar components together
-      const links = [];
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          if (nodes[i].type === nodes[j].type) {
-            links.push({
-              source: nodes[i].id,
-              target: nodes[j].id,
-              value: 1
-            });
-          }
-        }
-      }
+      // Use the helper function to find real relationships between components
+      // based on the raw graph data
+      const componentLinks = findComponentRelationships(this.components, this.rawGraphData);
 
+      // Convert the links to use node objects instead of indices
+      // D3 force simulation can work with node objects directly
+      const links = componentLinks.map(link => ({
+        source: nodes[link.source],
+        target: nodes[link.target],
+        value: 1
+      }));
+      
+      console.log('Nodes:', nodes);
+      console.log('Links:', links);
+      
       // Clear existing graph
       this.svg.select('.graph-container').selectAll('*').remove();
-
-      // Create the simulation
+      
+      // Create the simulation - when links use full node objects, we don't need to specify id accessor
       this.simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(60))
+        .force('link', d3.forceLink(links).distance(60))
         .force('charge', d3.forceManyBody().strength(-100))
         .force('center', d3.forceCenter(this.width / 2, this.height / 2))
         .force('collision', d3.forceCollide().radius(25));
