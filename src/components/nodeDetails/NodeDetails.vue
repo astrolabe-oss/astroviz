@@ -36,9 +36,9 @@
           <h5>Component Graph</h5>
         </div>
         
-        <ComponentGraph 
-          :components="nodeComponents" 
-          :nodeColors="nodeColors" 
+        <ComponentGraph
+          :components="nodeComponents"
+          :nodeColors="nodeColors"
         />
       </div>
     </div>

@@ -12,253 +12,11 @@
 <script>
 import * as d3 from 'd3';
 import { getNodeTypeColor } from '@/utils/nodeUtils';
-
-export default {
-  name: 'ComponentGraph',
-  
-  props: {
-    components: {
-      type: Array,
-      required: true
-    },
-    nodeColors: {
-      type: Object,
-      required: true
-    }
-  },
-  
-  data() {
-    return {
-      simulation: null,
-      svg: null,
-      width: 0,
-      height: 0
-    };
-  },
-  
-  mounted() {
-    this.initializeGraph();
-    window.addEventListener('resize', this.handleResize);
-  },
-  
-  beforeDestroy() {
-    if (this.simulation) {
-      this.simulation.stop();
-    }
-    window.removeEventListener('resize', this.handleResize);
-  },
-  
-  watch: {
-    components: {
-      handler() {
-        this.updateGraph();
-      },
-      deep: true
-    }
-  },
-  
-  methods: {
-    initializeGraph() {
-      const container = this.$refs.graphContainer;
-      
-      // Set dimensions
-      this.width = container.clientWidth;
-      this.height = 180; // Fixed height for the component graph
-      
-      // Create SVG
-      this.svg = d3.select(container)
-        .append('svg')
-        .attr('width', this.width)
-        .attr('height', this.height)
-        .attr('class', 'component-graph-svg');
-      
-      // Add zoom functionality
-      const zoom = d3.zoom()
-        .scaleExtent([0.3, 2])
-        .on('zoom', (event) => {
-          this.svg.select('g').attr('transform', event.transform);
-        });
-        
-      this.svg.call(zoom);
-      
-      // Create the main graph container
-      this.svg.append('g')
-        .attr('class', 'graph-container');
-      
-      this.updateGraph();
-    },
-    
-    updateGraph() {
-      if (!this.svg || !this.components || this.components.length === 0) return;
-      
-      // Prepare the data
-      const nodes = this.components.map(component => ({
-        id: component.name || component.address || 'unknown',
-        type: component.nodeType,
-        data: component
-      }));
-      
-      // Create links between components based on type proximity
-      // This is a simple approach to group similar components together
-      const links = [];
-      for (let i = 0; i < nodes.length; i++) {
-        for (let j = i + 1; j < nodes.length; j++) {
-          if (nodes[i].type === nodes[j].type) {
-            links.push({
-              source: nodes[i].id,
-              target: nodes[j].id,
-              value: 1
-            });
-          }
-        }
-      }
-      
-      // Clear existing graph
-      this.svg.select('.graph-container').selectAll('*').remove();
-      
-      // Create the simulation
-      this.simulation = d3.forceSimulation(nodes)
-        .force('link', d3.forceLink(links).id(d => d.id).distance(40))
-        .force('charge', d3.forceManyBody().strength(-80))
-        .force('center', d3.forceCenter(this.width / 2, this.height / 2))
-        .force('collision', d3.forceCollide().radius(25));
-      
-      const g = this.svg.select('.graph-container');
-      
-      // Create the links
-      const link = g.append('g')
-          .attr('class', 'links')
-          .selectAll('line')
-          .data(links)
-          .enter().append('line')
-          .attr('stroke', '#ccc')
-          .attr('stroke-width', 1)
-          .attr('stroke-opacity', 0.6);
-      
-      // Create the node groups
-      const node = g.append('g')
-          .attr('class', 'nodes')
-          .selectAll('g')
-          .data(nodes)
-          .enter().append('g')
-          .attr('class', 'node')
-          .call(d3.drag()
-              .on('start', this.dragstarted)
-              .on('drag', this.dragged)
-              .on('end', this.dragended));
-      
-      // Add circles for nodes
-      node.append('circle')
-          .attr('r', 20)
-          .attr('fill', d => this.getNodeColor(d.type))
-          .attr('stroke', '#fff')
-          .attr('stroke-width', 1.5);
-      
-      // Add a title for tooltips
-      node.append('title')
-          .text(d => {
-            const component = d.data;
-            let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-            
-            if (component.address) {
-              tooltip += `\nAddress: ${component.address}`;
-            }
-            
-            if (component.protocol_multiplexor) {
-              tooltip += `\nMux: ${component.protocol_multiplexor}`;
-            }
-            
-            return tooltip;
-          });
-      
-      // Add labels
-      node.append('text')
-          .attr('dy', 30)
-          .attr('text-anchor', 'middle')
-          .text(d => {
-            const name = d.data.name || d.data.address || '';
-            return name.length > 10 ? name.substring(0, 10) + '...' : name;
-          })
-          .attr('font-size', '10px')
-          .attr('fill', '#333');
-      
-      // Update simulation on tick
-      this.simulation.on('tick', () => {
-        link
-            .attr('x1', d => d.source.x)
-            .attr('y1', d => d.source.y)
-            .attr('x2', d => d.target.x)
-            .attr('y2', d => d.target.y);
-
-        node.attr('transform', d => {
-          // Keep nodes within bounds
-          d.x = Math.max(20, Math.min(this.width - 20, d.x));
-          d.y = Math.max(20, Math.min(this.height - 20, d.y));
-          return `translate(${d.x}, ${d.y})`;
-        });
-      });
-    },
-    
-    getNodeColor(type) {
-      return getNodeTypeColor(type) || this.nodeColors[type] || '#999';
-    },
-    
-    dragstarted(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0.3).restart();
-      d.fx = d.x;
-      d.fy = d.y;
-    },
-    
-    dragged(event, d) {
-      d.fx = event.x;
-      d.fy = event.y;
-    },
-    
-    dragended(event, d) {
-      if (!event.active) this.simulation.alphaTarget(0);
-      d.fx = null;
-      d.fy = null;
-    },
-    
-    handleResize() {
-      if (!this.$refs.graphContainer) return;
-      
-      this.width = this.$refs.graphContainer.clientWidth;
-      
-      if (this.svg) {
-        this.svg
-          .attr('width', this.width)
-          .attr('height', this.height);
-        
-        // Update simulation center force
-        if (this.simulation) {
-          this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
-          this.simulation.alpha(0.3).restart();
-        }
-      }
-    }
-  }
-};
-</script>
-<!--
-  Copyright 2025 Lightwire, LLC
-  SPDX-License-Identifier: Apache-2.0
--->
-
-<template>
-  <div class="component-graph-container">
-    <div ref="graphContainer" class="component-graph"></div>
-  </div>
-</template>
-
-<script>
-import * as d3 from 'd3';
-import { getNodeTypeColor } from '@/utils/nodeUtils';
 import networkIcons from '../networkIcons';
 
 export default {
   name: 'ComponentGraph',
-  
+
   props: {
     components: {
       type: Array,
@@ -269,7 +27,7 @@ export default {
       required: true
     }
   },
-  
+
   data() {
     return {
       simulation: null,
@@ -278,19 +36,19 @@ export default {
       height: 0
     };
   },
-  
+
   mounted() {
     this.initializeGraph();
     window.addEventListener('resize', this.handleResize);
   },
-  
+
   beforeDestroy() {
     if (this.simulation) {
       this.simulation.stop();
     }
     window.removeEventListener('resize', this.handleResize);
   },
-  
+
   watch: {
     components: {
       handler() {
@@ -299,48 +57,48 @@ export default {
       deep: true
     }
   },
-  
+
   methods: {
     initializeGraph() {
       const container = this.$refs.graphContainer;
-      
+
       // Set dimensions
       this.width = container.clientWidth;
       this.height = 180; // Fixed height for the component graph
-      
+
       // Create SVG
       this.svg = d3.select(container)
         .append('svg')
         .attr('width', this.width)
         .attr('height', this.height)
         .attr('class', 'component-graph-svg');
-      
+
       // Add zoom functionality
       const zoom = d3.zoom()
         .scaleExtent([0.3, 2])
         .on('zoom', (event) => {
           this.svg.select('g').attr('transform', event.transform);
         });
-        
+
       this.svg.call(zoom);
-      
+
       // Create the main graph container
       this.svg.append('g')
         .attr('class', 'graph-container');
-      
+
       this.updateGraph();
     },
-    
+
     updateGraph() {
       if (!this.svg || !this.components || this.components.length === 0) return;
-      
+
       // Prepare the data
       const nodes = this.components.map(component => ({
         id: component.name || component.address || 'unknown',
         type: component.nodeType,
         data: component
       }));
-      
+
       // Create links between components based on type proximity
       // This is a simple approach to group similar components together
       const links = [];
@@ -355,19 +113,19 @@ export default {
           }
         }
       }
-      
+
       // Clear existing graph
       this.svg.select('.graph-container').selectAll('*').remove();
-      
+
       // Create the simulation
       this.simulation = d3.forceSimulation(nodes)
         .force('link', d3.forceLink(links).id(d => d.id).distance(60))
         .force('charge', d3.forceManyBody().strength(-100))
         .force('center', d3.forceCenter(this.width / 2, this.height / 2))
         .force('collision', d3.forceCollide().radius(25));
-      
+
       const g = this.svg.select('.graph-container');
-      
+
       // Create the links
       const link = g.append('g')
           .attr('class', 'links')
@@ -377,7 +135,7 @@ export default {
           .attr('stroke', '#ccc')
           .attr('stroke-width', 1)
           .attr('stroke-opacity', 0.6);
-      
+
       // Create the node groups
       const node = g.append('g')
           .attr('class', 'nodes')
@@ -389,7 +147,7 @@ export default {
               .on('start', this.dragstarted)
               .on('drag', this.dragged)
               .on('end', this.dragended));
-      
+
       // Map node types to icon keys in networkIcons
       const nodeTypeToIconKey = {
         'Application': 'Application',
@@ -399,17 +157,17 @@ export default {
         'TrafficController': 'TrafficController',
         // Add more mappings as needed
       };
-      
+
       // Add icons for nodes using networkIcons - directly, without background circles
       node.each(function(d) {
         const nodeGroup = d3.select(this);
         const color = getNodeTypeColor(d.type);
-        
+
         // Map the node type to the correct key in networkIcons
         // If not found, fall back to node type directly or default
         const iconKey = nodeTypeToIconKey[d.type] || d.type;
         const iconSvg = networkIcons[iconKey] || networkIcons.default;
-        
+
         // Create a container for the SVG icon
         const iconContainer = nodeGroup.append('foreignObject')
             .attr('width', 30)
@@ -417,36 +175,36 @@ export default {
             .attr('x', -15)
             .attr('y', -15)
             .attr('pointer-events', 'none');
-        
+
         const iconDiv = iconContainer.append('xhtml:div')
             .style('width', '100%')
             .style('height', '100%')
             .style('display', 'flex')
             .style('align-items', 'center')
             .style('justify-content', 'center');
-        
+
         // Set the SVG with the current node color
         const coloredSvg = iconSvg.replace('<svg', `<svg style="width: 30px; height: 30px; color: ${color}"`);
         iconDiv.html(coloredSvg);
       });
-      
+
       // Add title for tooltips
       node.append('title')
           .text(d => {
             const component = d.data;
             let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-            
+
             if (component.address) {
               tooltip += `\nAddress: ${component.address}`;
             }
-            
+
             if (component.protocol_multiplexor) {
               tooltip += `\nMux: ${component.protocol_multiplexor}`;
             }
-            
+
             return tooltip;
           });
-      
+
       // Update simulation on tick
       this.simulation.on('tick', () => {
         link
@@ -463,34 +221,34 @@ export default {
         });
       });
     },
-    
+
     dragstarted(event, d) {
       if (!event.active) this.simulation.alphaTarget(0.3).restart();
       d.fx = d.x;
       d.fy = d.y;
     },
-    
+
     dragged(event, d) {
       d.fx = event.x;
       d.fy = event.y;
     },
-    
+
     dragended(event, d) {
       if (!event.active) this.simulation.alphaTarget(0);
       d.fx = null;
       d.fy = null;
     },
-    
+
     handleResize() {
       if (!this.$refs.graphContainer) return;
-      
+
       this.width = this.$refs.graphContainer.clientWidth;
-      
+
       if (this.svg) {
         this.svg
           .attr('width', this.width)
           .attr('height', this.height);
-        
+
         // Update simulation center force
         if (this.simulation) {
           this.simulation.force('center', d3.forceCenter(this.width / 2, this.height / 2));
