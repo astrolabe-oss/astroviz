@@ -115,15 +115,7 @@ export default {
       // Create links between components based on type proximity
       // Use the helper function to find real relationships between components
       // based on the raw graph data
-      const componentLinks = findComponentRelationships(this.components, this.rawGraphData);
-
-      // Convert the links to use node objects instead of indices
-      // D3 force simulation can work with node objects directly
-      const links = componentLinks.map(link => ({
-        source: nodes[link.source],
-        target: nodes[link.target],
-        value: 1
-      }));
+      const links = findComponentRelationships(this.components, this.rawGraphData);
       
       console.log('Nodes:', nodes);
       console.log('Links:', links);
@@ -136,7 +128,7 @@ export default {
         .force('link', d3.forceLink(links).distance(60))
         .force('charge', d3.forceManyBody().strength(-100))
         .force('center', d3.forceCenter(this.width / 2, this.height / 2))
-        .force('collision', d3.forceCollide().radius(25));
+        .force('collision', d3.forceCollide().radius(35)); // Increased radius to account for wrapped labels
 
       const g = this.svg.select('.graph-container');
 
@@ -200,25 +192,95 @@ export default {
         // Set the SVG with the current node color
         const coloredSvg = iconSvg.replace('<svg', `<svg style="width: 30px; height: 30px; color: ${color}"`);
         iconDiv.html(coloredSvg);
+        
+        // Add node label showing address and protocol_multiplexor
+        const component = d.data;
+        if (component) {
+          // Format label as "address (protocol_multiplexor)"
+          const address = component.address || component.name || 'Unknown';
+          const protocolMux = component.protocol_multiplexor || 'Unknown';
+          const labelText = `${address}:${protocolMux}`;
+          
+          // Handle text wrapping for long labels
+          const wrapText = (text, maxCharsPerLine = 15) => {
+            if (text.length <= maxCharsPerLine) return [text];
+            
+            const words = text.split(' ');
+            const lines = [];
+            let currentLine = '';
+            
+            words.forEach(word => {
+              // If adding this word would exceed the max chars
+              if ((currentLine + ' ' + word).length > maxCharsPerLine && currentLine !== '') {
+                lines.push(currentLine);
+                currentLine = word;
+              } else {
+                currentLine = currentLine === '' ? word : currentLine + ' ' + word;
+              }
+            });
+            
+            if (currentLine !== '') lines.push(currentLine);
+            
+            // For very long single words, break them
+            return lines.map(line => {
+              if (line.length <= maxCharsPerLine) return line;
+              
+              const chunks = [];
+              for (let i = 0; i < line.length; i += maxCharsPerLine) {
+                chunks.push(line.substring(i, i + maxCharsPerLine));
+              }
+              return chunks;
+            }).flat();
+          };
+          
+          const wrappedText = wrapText(labelText);
+          
+          // Create a label group
+          const labelGroup = nodeGroup.append('g')
+            .attr('class', 'node-label-group');
+            
+          // Add each line of text
+          wrappedText.forEach((line, i) => {
+            labelGroup.append('text')
+              .attr('dy', 25 + (i * 12)) // Position each line below previous, starting 25px below node
+              .attr('text-anchor', 'middle')
+              .attr('class', 'node-label')
+              .attr('fill', '#333')
+              .attr('font-size', '10px')
+              .text(line);
+          });
+        }
       });
-
+      
       // Add title for tooltips
       node.append('title')
           .text(d => {
             const component = d.data;
             let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-
+      
             if (component.address) {
               tooltip += `\nAddress: ${component.address}`;
             }
-
+      
             if (component.protocol_multiplexor) {
               tooltip += `\nMux: ${component.protocol_multiplexor}`;
             }
-
+      
             return tooltip;
           });
+      
+      // Add labels to links showing the link type/name
+      const linkLabels = g.append("g")
+        .attr("class", "link-labels")
+        .selectAll("text")
+        .data(links)
+        .enter().append("text")
+        .attr("font-size", "8px")
+        .attr("fill", "#666")
+        .attr("text-anchor", "middle")
+        .text(d => d.type + "-" + d.type);
 
+      console.log('Link Data:', links);
       // Update simulation on tick
       this.simulation.on('tick', () => {
         link
@@ -226,6 +288,11 @@ export default {
             .attr('y1', d => d.source.y)
             .attr('x2', d => d.target.x)
             .attr('y2', d => d.target.y);
+            
+        // Update link label positions
+        linkLabels
+            .attr("x", d => (d.source.x + d.target.x) / 2)
+            .attr("y", d => (d.source.y + d.target.y) / 2 - 5); // Position slightly above the link line
 
         node.attr('transform', d => {
           // Keep nodes within bounds
@@ -302,6 +369,23 @@ export default {
 
 :deep(.links line) {
   stroke-opacity: 0.5;
+}
+
+:deep(.node-label) {
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8), 0 -1px 2px rgba(255, 255, 255, 0.8), 1px 0 2px rgba(255, 255, 255, 0.8), -1px 0 2px rgba(255, 255, 255, 0.8);
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+:deep(.node-label-group) {
+  pointer-events: none;
+}
+
+:deep(.link-labels text) {
+  pointer-events: none;
+  text-shadow: 0 1px 2px rgba(255, 255, 255, 0.8), 0 -1px 2px rgba(255, 255, 255, 0.8), 1px 0 2px rgba(255, 255, 255, 0.8), -1px 0 2px rgba(255, 255, 255, 0.8);
+  font-weight: 500;
 }
 </style>
 <style scoped>

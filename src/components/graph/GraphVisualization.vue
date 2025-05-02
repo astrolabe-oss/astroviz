@@ -1448,7 +1448,7 @@ export default {
           const isOutgoing = sourceNode.id === nodeId;
           
           // The relationship type will be our label with directional indicator
-          const labelText = link.type || 'CONNECTED_TO';
+          const labelText = link.type || '_UNKNOWN_';
           
           // Position the label differently based on direction
           // For outgoing: 40% of the way from source to target
