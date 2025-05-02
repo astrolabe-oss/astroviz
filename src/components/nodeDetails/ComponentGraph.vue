@@ -92,8 +92,16 @@ export default {
     updateGraph() {
       if (!this.svg || !this.components || this.components.length === 0) return;
 
+      // Filter out Application nodes as they are the parent containers
+      const filteredComponents = this.components.filter(component => 
+        component.nodeType !== 'Application'
+      );
+      
+      // If no components remain after filtering, exit
+      if (filteredComponents.length === 0) return;
+    
       // Prepare the data
-      const nodes = this.components.map(component => ({
+      const nodes = filteredComponents.map(component => ({
         id: component.name || component.address || 'unknown',
         type: component.nodeType,
         data: component
