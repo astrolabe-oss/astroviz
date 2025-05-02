@@ -273,12 +273,15 @@ class Neo4jService {
                 }
             }
             
-            // Add this node as a component of the application
-            appNameMap[appIdentifier].components.push({
-                id,
-                type: vertex.type,
-                ...vertex
-            });
+            // Only add non-Application nodes as components
+            // Application nodes are the containers, not components themselves
+            if (vertex.type !== 'Application') {
+                appNameMap[appIdentifier].components.push({
+                    id,
+                    type: vertex.type,
+                    ...vertex
+                });
+            }
         });
 
         // Intermediate pass - calculate aggregated properties for each application

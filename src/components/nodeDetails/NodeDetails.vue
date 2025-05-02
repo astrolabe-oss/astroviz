@@ -356,7 +356,7 @@ export default {
     /**
      * Get components for the current node in application view
      * Components are extracted from the node's components property if it exists
-     * and grouped by component type
+     * and grouped by component type (excluding Application nodes)
      */
     nodeComponents() {
       if (!this.node || !this.node.components || this.viewMode !== 'application') {
@@ -364,19 +364,21 @@ export default {
       }
       
       // Convert and process components data
-      const components = this.node.components.map(component => {
-        return {
-          nodeType: component.type || 'Component',
-          name: component.name || '',
-          address: component.address || '',
-          app_name: component.app_name || '',
-          provider: component.provider || '',
-          protocol_multiplexor: component.protocol_multiplexor || '',
-          public_ip: component.public_ip,
-          // Include the original component data for selection
-          originalData: component
-        };
-      });
+      const components = this.node.components
+        .filter(component => component.type !== 'Application') // Exclude Application nodes
+        .map(component => {
+          return {
+            nodeType: component.type || 'Component',
+            name: component.name || '',
+            address: component.address || '',
+            app_name: component.app_name || '',
+            provider: component.provider || '',
+            protocol_multiplexor: component.protocol_multiplexor || '',
+            public_ip: component.public_ip,
+            // Include the original component data for selection
+            originalData: component
+          };
+        });
       
       return components;
     },
