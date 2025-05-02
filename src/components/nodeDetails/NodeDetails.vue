@@ -28,7 +28,21 @@
         </div>
       </div>
     </div>
-
+    
+    <!-- Component Graph Section for Application view -->
+    <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
+      <div class="connections-container component-graph-container">
+        <div class="connections-header component-graph-header">
+          <h5>Component Graph</h5>
+        </div>
+        
+        <ComponentGraph 
+          :components="nodeComponents" 
+          :nodeColors="nodeColors" 
+        />
+      </div>
+    </div>
+    
     <!-- Components Section for Application view -->
     <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
       <div class="connections-container component-inventory-container">
@@ -241,9 +255,14 @@
 <script>
 import { getNodeTypeColor } from '@/utils/nodeUtils';
 import { processNodeRelationships, groupRelationshipsByType } from '@/utils/relationshipUtils';
+import ComponentGraph from './ComponentGraph.vue';
 
 export default {
   name: 'NodeDetails',
+  
+  components: {
+    ComponentGraph
+  },
 
   props: {
     node: {
@@ -268,7 +287,17 @@ export default {
   data() {
     return {
       realActiveTab: 'to',   // Default to TO tab for real connections
-      virtualActiveTab: 'to'  // Default to TO tab for virtual connections
+      virtualActiveTab: 'to',  // Default to TO tab for virtual connections
+      nodeColors: {
+        'Application': '#F9696E', // Red 
+        'Deployment': '#F2A3B3', // Pink
+        'Compute': '#5DCAD1', // Light blue 
+        'Resource': '#74B56D', // Green 
+        'TrafficController': '#4A98E3', // Blue
+        'Public IP': '#E0E0E0', // Grey for Public IP
+        'Unknown': '#F9C96E', // Orange for unknown nodes
+        'Private Datacenter': 'rgba(240, 240, 245, 0.8)'
+      }
     };
   },
 
@@ -719,6 +748,14 @@ export default {
   border-radius: 6px 0 0 0;
 }
 
+.component-graph-header::before {
+  background-color: #2196F3; /* Blue for component graph */
+}
+
+.component-graph-header {
+  background-color: #e3f2fd; /* Light blue background */
+}
+
 .connections-header h5 {
   margin: 0;
   font-size: 15px;
@@ -730,6 +767,18 @@ export default {
   margin-top: 20px;
   border-top: 2px dashed #ddd;
   padding-top: 20px;
+}
+
+.component-inventory-header::before {
+  background-color: #FF9800; /* Orange for component inventory */
+}
+
+.component-inventory-header {
+  background-color: #fff3e0; /* Light orange background */
+}
+
+.component-graph-container {
+  margin-bottom: 16px;
 }
 
 .virtual-header::before {
@@ -844,6 +893,10 @@ export default {
 
 .properties-container {
   overflow: hidden;
+}
+
+.component-graph-container {
+  margin-bottom: 16px;
 }
 
 .tab-button {
