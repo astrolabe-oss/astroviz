@@ -10,6 +10,16 @@ module.exports = {
     // Prevent generation of source maps in production
     productionSourceMap: false,
 
+    // Enable source maps for development
+    chainWebpack: config => {
+        config.devtool('source-map');
+    },
+
+    // CSS source maps for development
+    css: {
+        sourceMap: true
+    },
+
     // Disable linting
     lintOnSave: false,
 
