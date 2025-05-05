@@ -396,6 +396,8 @@ export default {
         this.g.selectAll('.network-container').remove();
         this.g.selectAll('.network-container-glow').remove();
         this.g.selectAll('.network-label').remove();
+        this.g.selectAll('.network-label-group').remove();
+        this.g.selectAll('.network-label-background').remove();
         this.g.selectAll('.internet-boundary').remove();
         this.g.selectAll('.internet-boundary-label').remove();
 
@@ -655,19 +657,56 @@ export default {
         .attr('filter', 'blur(4px)')
         .lower(); // Keep behind main container
 
-      // Add network label with cluster name - keep it in front of everything
-      const label = this.g.append('text')
-        .attr('class', 'network-label')
+      // Create a group for the badge-style label
+      const labelGroup = this.g.append('g')
+        .attr('class', 'network-label-group')
         .attr('data-cluster', cluster)
-        .attr('x', centerX)
-        .attr('y', centerY - radius - 10)
+        .attr('transform', `translate(${centerX}, ${centerY - radius - 10})`);
+
+      // Create the label text to measure its width
+      const labelText = `Private Network: ${cluster}`;
+      const tempText = this.g.append('text')
+        .attr('font-size', '14px')
+        .attr('font-weight', 'bold')
+        .text(labelText)
+        .attr('visibility', 'hidden');
+
+      // Get the text width for sizing the badge background
+      const textWidth = tempText.node().getComputedTextLength();
+      tempText.remove();
+
+      // Calculate dynamic padding based on text width
+      // Use a percentage of the text width with a minimum value
+      const paddingPercentage = 0.1; // 10% of text width for padding (reduced from 20%)
+      const minPadding = 20; // Minimum padding in pixels
+      const dynamicPadding = Math.max(minPadding, textWidth * paddingPercentage);
+      const totalPadding = dynamicPadding * 2; // Total padding (left and right)
+
+      // Add the badge background with dynamic width
+      const badgeBackground = labelGroup.append('rect')
+        .attr('class', 'network-label-background')
+        .attr('x', -textWidth/2 - dynamicPadding) // Dynamic padding on left
+        .attr('y', -15) // Position above the text baseline
+        .attr('width', textWidth + totalPadding) // Text width plus dynamic padding
+        .attr('height', 24) // Fixed height for the badge
+        .attr('rx', 12) // Rounded corners (half of height for pill shape)
+        .attr('ry', 12)
+        .attr('fill', 'rgba(240, 240, 245, 0.85)') // Translucent background
+        .attr('stroke', '#666')
+        .attr('stroke-width', 1);
+
+      // Add the label text on top of the background
+      const label = labelGroup.append('text')
+        .attr('class', 'network-label')
         .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('y', -3) // Slight adjustment to center text vertically
         .attr('fill', '#333')
         .attr('font-weight', 'bold')
-        .text(`Private Network: ${cluster}`);
+        .text(labelText);
 
-      // Ensure label is in front of everything
-      label.raise();
+      // Ensure label group is in front of everything
+      labelGroup.raise();
 
       return container;
     },
@@ -2148,8 +2187,17 @@ export default {
   transition: r 0.3s ease;
 }
 
+.network-label-group {
+  pointer-events: none;
+}
+
 .network-label {
   font-size: 14px;
   pointer-events: none;
+}
+
+.network-label-background {
+  pointer-events: none;
+  filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.1));
 }
 </style>
