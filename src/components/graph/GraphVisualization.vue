@@ -1797,7 +1797,12 @@ export default {
           const isOutgoing = sourceNode.id === nodeId;
 
           // The relationship type will be our label with directional indicator
-          const labelText = link.type || '_UNKNOWN_';
+          let labelText = link.type || '_UNKNOWN_';
+
+          // For CALLS relationships, include the protocol_mux property from the target node
+          if (link.type === 'CALLS' && targetNode && targetNode.data && targetNode.data.protocol_multiplexor) {
+            labelText = `CALLS [:${targetNode.data.protocol_multiplexor}]`;
+          }
 
           // Position the label differently based on direction
           // For outgoing: 40% of the way from source to target
