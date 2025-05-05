@@ -65,7 +65,9 @@
 
       <NodeDetails
           :node="selectedNode"
-          :graph-data="graphData"
+          :graph-data="filteredGraphData"
+          :view-mode="viewMode"
+          :raw-graph-data="rawGraphData"
           @close="selectedNode = null"
           @select-node="onSelectConnectedNode"
       />
@@ -118,7 +120,11 @@ export default {
       loadingProgress: 0,
 
       // Graph data
-      graphData: {
+      rawGraphData: {
+        vertices: {},
+        edges: []
+      },
+      aggregatedGraphData: {
         vertices: {},
         edges: []
       },
@@ -130,7 +136,7 @@ export default {
       },
 
       // Visualization state
-      viewMode: 'detailed',
+      viewMode: localStorage.getItem('viewMode') || 'detailed',
       filters: {
         appName: '',
         provider: '',
@@ -143,15 +149,26 @@ export default {
     };
   },
 
+  watch: {
+    /**
+     * Watch for changes in viewMode to save to localStorage
+     */
+    viewMode(newValue) {
+      console.log(`APP: View mode changed to ${newValue}, saving to localStorage`);
+      localStorage.setItem('viewMode', newValue);
+    }
+  },
+  
   computed: {
     /**
-     * Get filtered graph data based on current filters
+     * Get filtered graph data based on current filters and view mode
      */
     filteredGraphData() {
-      console.log("APP: Computing filteredGraphData", JSON.parse(JSON.stringify(this.filters)));
-
-      // We'll always return the full graph data, but compute highlighted nodes
-      return this.graphData;
+      console.log(`APP: Computing filteredGraphData with view mode: ${this.viewMode}`, JSON.parse(JSON.stringify(this.filters)));
+      if (this.viewMode === 'application') {
+        return this.aggregatedGraphData;
+      }
+      return this.rawGraphData;
     },
     
     /**
@@ -167,7 +184,7 @@ export default {
     
       // Find vertices that match filters
       const matchingNodeIds = new Set();
-      Object.entries(this.graphData.vertices).forEach(([id, vertex]) => {
+      Object.entries(this.rawGraphData.vertices).forEach(([id, vertex]) => {
         // Handle public IP filtering - "public" means has public_ip, "private" means no public_ip
         const publicIpMatch = !this.filters.publicIp || 
           (this.filters.publicIp === 'public' && vertex.public_ip) || 
@@ -184,7 +201,7 @@ export default {
         }
       });
     
-      console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.graphData.vertices).length} vertices`);
+      console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.rawGraphData.vertices).length} vertices`);
       return matchingNodeIds;
     },
     
@@ -205,6 +222,41 @@ export default {
 
   methods: {
     /**
+     * Fetch graph data from Neo4j service - consolidated method
+     * @param {Function} statusCallback Optional callback for status updates
+     * @param {Function} progressCallback Optional callback for progress updates
+     * @returns {Promise<Object>} Promise resolving to raw graph data
+     */
+    async fetchGraphFromNeo4j(statusCallback, progressCallback) {
+      console.log(`APP: Fetching graph data from Neo4j service`);
+      const rawData = await neo4jService.fetchGraphData((status, progress) => {
+        // Update the component's loading status and progress
+        this.loadingStatus = status;
+        this.loadingProgress = progress;
+        
+        // Call the callbacks if provided
+        if (statusCallback && typeof statusCallback === 'function') {
+          statusCallback(status);
+        }
+        if (progressCallback && typeof progressCallback === 'function') {
+          progressCallback(progress);
+        }
+      });
+      
+      // Always generate aggregated data regardless of view mode
+      const aggregatedData = neo4jService.aggregateDataForApplicationView(rawData);
+      
+      console.log(`APP: Fetched raw data with ${Object.keys(rawData.vertices).length} nodes and ${rawData.edges.length} edges`);
+      console.log(`APP: Generated aggregated data with ${Object.keys(aggregatedData.vertices).length} nodes and ${aggregatedData.edges.length} edges`);
+      
+      // Update both data stores
+      this.rawGraphData = rawData;
+      this.aggregatedGraphData = aggregatedData;
+      
+      return rawData;
+    },
+    
+    /**
      * Refresh graph data from Neo4j
      */
     async refreshGraphData() {
@@ -214,14 +266,8 @@ export default {
         this.loadingStatus = "Refreshing graph data...";
         this.loadingProgress = 10;
         
-        // Re-fetch the graph data from neo4jService
-        const freshData = await neo4jService.fetchGraphData((status, progress) => {
-          this.loadingStatus = status;
-          this.loadingProgress = progress;
-        });
-        
-        // Update the graph data
-        this.graphData = freshData;
+        // Call the consolidated method to update both raw and aggregated data
+        await this.fetchGraphFromNeo4j();
         
         // Hide loading state
         this.loading = false;
@@ -269,7 +315,8 @@ export default {
     disconnect() {
       neo4jService.disconnect();
       this.connected = false;
-      this.graphData = { vertices: {}, edges: [] };
+      this.rawGraphData = { vertices: {}, edges: [] };
+      this.aggregatedGraphData = { vertices: {}, edges: [] };
       this.uniqueValues = {
         appNames: [],
         providers: [],
@@ -293,19 +340,21 @@ export default {
         console.log("APP: Preparing to fetch data");
         this.loadingStatus = "Fetching graph data...";
         this.loadingProgress = 10;
-        const graphData = await neo4jService.fetchGraphData(
-            (status, progress) => {
-              console.log(`APP: Progress update - ${status} (${progress}%)`);
-              this.loadingStatus = status;
-              this.loadingProgress = progress;
-            }
+        
+        // Call the consolidated method with status logging callback
+        const graphData = await this.fetchGraphFromNeo4j(
+          (status) => {
+            console.log(`APP: Progress update - ${status} (${this.loadingProgress}%)`);
+          }
         );
 
         console.log("APP: Data fetch complete, processing data");
         this.loadingStatus = "Processing graph data...";
         this.loadingProgress = 70;
-        this.graphData = graphData;
-
+        // Store the graph data
+        // We are not directly assigning to this.graphData as we maintain separate
+        // rawGraphData and aggregatedGraphData properties
+        
         // Extract unique values for filters
         console.log("APP: Extracting filter values");
         this.loadingStatus = "Extracting filter values...";
@@ -315,8 +364,8 @@ export default {
         const protocolMuxes = new Set();
         const addresses = new Set();
         
-        console.log(`APP: Processing ${Object.keys(this.graphData.vertices).length} vertices for filter values`);
-        Object.values(this.graphData.vertices).forEach(vertex => {
+        console.log(`APP: Processing ${Object.keys(this.rawGraphData.vertices).length} vertices for filter values`);
+        Object.values(this.rawGraphData.vertices).forEach(vertex => {
           if (vertex.app_name) appNames.add(vertex.app_name);
           if (vertex.provider) providers.add(vertex.provider);
           if (vertex.protocol_multiplexor) protocolMuxes.add(vertex.protocol_multiplexor);
@@ -368,7 +417,7 @@ export default {
       }
       
       // Find the node ID in the graph data for visualization
-      const nodeId = findNodeIdByProperties(node, this.graphData);
+      const nodeId = findNodeIdByProperties(node, this.filteredGraphData);
       if (!nodeId) {
         console.warn("APP: Could not find node ID for clicked node:", node);
         return;
@@ -408,7 +457,7 @@ export default {
       console.log("APP: Selecting connected node", nodeData, isShiftKey ? "with shift" : "");
     
       // Find the node ID in the graph data
-      const nodeId = findNodeIdByProperties(nodeData, this.graphData);
+      const nodeId = findNodeIdByProperties(nodeData, this.filteredGraphData);
     
       if (nodeId) {
         // Always update the currently selected node for the details panel

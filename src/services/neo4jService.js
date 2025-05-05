@@ -210,6 +210,176 @@ class Neo4jService {
     }
 
     /**
+     * Aggregate data for application view by grouping nodes by app_name
+     * This separates the data aggregation logic from the visualization transformation
+     * @param {Object} graphData The original graph data with vertices and edges
+     * @returns {Object} Aggregated data with app nodes and relationships between apps
+     */
+    aggregateDataForApplicationView(graphData) {
+        console.log("NEO4J SERVICE: Aggregating data for application view");
+
+        // Create a map of app_name -> virtual application node
+        const appNameMap = {};
+        // Create a map of nodeId -> app_name for quick lookups
+        const nodeToAppNameMap = {};
+        // Track which app identifiers have a real Application node
+        const realApplications = new Set();
+
+        // First pass - identify all unique app_names and create virtual application nodes
+        Object.entries(graphData.vertices).forEach(([id, vertex]) => {
+            // Determine the application identifier with fallbacks
+            let appIdentifier;
+            if (vertex.app_name) {
+                appIdentifier = vertex.app_name;
+            } else if (vertex.name) {
+                appIdentifier = vertex.name;
+            } else if (vertex.address) {
+                appIdentifier = vertex.address;
+            } else {
+                appIdentifier = "ERROR";
+            }
+            
+            // Map this node ID to its app identifier
+            nodeToAppNameMap[id] = appIdentifier;
+            
+            // Track if this is a real Application node
+            if (vertex.type === 'Application') {
+                realApplications.add(appIdentifier);
+            }
+            
+            // Create a virtual application node if it doesn't exist yet
+            if (!appNameMap[appIdentifier]) {
+                // If we're creating a node for a real Application, use its ID instead of a generated one
+                const isRealApp = vertex.type === 'Application';
+                const nodeId = isRealApp ? id : `app-${appIdentifier}`;
+                
+                appNameMap[appIdentifier] = {
+                    id: nodeId,
+                    type: 'Application',
+                    app_name: appIdentifier,
+                    name: appIdentifier,
+                    virtual: !isRealApp, // Only mark as virtual if not a real Application
+                    components: [] // Will store all component nodes
+                };
+                
+                // If this is a real Application node, copy its properties to the app node
+                if (isRealApp) {
+                    // Copy all vertex properties to the app node
+                    Object.entries(vertex).forEach(([key, value]) => {
+                        if (key !== 'type' && key !== 'app_name') { // Don't overwrite these
+                            appNameMap[appIdentifier][key] = value;
+                        }
+                    });
+                }
+            }
+            
+            // Only add non-Application nodes as components
+            // Application nodes are the containers, not components themselves
+            if (vertex.type !== 'Application') {
+                appNameMap[appIdentifier].components.push({
+                    id,
+                    type: vertex.type,
+                    ...vertex
+                });
+            }
+        });
+
+        // Intermediate pass - calculate aggregated properties for each application
+        Object.values(appNameMap).forEach(appNode => {
+            const components = appNode.components;
+            
+            // Skip if no components
+            if (!components.length) return;
+            
+            // Check if this is a real Application (not virtual)
+            const isRealApp = realApplications.has(appNode.app_name);
+            
+            // Update virtual flag based on whether there's a real Application
+            appNode.virtual = !isRealApp;
+            
+            // Calculate platform aggregation (same or 'mixed')
+            const platforms = new Set(components.map(c => c.platform).filter(Boolean));
+            appNode.platform = platforms.size === 1 ? [...platforms][0] : 'mixed';
+            
+            // Calculate provider aggregation (same or 'mixed')
+            const providers = new Set(components.map(c => c.provider).filter(Boolean));
+            appNode.provider = providers.size === 1 ? [...providers][0] : 'mixed';
+
+            // Calculate provider aggregation (same or 'mixed')
+            const protocol_mux = new Set(components.map(c => c.protocol_multiplexor).filter(Boolean));
+            appNode.protocol_multiplexor = protocol_mux.size === 1 ? [...protocol_mux][0] : 'mixed';
+            
+            // Set public_ip to true if any component has public_ip
+            appNode.public_ip = components.some(c => c.public_ip === true);
+            
+            // Add component type counts
+            const typeCounts = {};
+            components.forEach(c => {
+                typeCounts[c.type] = (typeCounts[c.type] || 0) + 1;
+            });
+            appNode.typeCounts = typeCounts;
+            
+            // Add component count
+            appNode.componentCount = components.length;
+        });
+
+        // Final pass - create app-to-app connections based on any connections between components
+        const appConnections = [];
+        graphData.edges.forEach(edge => {
+            const sourceAppIdentifier = nodeToAppNameMap[edge.start_node];
+            const targetAppIdentifier = nodeToAppNameMap[edge.end_node];
+
+            // Only create connections if both nodes have identifiers and they're different
+            if (sourceAppIdentifier && targetAppIdentifier && sourceAppIdentifier !== targetAppIdentifier) {
+                const sourceAppNode = appNameMap[sourceAppIdentifier];
+                const targetAppNode = appNameMap[targetAppIdentifier];
+                
+                if (!sourceAppNode || !targetAppNode) return;
+                
+                const sourceAppId = sourceAppNode.id;
+                const targetAppId = targetAppNode.id;
+                const connKey = `${sourceAppId}-${targetAppId}`;
+                
+                // Check if we already created this connection
+                const existingConnection = appConnections.find(conn => 
+                    conn.start_node === sourceAppId && conn.end_node === targetAppId);
+                
+                // Create connection if it doesn't exist yet
+                if (!existingConnection) {
+                    appConnections.push({
+                        start_node: sourceAppId,
+                        end_node: targetAppId,
+                        type: edge.type,
+                        connectedComponents: [{
+                            start_node: edge.start_node,
+                            end_node: edge.end_node
+                        }]
+                    });
+                } else {
+                    // Add this connection to the existing edge's data
+                    existingConnection.connectedComponents.push({
+                        start_node: edge.start_node,
+                        end_node: edge.end_node
+                    });
+                }
+            }
+        });
+
+        // Convert appNameMap to vertices object with ID as key, to match raw graph data structure
+        const vertices = {};
+        Object.values(appNameMap).forEach(appNode => {
+            vertices[appNode.id] = appNode;
+        });
+        
+        console.log(`NEO4J SERVICE: Aggregated data has ${Object.keys(vertices).length} application nodes and ${appConnections.length} connections`);
+        
+        return { 
+            vertices, 
+            edges: appConnections 
+        };
+    }
+
+    /**
      * Process Neo4j properties to convert Neo4j types to JavaScript types
      * @param {Object} properties Neo4j properties object
      * @returns {Object} Processed properties

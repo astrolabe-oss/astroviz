@@ -10,8 +10,8 @@
  * @param {Object} graphData The filtered graph data
  * @returns {Object} Transformed data for visualization
  */
-export function transformToDetailedView(graphData) {
-    console.log("UTILS: transformToDetailedView called");
+export function transformNeo4JDataForD3(graphData) {
+    console.log("UTILS: transformNeo4JDataForD3 called");
 
     // Create nodes for visualization
     const nodes = [];
@@ -30,78 +30,15 @@ export function transformToDetailedView(graphData) {
         links.push({
             source: edge.start_node,
             target: edge.end_node,
-            type: edge.type
+            type: edge.type,
+            data: {
+                edgeType: edge.type,
+                connectedComponents: edge.connectedComponents
+            }
         });
     });
 
     console.log(`UTILS: Detailed view has ${nodes.length} nodes and ${links.length} links`);
-    return { nodes, links };
-}
-
-/**
- * Transform graph data to application level view
- * @param {Object} graphData The filtered graph data
- * @returns {Object} Transformed data for visualization
- */
-export function transformToApplicationView(graphData) {
-    console.log("UTILS: transformToApplicationView called");
-
-    const appNodes = {};
-    const deploymentToAppMap = {};
-    const computeToAppMap = {};
-
-    // First pass - identify all Applications and create nodes
-    Object.entries(graphData.vertices).forEach(([id, vertex]) => {
-        if (vertex.type === 'Application') {
-            appNodes[id] = {
-                id,
-                label: vertex.name || `App: ${vertex.app_name || id}`,
-                type: 'Application',
-                data: vertex
-            };
-        }
-    });
-
-    // Second pass - find deployment-to-application relationships
-    graphData.edges.forEach(edge => {
-        if (edge.type === 'IMPLEMENTS') {
-            deploymentToAppMap[edge.start_node] = edge.end_node;
-        }
-    });
-
-    // Third pass - find compute-to-deployment relationships
-    graphData.edges.forEach(edge => {
-        if (edge.type === 'MEMBER_OF') {
-            const deploymentId = edge.end_node;
-            const appId = deploymentToAppMap[deploymentId];
-            if (appId) {
-                computeToAppMap[edge.start_node] = appId;
-            }
-        }
-    });
-
-    // Fourth pass - create app-to-app connections based on compute connections
-    const appConnections = {};
-    graphData.edges.forEach(edge => {
-        if (edge.type === 'CALLS') {
-            const sourceAppId = computeToAppMap[edge.start_node];
-            const targetAppId = computeToAppMap[edge.end_node];
-
-            if (sourceAppId && targetAppId && sourceAppId !== targetAppId) {
-                const connKey = `${sourceAppId}-${targetAppId}`;
-                appConnections[connKey] = {
-                    source: sourceAppId,
-                    target: targetAppId,
-                    type: 'CALLS'
-                };
-            }
-        }
-    });
-
-    const nodes = Object.values(appNodes);
-    const links = Object.values(appConnections);
-
-    console.log(`UTILS: Application view has ${nodes.length} nodes and ${links.length} links`);
     return { nodes, links };
 }
 

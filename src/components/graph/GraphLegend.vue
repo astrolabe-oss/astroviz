@@ -45,15 +45,17 @@ export default {
      * @returns {Array} Array of node type names
      */
     nodeTypes() {
-      return Object.keys(this.nodeColors).filter(type => type !== 'Public IP');
+      return Object.keys(this.nodeColors).filter(type => 
+        type !== 'Public IP' && type !== 'Private Datacenter'
+      );
     },
     
     /**
-     * Returns only annotation icons (currently just 'Public IP')
+     * Returns only annotation icons (currently just 'Public IP' and 'Virtual Application')
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP'];
+      return ['Public IP', 'Virtual', 'Private\nDatacenter'];
     }
   },
 
@@ -64,6 +66,35 @@ export default {
      * @returns {string} SVG HTML string
      */
     getLegendIcon(type) {
+      if (type === 'Virtual') {
+        // For Virtual Nodes, use the Application icon with dashed circle and transparency
+        const appColor = this.nodeColors['Application'];
+
+        // Calculate the circle radius - should be 1.3x the icon size/2
+        const iconSize = 12;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${iconSize}" fill="none" stroke="${appColor}" stroke-dasharray="3,3" />
+                    <g transform="translate(-${iconSize * .75}, -${iconSize * .75}) scale(${18 / 24})" style="color: ${appColor}; opacity: 0.5;">
+                      ${networkIcons['Application']}
+                    </g>
+                  </g>
+                </svg>`;
+      }
+      
+      if (type === 'Private\nDatacenter') {
+        // Create a special dashed circle for the datacenter with stronger styling
+        const color = 'rgba(100, 100, 140, 0.8)'; // Darker color for better visibility
+        const size = 10;
+        
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${size}" fill="${this.nodeColors['Private Datacenter']}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-dasharray="3,3" />
+                  </g>
+                </svg>`;
+      }
+      
       // Special case for 'Public IP' which should use the PublicIP icon
       const iconKey = type === 'Public IP' ? 'PublicIP' : type;
       
@@ -123,5 +154,6 @@ export default {
 
 .legend-label {
   font-size: 12px;
+  white-space: pre-line; /* Support line breaks in labels */
 }
 </style>
