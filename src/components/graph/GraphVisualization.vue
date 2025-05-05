@@ -57,11 +57,17 @@ export default {
       publicNodes: [],
       privateNodes: [],
 
-      // Datacenter container properties
-      datacenterContainer: null,
-      datacenterRadius: 150,
-      datacenterCenterX: 0,
-      datacenterCenterY: 0,
+      // Network container properties
+      networkContainers: [], // Array of network containers, one for each cluster
+
+      // Internet boundary container properties
+      internetBoundaryContainer: null,
+      internetBoundaryRadius: 0,
+      internetBoundaryCenterX: 0,
+      internetBoundaryCenterY: 0,
+
+      // Map to store cluster-specific data
+      providerNetworks: {}, // Structure: { cluster: { container, nodes, centerX, centerY, radius } }
 
       // Map to store fixed node positions
       nodePositions: {},
@@ -111,8 +117,8 @@ export default {
     viewMode() {
       console.log("D3: View mode changed");
       try {
-        // First remove any existing datacenter container to prevent ghosts
-        this.removeDatacenterContainer();
+        // First remove any existing network containers to prevent ghosts
+        this.removeNetworkContainers();
 
         if (this.graphData && this.graphData.vertices &&
             Object.keys(this.graphData.vertices).length > 0) {
@@ -157,8 +163,8 @@ export default {
     // Clean up
     window.removeEventListener('resize', this.onResize);
 
-    // Remove datacenter container
-    this.removeDatacenterContainer();
+    // Remove network containers
+    this.removeNetworkContainers();
 
     // Stop simulation
     if (this.simulation) {
@@ -249,9 +255,7 @@ export default {
             .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.05))
             .on('tick', this.tick);
 
-        // Set datacenter center position
-        this.datacenterCenterX = width / 2;
-        this.datacenterCenterY = height / 2 + 50;
+        // Network containers will be positioned when created
 
         console.log("D3: Visualization initialized with compact force layout");
       } catch (error) {
@@ -277,8 +281,8 @@ export default {
         this.selectedNodeIds.clear();
         this.nodeOriginalColors = {};
 
-        // Remove any existing datacenter container before redrawing
-        this.removeDatacenterContainer();
+        // Remove any existing network containers before redrawing
+        this.removeNetworkContainers();
 
         let visData;
 
@@ -304,11 +308,29 @@ export default {
         console.log('Nodes with public_ip=true:', this.publicNodes.length);
         console.log('Nodes with public_ip=false:', this.privateNodes.length);
 
+        // Group private nodes by cluster
+        this.providerNetworks = {};
+        this.privateNodes.forEach(node => {
+          const cluster = (node.data && node.data.cluster) || 'unknown';
+          if (!this.providerNetworks[cluster]) {
+            this.providerNetworks[cluster] = {
+              nodes: [],
+              container: null,
+              centerX: 0,
+              centerY: 0,
+              radius: 0
+            };
+          }
+          this.providerNetworks[cluster].nodes.push(node);
+        });
+
+        console.log('Cluster networks:', Object.keys(this.providerNetworks).length);
+
         // Update simulation with new node data
         this.updateSimulation(visData);
 
-        // Add datacenter container after nodes are created
-        this.addDatacenterContainer();
+        // Add network containers after nodes are created
+        this.addNetworkContainers();
 
         // Notify parent component about rendering completion
         setTimeout(() => {
@@ -365,168 +387,504 @@ export default {
     /**
      * Remove all network container elements
      */
-    removeDatacenterContainer() {
+    removeNetworkContainers() {
       if (this.g) {
         // Remove all network-related elements
         this.g.selectAll('.network-container').remove();
         this.g.selectAll('.network-container-glow').remove();
         this.g.selectAll('.network-label').remove();
+        this.g.selectAll('.internet-boundary').remove();
+        this.g.selectAll('.internet-boundary-label').remove();
 
-        // Reset datacenter container reference
-        this.datacenterContainer = null;
+        // Reset network containers
+        this.networkContainers = [];
+        this.internetBoundaryContainer = null;
+
+        // Reset cluster networks containers
+        Object.keys(this.providerNetworks).forEach(cluster => {
+          if (this.providerNetworks[cluster]) {
+            this.providerNetworks[cluster].container = null;
+          }
+        });
 
         console.log("D3: Removed network container elements");
       }
     },
 
     /**
-     * Add datacenter container for private nodes
+     * Add network containers for private nodes grouped by cluster
      */
-    addDatacenterContainer() {
-      // First remove any existing datacenter elements
-      this.removeDatacenterContainer();
+    addNetworkContainers() {
+      // First remove any existing network elements
+      this.removeNetworkContainers();
 
       // Calculate container position based on visualization center
       const container = this.$refs.d3Container;
       const width = container.clientWidth;
       const height = container.clientHeight || 600;
 
-      // Set datacenter center slightly below the center of the visualization
-      this.datacenterCenterX = width / 2;
-      this.datacenterCenterY = height / 2 + 50;
+      // Get the number of cluster networks
+      const clusters = Object.keys(this.providerNetworks);
+      const networkCount = clusters.length;
 
-      // Adjust datacenter radius based on number of private nodes
-      this.datacenterRadius = Math.max(150, Math.sqrt(this.privateNodes.length) * 40);
+      if (networkCount === 0) {
+        console.log("D3: No cluster networks to display");
+        return;
+      }
 
-      // Create datacenter container
-      this.datacenterContainer = this.g.append('circle')
+      console.log(`D3: Creating ${networkCount} cluster networks`);
+
+      // Calculate layout for multiple networks
+      // We'll arrange them in a grid or circle depending on the number
+      this.networkContainers = [];
+
+      // Calculate the center of the visualization
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      // Calculate positions for each network
+      if (networkCount === 1) {
+        // Single network - center it
+        const cluster = clusters[0];
+        const networkData = this.providerNetworks[cluster];
+        const nodeCount = networkData.nodes.length;
+
+        // Set network center
+        networkData.centerX = centerX;
+        networkData.centerY = centerY + 50; // Slightly below center
+
+        // Adjust radius based on number of nodes
+        networkData.radius = Math.max(150, Math.sqrt(nodeCount) * 40);
+
+        // Create network container
+        networkData.container = this.createNetworkContainer(
+          cluster,
+          networkData.centerX,
+          networkData.centerY,
+          networkData.radius
+        );
+
+        this.networkContainers.push(networkData.container);
+      } else {
+        // Multiple networks - arrange in a circle around the center with overlap prevention
+        const circleRadius = Math.min(width, height) * 0.35; // Radius of the circle of networks
+
+        // First pass: calculate network sizes and initial positions
+        clusters.forEach((cluster, index) => {
+          const networkData = this.providerNetworks[cluster];
+          const nodeCount = networkData.nodes.length;
+
+          // Adjust radius based on number of nodes, but smaller for multiple networks
+          networkData.radius = Math.max(100, Math.sqrt(nodeCount) * 30);
+
+          // Calculate initial position on the circle
+          const angle = (2 * Math.PI * index) / networkCount;
+          networkData.centerX = centerX + circleRadius * Math.cos(angle);
+          networkData.centerY = centerY + circleRadius * Math.sin(angle);
+        });
+
+        // Second pass: adjust positions to prevent overlaps
+        // Simple approach: increase the circle radius until no overlaps
+        let hasOverlap = true;
+        let currentCircleRadius = circleRadius;
+        const maxIterations = 10; // Prevent infinite loops
+        let iteration = 0;
+
+        while (hasOverlap && iteration < maxIterations) {
+          hasOverlap = false;
+          iteration++;
+
+          // Check for overlaps between all pairs of networks
+          for (let i = 0; i < clusters.length; i++) {
+            const cluster1 = clusters[i];
+            const network1 = this.providerNetworks[cluster1];
+
+            for (let j = i + 1; j < clusters.length; j++) {
+              const cluster2 = clusters[j];
+              const network2 = this.providerNetworks[cluster2];
+
+              // Calculate distance between network centers
+              const dx = network1.centerX - network2.centerX;
+              const dy = network1.centerY - network2.centerY;
+              const distance = Math.sqrt(dx*dx + dy*dy);
+
+              // Calculate minimum required distance (sum of radii plus buffer)
+              const minDistance = network1.radius + network2.radius + 20; // 20px buffer
+
+              // If networks overlap, increase the circle radius
+              if (distance < minDistance) {
+                hasOverlap = true;
+                currentCircleRadius += 20; // Increase by 20px each iteration
+
+                // Recalculate all network positions with the new circle radius
+                clusters.forEach((cluster, index) => {
+                  const networkData = this.providerNetworks[cluster];
+                  const angle = (2 * Math.PI * index) / networkCount;
+                  networkData.centerX = centerX + currentCircleRadius * Math.cos(angle);
+                  networkData.centerY = centerY + currentCircleRadius * Math.sin(angle);
+                });
+
+                break; // Break inner loop and restart checking
+              }
+            }
+
+            if (hasOverlap) break; // Break outer loop if overlap found
+          }
+        }
+
+        // Create network containers with final positions
+        clusters.forEach((cluster) => {
+          const networkData = this.providerNetworks[cluster];
+
+          // Create network container
+          networkData.container = this.createNetworkContainer(
+            cluster,
+            networkData.centerX,
+            networkData.centerY,
+            networkData.radius
+          );
+
+          this.networkContainers.push(networkData.container);
+        });
+      }
+
+      // Add the Internet Boundary that encloses all private networks
+      this.addInternetBoundary(centerX, centerY);
+
+      // Apply additional forces for private nodes to stay in their respective networks
+      this.updateSimulationForces();
+
+      console.log(`D3: Added ${networkCount} network containers for private nodes`);
+    },
+
+    /**
+     * Add the Internet Boundary that encloses all private networks
+     * @param {number} centerX The x-coordinate of the center
+     * @param {number} centerY The y-coordinate of the center
+     */
+    addInternetBoundary(centerX, centerY) {
+      // Calculate the radius of the Internet Boundary
+      // It should be large enough to enclose all private networks with some padding
+      let maxDistance = 0;
+      let maxRadius = 0;
+
+      Object.keys(this.providerNetworks).forEach(cluster => {
+        const networkData = this.providerNetworks[cluster];
+        if (!networkData) return;
+
+        // Calculate distance from center to network center
+        const dx = networkData.centerX - centerX;
+        const dy = networkData.centerY - centerY;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+
+        // Update max distance and radius
+        maxDistance = Math.max(maxDistance, distance);
+        maxRadius = Math.max(maxRadius, networkData.radius);
+      });
+
+      // Set the Internet Boundary radius to enclose all networks with padding
+      this.internetBoundaryRadius = maxDistance + maxRadius + 50; // 50px padding
+      this.internetBoundaryCenterX = centerX;
+      this.internetBoundaryCenterY = centerY;
+
+      // Create the Internet Boundary container
+      this.internetBoundaryContainer = this.g.append('circle')
+        .attr('class', 'internet-boundary')
+        .attr('cx', centerX)
+        .attr('cy', centerY)
+        .attr('r', this.internetBoundaryRadius)
+        .attr('fill', 'none')
+        .attr('stroke', '#4A98E3') // Blue color
+        .attr('stroke-width', 2)
+        .attr('stroke-dasharray', '15,5,3,5') // Long and short dashes: --- - --- -
+        .lower(); // Ensure container is behind nodes but above network containers
+
+      // Add Internet Boundary label - keep it in front of everything
+      const label = this.g.append('text')
+        .attr('class', 'internet-boundary-label')
+        .attr('x', centerX)
+        .attr('y', centerY - this.internetBoundaryRadius - 10)
+        .attr('text-anchor', 'middle')
+        .attr('fill', '#4A98E3') // Blue color
+        .attr('font-weight', 'bold')
+        .text('Internet Boundary');
+
+      // Ensure label is in front of everything
+      label.raise();
+
+      console.log("D3: Added Internet Boundary");
+    },
+
+    /**
+     * Create a single network container with label
+     * @param {string} cluster The cluster name for the network
+     * @param {number} centerX The x-coordinate of the center
+     * @param {number} centerY The y-coordinate of the center
+     * @param {number} radius The radius of the network circle
+     * @returns {Object} The container element
+     */
+    createNetworkContainer(cluster, centerX, centerY, radius) {
+      // Create network container - keep it behind nodes but in front of links
+      const container = this.g.append('circle')
         .attr('class', 'network-container')
-        .attr('cx', this.datacenterCenterX)
-        .attr('cy', this.datacenterCenterY)
-        .attr('r', this.datacenterRadius)
+        .attr('data-cluster', cluster)
+        .attr('cx', centerX)
+        .attr('cy', centerY)
+        .attr('r', radius)
         .attr('fill', 'rgba(240, 240, 245, 0.8)')
         .attr('stroke', '#666')
         .attr('stroke-width', 2)
-        .attr('stroke-dasharray', '5,5')
-        .lower(); // Ensure container is behind nodes
+        .attr('stroke-dasharray', '5,5');
+
+      // Move container behind nodes but in front of links
+      container.lower();
 
       // Add a subtle outer glow to make boundary more visible
       this.g.append('circle')
         .attr('class', 'network-container-glow')
-        .attr('cx', this.datacenterCenterX)
-        .attr('cy', this.datacenterCenterY)
-        .attr('r', this.datacenterRadius + 2)
+        .attr('data-cluster', cluster)
+        .attr('cx', centerX)
+        .attr('cy', centerY)
+        .attr('r', radius + 2)
         .attr('fill', 'none')
         .attr('stroke', 'rgba(100, 100, 150, 0.3)')
         .attr('stroke-width', 6)
         .attr('filter', 'blur(4px)')
         .lower(); // Keep behind main container
 
-      // Add network label
-      this.g.append('text')
+      // Add network label with cluster name - keep it in front of everything
+      const label = this.g.append('text')
         .attr('class', 'network-label')
-        .attr('x', this.datacenterCenterX)
-        .attr('y', this.datacenterCenterY - this.datacenterRadius - 10)
+        .attr('data-cluster', cluster)
+        .attr('x', centerX)
+        .attr('y', centerY - radius - 10)
         .attr('text-anchor', 'middle')
         .attr('fill', '#333')
         .attr('font-weight', 'bold')
-        .text('Private Network')
-        .lower(); // Keep label behind nodes
+        .text(`Private Network: ${cluster}`);
 
-      // Apply additional forces for private nodes to stay in datacenter
-      this.updateSimulationForces();
+      // Ensure label is in front of everything
+      label.raise();
 
-      console.log("D3: Added datacenter container for private nodes");
+      return container;
     },
 
     /**
-     * Update simulation forces to handle datacenter containment
+     * Update simulation forces to handle multiple network containment
      */
     updateSimulationForces() {
       if (!this.simulation) return;
 
       // Clear previous forces
-      this.simulation.force('datacenter', null);
+      this.simulation.force('network-containment', null);
       this.simulation.force('boundary-repulsion', null);
 
-      // Add force to keep private nodes inside datacenter and public nodes outside
-      this.simulation.force('datacenter', (alpha) => {
-        const dcCenterX = this.datacenterCenterX;
-        const dcCenterY = this.datacenterCenterY;
-        const dcRadius = this.datacenterRadius;
+      // Get clusters with networks
+      const clusters = Object.keys(this.providerNetworks);
+      if (clusters.length === 0) return;
 
+      // Add force to keep private nodes inside their respective networks and public nodes outside all networks
+      this.simulation.force('network-containment', (alpha) => {
         // Apply to each node
         this.currentNodes.forEach(node => {
           // Skip nodes with fixed positions
           if (node.fx !== undefined && node.fy !== undefined) return;
 
-          const isPrivate = !node.data || node.data.public_ip !== true;
+          const isPublic = node.data && node.data.public_ip === true;
 
-          if (isPrivate) {
-            // For private nodes - keep inside datacenter
-            const dx = node.x - dcCenterX;
-            const dy = node.y - dcCenterY;
-            const distance = Math.sqrt(dx*dx + dy*dy);
-
-            // If node is outside datacenter, pull it back in
-            if (distance > dcRadius - 20) {
-              const scale = (dcRadius - 20) / distance;
-              node.x = dcCenterX + dx * scale;
-              node.y = dcCenterY + dy * scale;
-            }
+          if (isPublic) {
+            // For public nodes - keep outside ALL networks with buffer
+            this.keepNodeOutsideAllNetworks(node);
           } else {
-            // For public nodes - keep outside datacenter with larger buffer
-            const dx = node.x - dcCenterX;
-            const dy = node.y - dcCenterY;
-            const distance = Math.sqrt(dx*dx + dy*dy);
+            // For private nodes - find their cluster and keep inside that network
+            const cluster = (node.data && node.data.cluster) || 'unknown';
+            const networkData = this.providerNetworks[cluster];
 
-            // If node is inside datacenter or too close (buffer of 60px), push it out
-            const publicNodeBuffer = 60; // Increased buffer for public nodes
-            if (distance < dcRadius + publicNodeBuffer) {
-              const scale = (dcRadius + publicNodeBuffer) / Math.max(distance, 1);
-              node.x = dcCenterX + dx * scale;
-              node.y = dcCenterY + dy * scale;
+            if (networkData) {
+              this.keepNodeInsideNetwork(node, networkData);
             }
           }
         });
       });
 
-      // Add a special force that adds repulsion between public nodes and datacenter boundary
+      // Add a special force that adds repulsion between public nodes and all network boundaries
       this.simulation.force('boundary-repulsion', (alpha) => {
-        const dcCenterX = this.datacenterCenterX;
-        const dcCenterY = this.datacenterCenterY;
-        const dcRadius = this.datacenterRadius;
-        const bufferZone = 80; // Zone where repulsion starts
-
-        // Get public nodes
+        // Get public nodes that aren't fixed
         const publicNodes = this.currentNodes.filter(node => 
           node.data && node.data.public_ip === true && 
           node.fx === undefined && node.fy === undefined);
 
-        // For each public node, add repulsion from the datacenter boundary
+        // For each public node, add repulsion from all network boundaries
         publicNodes.forEach(node => {
-          const dx = node.x - dcCenterX;
-          const dy = node.y - dcCenterY;
-          const distance = Math.sqrt(dx*dx + dy*dy);
+          // Add repulsion from private network boundaries
+          clusters.forEach(cluster => {
+            const networkData = this.providerNetworks[cluster];
+            if (!networkData) return;
 
-          // If node is in buffer zone, add repulsive force
-          if (distance < dcRadius + bufferZone && distance > dcRadius) {
-            // Calculate repulsion strength (stronger when closer to boundary)
-            const repulsionStrength = alpha * 5 * (1 - ((distance - dcRadius) / bufferZone));
+            this.applyBoundaryRepulsion(node, networkData, alpha);
+          });
 
-            // Normalize direction vector
-            const nx = dx / distance;
-            const ny = dy / distance;
-
-            // Apply repulsive force
-            node.x += nx * repulsionStrength;
-            node.y += ny * repulsionStrength;
+          // Add repulsion from Internet Boundary
+          if (this.internetBoundaryContainer) {
+            this.applyInternetBoundaryRepulsion(node, alpha);
           }
         });
       });
 
       // Restart simulation with updated forces
       this.simulation.alpha(0.3).restart();
+    },
+
+    /**
+     * Keep a node inside its network container and apply a center-pull force
+     * @param {Object} node The node to keep inside
+     * @param {Object} networkData The network data containing centerX, centerY, and radius
+     */
+    keepNodeInsideNetwork(node, networkData) {
+      if (!networkData) return;
+
+      const centerX = networkData.centerX;
+      const centerY = networkData.centerY;
+      const radius = networkData.radius;
+
+      // Calculate distance from node to network center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is outside network, pull it back in
+      // Leave a small buffer (20px) from the edge
+      if (distance > radius - 20) {
+        const scale = (radius - 20) / distance;
+        node.x = centerX + dx * scale;
+        node.y = centerY + dy * scale;
+      } 
+      // Apply a center-pull force that gets stronger as nodes get farther from center
+      // This creates a stronger "gravity" toward the center of the network
+      else {
+        // Calculate the pull strength - increases with distance from center
+        // The 0.05 factor controls how strong the pull is - higher values = stronger pull
+        const pullStrength = 0.05 * (distance / radius);
+
+        // Apply the pull toward the center
+        // The direction is opposite to the displacement vector (dx, dy)
+        node.x -= dx * pullStrength;
+        node.y -= dy * pullStrength;
+      }
+    },
+
+    /**
+     * Keep a node outside all network containers
+     * @param {Object} node The node to keep outside
+     */
+    keepNodeOutsideAllNetworks(node) {
+      // For each network, check if the node is inside or too close
+      Object.keys(this.providerNetworks).forEach(cluster => {
+        const networkData = this.providerNetworks[cluster];
+        if (!networkData) return;
+
+        const centerX = networkData.centerX;
+        const centerY = networkData.centerY;
+        const radius = networkData.radius;
+
+        // Calculate distance from node to network center
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+
+        // If node is inside network or too close, push it out
+        // Add a buffer (60px) from the edge
+        const publicNodeBuffer = 60;
+        if (distance < radius + publicNodeBuffer) {
+          const scale = (radius + publicNodeBuffer) / Math.max(distance, 1);
+          node.x = centerX + dx * scale;
+          node.y = centerY + dy * scale;
+        }
+      });
+
+      // Also keep the node outside the Internet Boundary
+      if (this.internetBoundaryContainer) {
+        const centerX = this.internetBoundaryCenterX;
+        const centerY = this.internetBoundaryCenterY;
+        const radius = this.internetBoundaryRadius;
+
+        // Calculate distance from node to Internet Boundary center
+        const dx = node.x - centerX;
+        const dy = node.y - centerY;
+        const distance = Math.sqrt(dx*dx + dy*dy);
+
+        // If node is inside Internet Boundary or too close, push it out
+        // Add a buffer (80px) from the edge
+        const internetBoundaryBuffer = 80;
+        if (distance < radius + internetBoundaryBuffer) {
+          const scale = (radius + internetBoundaryBuffer) / Math.max(distance, 1);
+          node.x = centerX + dx * scale;
+          node.y = centerY + dy * scale;
+        }
+      }
+    },
+
+    /**
+     * Apply repulsion force between a node and a network boundary
+     * @param {Object} node The node to apply force to
+     * @param {Object} networkData The network data
+     * @param {number} alpha The simulation alpha value
+     */
+    applyBoundaryRepulsion(node, networkData, alpha) {
+      const centerX = networkData.centerX;
+      const centerY = networkData.centerY;
+      const radius = networkData.radius;
+      const bufferZone = 80; // Zone where repulsion starts
+
+      // Calculate distance from node to network center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is in buffer zone, add repulsive force
+      if (distance < radius + bufferZone && distance > radius) {
+        // Calculate repulsion strength (stronger when closer to boundary)
+        const repulsionStrength = alpha * 5 * (1 - ((distance - radius) / bufferZone));
+
+        // Normalize direction vector
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        // Apply repulsive force
+        node.x += nx * repulsionStrength;
+        node.y += ny * repulsionStrength;
+      }
+    },
+
+    /**
+     * Apply repulsion force between a node and the Internet Boundary
+     * @param {Object} node The node to apply force to
+     * @param {number} alpha The simulation alpha value
+     */
+    applyInternetBoundaryRepulsion(node, alpha) {
+      const centerX = this.internetBoundaryCenterX;
+      const centerY = this.internetBoundaryCenterY;
+      const radius = this.internetBoundaryRadius;
+      const bufferZone = 100; // Larger buffer zone for Internet Boundary
+
+      // Calculate distance from node to Internet Boundary center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is in buffer zone, add repulsive force
+      if (distance < radius + bufferZone && distance > radius) {
+        // Calculate repulsion strength (stronger when closer to boundary)
+        const repulsionStrength = alpha * 7 * (1 - ((distance - radius) / bufferZone)); // Stronger repulsion
+
+        // Normalize direction vector
+        const nx = dx / distance;
+        const ny = dy / distance;
+
+        // Apply repulsive force
+        node.x += nx * repulsionStrength;
+        node.y += ny * repulsionStrength;
+      }
     },
 
     /**
@@ -578,7 +936,7 @@ export default {
           .enter()
           .append('line')
           .attr('class', 'link')
-          .attr('stroke-width', 1.5)
+          .attr('stroke-width', .5)
           .attr('stroke', '#999')
           .attr('marker-end', 'url(#arrowhead)');
 
@@ -817,21 +1175,9 @@ export default {
         // Update the simulation with the unfixed nodes
         this.simulation.nodes(this.currentNodes);
 
-        // Update datacenter center position
-        this.datacenterCenterX = width / 2;
-        this.datacenterCenterY = height / 2 + 50;
-
-        // Update datacenter container position
-        if (this.datacenterContainer) {
-          this.datacenterContainer
-            .attr('cx', this.datacenterCenterX)
-            .attr('cy', this.datacenterCenterY);
-
-          // Update network label position
-          this.g.select('.network-label')
-            .attr('x', this.datacenterCenterX)
-            .attr('y', this.datacenterCenterY - this.datacenterRadius - 10);
-        }
+        // Reset network containers - it's easier to remove and recreate them
+        this.removeNetworkContainers();
+        this.addNetworkContainers();
 
         this.simulation.alpha(0.3).restart();
       }
@@ -1374,7 +1720,7 @@ export default {
 
       // Restore original link appearance
       this.g.selectAll('.link')
-          .attr('stroke-width', 1.5)
+          .attr('stroke-width', .5)
           .attr('stroke', '#999')
           .attr('stroke-dasharray', null) // Remove dotted style
           .attr('stroke-opacity', 1); // Restore opacity

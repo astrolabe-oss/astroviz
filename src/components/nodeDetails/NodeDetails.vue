@@ -297,7 +297,8 @@ export default {
         'TrafficController': '#4A98E3', // Blue
         'Public IP': '#E0E0E0', // Grey for Public IP
         'Unknown': '#F9C96E', // Orange for unknown nodes
-        'Private Network': 'rgba(240, 240, 245, 0.8)'
+        'Private Network': 'rgba(240, 240, 245, 0.8)',
+        'Internet Boundary': '#4A98E3' // Blue color for Internet Boundary
       }
     };
   },

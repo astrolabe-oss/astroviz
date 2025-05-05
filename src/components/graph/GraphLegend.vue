@@ -51,11 +51,11 @@ export default {
     },
 
     /**
-     * Returns only annotation icons (currently just 'Public IP' and 'Virtual Application')
+     * Returns only annotation icons (currently just 'Public IP', 'Virtual Application', 'Private Network', and 'Internet Boundary')
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP', 'Virtual', 'Private\nNetwork'];
+      return ['Public IP', 'Virtual', 'Private\nNetwork', 'Internet\nBoundary'];
     }
   },
 
@@ -91,6 +91,18 @@ export default {
         return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
                   <g transform="translate(12, 12)">
                     <circle cx="0" cy="0" r="${size}" fill="${this.nodeColors['Private Network']}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-dasharray="3,3" />
+                  </g>
+                </svg>`;
+      }
+
+      if (type === 'Internet\nBoundary') {
+        // Create a special dashed circle for the Internet Boundary with blue color and long-short dashes
+        const color = '#4A98E3'; // Blue color
+        const size = 12; // Slightly larger than Private Network
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${size}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="6,2,1,2" />
                   </g>
                 </svg>`;
       }
