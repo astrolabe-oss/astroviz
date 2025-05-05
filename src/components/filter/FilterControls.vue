@@ -46,7 +46,17 @@
         <option value="private">Private</option>
       </select>
     </div>
-    
+
+    <div class="filter-item checkbox-container">
+      <label class="checkbox-label">
+        <span class="checkbox-text">Public Traffic</span>
+        <div class="styled-checkbox-wrapper">
+          <input type="checkbox" id="hide-public-traffic" v-model="localFilters.hidePublicTraffic" @change="emitFilterChange">
+          <span class="checkmark"></span>
+        </div>
+      </label>
+    </div>
+
     <div class="filter-item reset-container">
       <label>&nbsp;</label>
       <button @click="resetFilters" class="reset-button">Reset Filters</button>
@@ -132,7 +142,8 @@ export default {
         provider: '',
         protocolMux: '',
         address: '',
-        publicIp: ''
+        publicIp: '',
+        hidePublicTraffic: true
       };
       this.emitFilterChange();
     }
@@ -196,5 +207,82 @@ export default {
 .reset-button:hover {
   background-color: #d8d8d8;
   color: #333;
+}
+
+.checkbox-container {
+  display: flex;
+  flex-direction: column;
+  align-items: left;
+  min-width: auto;
+  flex: 0 0 auto;
+}
+
+.checkbox-label {
+  display: flex;
+  flex-direction: column;
+  align-items: left;
+  cursor: pointer;
+}
+
+.checkbox-text {
+  margin-bottom: 8px;
+  white-space: nowrap;
+  font-weight: 500;
+}
+
+.styled-checkbox-wrapper {
+  position: relative;
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+}
+
+.styled-checkbox-wrapper input[type="checkbox"] {
+  position: absolute;
+  opacity: 0;
+  cursor: pointer;
+  height: 0;
+  width: 0;
+}
+
+.checkmark {
+  position: absolute;
+  top: 0;
+  left: 0;
+  height: 20px;
+  width: 20px;
+  background-color: #eee;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.styled-checkbox-wrapper:hover input ~ .checkmark {
+  background-color: #ccc;
+}
+
+.styled-checkbox-wrapper input:checked ~ .checkmark {
+  background-color: #4A98E3;
+  border-color: #4A98E3;
+}
+
+.checkmark:after {
+  content: "";
+  position: absolute;
+  display: none;
+}
+
+.styled-checkbox-wrapper input:checked ~ .checkmark:after {
+  display: block;
+}
+
+.styled-checkbox-wrapper .checkmark:after {
+  left: 7px;
+  top: 3px;
+  width: 5px;
+  height: 10px;
+  border: solid white;
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 </style>

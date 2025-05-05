@@ -18,6 +18,8 @@
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
         @reset-positions="onResetPositions"
+        @expand-all-apps="onExpandAllApps"
+        @collapse-all-apps="onCollapseAllApps"
     />
 
     <GraphVisualization
@@ -26,6 +28,7 @@
         :viewMode="viewMode"
         :nodeColors="nodeColors"
         :highlighted-node-ids="highlightedNodeIds"
+        :filters="$parent.filters"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
@@ -91,7 +94,8 @@ export default {
         'TrafficController': '#4A98E3', // Blue like in the image
         'Public IP': '#E0E0E0', // Keep Public IP in legend but not as a node type
         'Unknown': '#F9C96E', // Orange for unknown nodes
-        'Private Datacenter': 'rgba(240, 240, 245, 0.8)', // Moved to annotations section in legend
+        'Private Network': 'rgba(240, 240, 245, 0.8)', // Moved to annotations section in legend
+        'Internet Boundary': '#4A98E3', // Blue color for Internet Boundary
       },
 
       isRendering: false,
@@ -205,6 +209,24 @@ export default {
     onResetPositions() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetNodePositions();
+      }
+    },
+
+    /**
+     * Handle expand all applications button click
+     */
+    onExpandAllApps() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.expandAllApplications();
+      }
+    },
+
+    /**
+     * Handle collapse all applications button click
+     */
+    onCollapseAllApps() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.collapseAllApplications();
       }
     }
   }
