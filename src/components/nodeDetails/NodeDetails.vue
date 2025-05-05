@@ -28,14 +28,14 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Component Graph Section for Application view -->
     <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
       <div class="connections-container component-graph-container">
         <div class="connections-header component-graph-header">
           <h5>Component Graph</h5>
         </div>
-        
+
         <ComponentGraph
           :components="nodeComponents"
           :nodeColors="nodeColors"
@@ -43,14 +43,14 @@
         />
       </div>
     </div>
-    
+
     <!-- Components Section for Application view -->
     <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
       <div class="connections-container component-inventory-container">
         <div class="connections-header component-inventory-header">
           <h5>Component Inventory</h5>
         </div>
-        
+
         <div class="tab-content">
           <div v-if="nodeComponents.length === 0" class="no-connections">
             No component inventory
@@ -78,14 +78,14 @@
         </div>
       </div>
     </div>
-    
+
     <!-- Node Other Properties Section -->
     <div class="detail-section" v-if="Object.keys(filteredNodeProperties).length > 0">
       <div class="connections-container properties-container">
         <div class="connections-header properties-header">
           <h5>Other Properties</h5>
         </div>
-        
+
         <div class="node-properties">
           <div v-for="(value, key) in filteredNodeProperties" :key="key" class="property">
             <strong>{{ key }}:</strong> {{ value }}
@@ -101,7 +101,7 @@
         <div class="connections-header">
           <h5>Real Connections</h5>
         </div>
-    
+
         <!-- Real Connections Tabs -->
         <div class="relationship-tabs">
           <button
@@ -117,7 +117,7 @@
             FROM ({{ realIncomingRelationships.length }})
           </button>
         </div>
-    
+
         <!-- Real TO Connections Tab -->
         <div v-if="realActiveTab === 'to'" class="tab-content">
           <div v-if="realOutgoingRelationships.length === 0" class="no-connections">
@@ -144,7 +144,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Real FROM Connections Tab -->
         <div v-if="realActiveTab === 'from'" class="tab-content">
           <div v-if="realIncomingRelationships.length === 0" class="no-connections">
@@ -172,13 +172,13 @@
           </div>
         </div>
       </div>
-      
+
       <!-- Virtual Connections Container (Application View Only) -->
       <div v-if="viewMode === 'application' && hasVirtualRelationships" class="connections-container virtual-connections-container">
         <div class="connections-header virtual-header">
           <h5>Virtual Connections (Aggregated)</h5>
         </div>
-        
+
         <!-- Virtual Connections Tabs -->
         <div class="relationship-tabs">
           <button
@@ -194,7 +194,7 @@
             FROM ({{ virtualIncomingRelationships.length }})
           </button>
         </div>
-    
+
         <!-- Virtual TO Connections Tab -->
         <div v-if="virtualActiveTab === 'to'" class="tab-content">
           <div v-if="virtualOutgoingRelationships.length === 0" class="no-connections">
@@ -221,7 +221,7 @@
             </div>
           </div>
         </div>
-        
+
         <!-- Virtual FROM Connections Tab -->
         <div v-if="virtualActiveTab === 'from'" class="tab-content">
           <div v-if="virtualIncomingRelationships.length === 0" class="no-connections">
@@ -260,7 +260,7 @@ import ComponentGraph from './ComponentGraph.vue';
 
 export default {
   name: 'NodeDetails',
-  
+
   components: {
     ComponentGraph
   },
@@ -297,7 +297,7 @@ export default {
         'TrafficController': '#4A98E3', // Blue
         'Public IP': '#E0E0E0', // Grey for Public IP
         'Unknown': '#F9C96E', // Orange for unknown nodes
-        'Private Datacenter': 'rgba(240, 240, 245, 0.8)'
+        'Private Network': 'rgba(240, 240, 245, 0.8)'
       }
     };
   },
@@ -353,7 +353,7 @@ export default {
     groupedIncomingRelationships() {
       return groupRelationshipsByType(this.incomingRelationships);
     },
-    
+
     /**
      * Get components for the current node in application view
      * Components are extracted from the node's components property if it exists
@@ -363,7 +363,7 @@ export default {
       if (!this.node || !this.node.components || this.viewMode !== 'application') {
         return [];
       }
-      
+
       // Convert and process components data
       const components = this.node.components
         .filter(component => component.type !== 'Application') // Exclude Application nodes
@@ -380,10 +380,10 @@ export default {
             originalData: component
           };
         });
-      
+
       return components;
     },
-    
+
     /**
      * Group node components by their type
      */
@@ -391,7 +391,7 @@ export default {
       if (!this.nodeComponents.length) {
         return [];
       }
-      
+
       // Group components by their nodeType
       const groupedByType = {};
       this.nodeComponents.forEach(component => {
@@ -401,7 +401,7 @@ export default {
         }
         groupedByType[type].push(component);
       });
-      
+
       // Convert to array format for easier rendering
       return Object.entries(groupedByType).map(([type, components]) => {
         return {
@@ -410,7 +410,7 @@ export default {
         };
       });
     },
-    
+
     /**
      * Get real outgoing relationships (non-virtual connections)
      */
@@ -423,7 +423,7 @@ export default {
         return !edge || !edge.connectedComponents;
       });
     },
-    
+
     /**
      * Get virtual outgoing relationships (virtual connections)
      */
@@ -436,7 +436,7 @@ export default {
         return edge && edge.connectedComponents;
       });
     },
-    
+
     /**
      * Get real incoming relationships (non-virtual connections)
      */
@@ -449,7 +449,7 @@ export default {
         return !edge || !edge.connectedComponents;
       });
     },
-    
+
     /**
      * Get virtual incoming relationships (virtual connections)
      */
@@ -462,35 +462,35 @@ export default {
         return edge && edge.connectedComponents;
       });
     },
-    
+
     /**
      * Get real outgoing relationships grouped by type
      */
     groupedRealOutgoingRelationships() {
       return groupRelationshipsByType(this.realOutgoingRelationships);
     },
-    
+
     /**
      * Get virtual outgoing relationships grouped by type
      */
     groupedVirtualOutgoingRelationships() {
       return groupRelationshipsByType(this.virtualOutgoingRelationships);
     },
-    
+
     /**
      * Get real incoming relationships grouped by type
      */
     groupedRealIncomingRelationships() {
       return groupRelationshipsByType(this.realIncomingRelationships);
     },
-    
+
     /**
      * Get virtual incoming relationships grouped by type
      */
     groupedVirtualIncomingRelationships() {
       return groupRelationshipsByType(this.virtualIncomingRelationships);
     },
-    
+
     /**
      * Check if there are any relationships (real or virtual)
      */
@@ -499,7 +499,7 @@ export default {
              this.realIncomingRelationships.length > 0 ||
              (this.viewMode === 'application' && this.hasVirtualRelationships);
     },
-    
+
     /**
      * Check if there are any virtual relationships
      */
@@ -515,7 +515,7 @@ export default {
       this.setInitialActiveTabs();
     }
   },
-  
+
   mounted() {
     // Set the initial active tabs based on available connections
     this.setInitialActiveTabs();
@@ -572,7 +572,7 @@ export default {
       } else {
         this.realActiveTab = 'to';
       }
-      
+
       // Set virtual connections tab
       if (this.virtualOutgoingRelationships.length === 0 && this.virtualIncomingRelationships.length > 0) {
         this.virtualActiveTab = 'from';
@@ -610,10 +610,10 @@ export default {
         this.$emit('select-node', rel.originalData, isShiftKey);
         return;
       }
-      
+
       // For relationships, get the node data directly using the nodeId
       const nodeData = this.graphData.vertices[rel.nodeId];
-    
+
       if (nodeData) {
         console.log("NodeDetails: Selecting node with shift key:", isShiftKey);
         // Emit an event to notify the parent components to select this node
@@ -630,7 +630,7 @@ export default {
     closeDetails() {
       this.$emit('close');
     },
-    
+
     /**
      * Generate a comprehensive tooltip for a component
      * @param {Object} component The component object
@@ -638,32 +638,32 @@ export default {
      */
     getComponentTooltip(component) {
       if (!component) return '';
-      
+
       let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-      
+
       if (component.address) {
         tooltip += `\nAddress: ${component.address}`;
       }
-      
+
       if (component.protocol_multiplexor) {
         tooltip += `\nMux: ${component.protocol_multiplexor}`;
       }
-      
+
       if (component.app_name && component.app_name !== component.name) {
         tooltip += `\nApp: ${component.app_name}`;
       }
-      
+
       if (component.provider) {
         tooltip += `\nProvider: ${component.provider}`;
       }
-      
+
       if (component.public_ip !== undefined) {
         tooltip += `\nIP: ${component.public_ip ? 'Public' : 'Private'}`;
       }
-      
+
       return tooltip;
     },
-    
+
     /**
      * Format component details for display in the list
      * @param {Object} component The component object
@@ -671,18 +671,18 @@ export default {
      */
     formatComponentDetails(component) {
       if (!component) return '';
-      
+
       // Determine the primary display value (either address or name)
       let primaryText = component.address || component.name || component.app_name || 'Unknown';
-      
+
       // Add protocol multiplexor if available
       if (component.protocol_multiplexor) {
         primaryText += ` (${component.protocol_multiplexor})`;
       }
-      
+
       return primaryText;
     },
-    
+
     /**
      * Find edge between two nodes
      * @param {Object|string} sourceNode Source node or node ID
@@ -691,15 +691,15 @@ export default {
      */
     findEdge(sourceNode, targetNode) {
       if (!this.graphData || !this.graphData.edges) return null;
-      
+
       const sourceId = typeof sourceNode === 'string' ? sourceNode : 
                       (sourceNode.id || findNodeIdByProperties(sourceNode, this.graphData));
-      
+
       const targetId = typeof targetNode === 'string' ? targetNode : 
                       (targetNode.id || findNodeIdByProperties(targetNode, this.graphData));
-      
+
       if (!sourceId || !targetId) return null;
-      
+
       return this.graphData.edges.find(edge => 
         edge.start_node === sourceId && edge.end_node === targetId
       );

@@ -14,7 +14,7 @@
         <div class="legend-label">{{ type }}</div>
       </div>
     </div>
-    
+
     <!-- Annotations Section -->
     <div class="legend-section">
       <div class="legend-heading">Annotations</div>
@@ -38,7 +38,7 @@ export default {
       required: true
     }
   },
-  
+
   computed: {
     /**
      * Returns only node type icons (excluding 'Public IP')
@@ -46,16 +46,16 @@ export default {
      */
     nodeTypes() {
       return Object.keys(this.nodeColors).filter(type => 
-        type !== 'Public IP' && type !== 'Private Datacenter'
+        type !== 'Public IP' && type !== 'Private Network'
       );
     },
-    
+
     /**
      * Returns only annotation icons (currently just 'Public IP' and 'Virtual Application')
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP', 'Virtual', 'Private\nDatacenter'];
+      return ['Public IP', 'Virtual', 'Private\nNetwork'];
     }
   },
 
@@ -82,22 +82,22 @@ export default {
                   </g>
                 </svg>`;
       }
-      
-      if (type === 'Private\nDatacenter') {
-        // Create a special dashed circle for the datacenter with stronger styling
+
+      if (type === 'Private\nNetwork') {
+        // Create a special dashed circle for the private network with stronger styling
         const color = 'rgba(100, 100, 140, 0.8)'; // Darker color for better visibility
         const size = 10;
-        
+
         return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
                   <g transform="translate(12, 12)">
-                    <circle cx="0" cy="0" r="${size}" fill="${this.nodeColors['Private Datacenter']}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-dasharray="3,3" />
+                    <circle cx="0" cy="0" r="${size}" fill="${this.nodeColors['Private Network']}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-dasharray="3,3" />
                   </g>
                 </svg>`;
       }
-      
+
       // Special case for 'Public IP' which should use the PublicIP icon
       const iconKey = type === 'Public IP' ? 'PublicIP' : type;
-      
+
       // Get the icon SVG from networkIcons
       const iconSvg = networkIcons[iconKey] || networkIcons.default;
 
