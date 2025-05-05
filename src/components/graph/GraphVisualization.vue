@@ -332,6 +332,9 @@ export default {
         // Add network containers after nodes are created
         this.addNetworkContainers();
 
+        // Reset view to ensure the entire Internet Boundary is visible
+        this.resetView();
+
         // Notify parent component about rendering completion
         setTimeout(() => {
           // Apply highlighting based on current highlighted nodes
@@ -1972,23 +1975,50 @@ export default {
     },
 
     /**
-     * Reset zoom and pan to default
+     * Reset zoom and pan to show the entire Internet Boundary
      */
     resetView() {
       const container = this.$refs.d3Container;
       const width = container.clientWidth;
       const height = container.clientHeight || 600;
 
-      // Reset zoom level
-      this.currentZoomLevel = 0.5;
+      // Calculate zoom level based on Internet Boundary size if it exists
+      let zoomLevel = 0.5; // Default zoom level
+      let centerX = width / 2;
+      let centerY = height / 2;
 
+      if (this.internetBoundaryContainer && this.internetBoundaryRadius > 0) {
+        // Calculate the zoom level needed to fit the Internet Boundary plus or minus buffer per view mode
+        const bufferFactor = this.viewMode === 'application' ? 1 : 0.67;
+        const boundaryDiameter = this.internetBoundaryRadius * 2 * bufferFactor;
+
+        // Calculate zoom level based on container dimensions and boundary size
+        const horizontalZoom = width / boundaryDiameter;
+        const verticalZoom = height / boundaryDiameter;
+
+        // Use the smaller of the two zoom levels to ensure the entire boundary is visible
+        zoomLevel = Math.min(horizontalZoom, verticalZoom);
+
+        // Use the Internet Boundary center coordinates
+        centerX = this.internetBoundaryCenterX;
+        centerY = this.internetBoundaryCenterY;
+      }
+
+      // Update current zoom level
+      this.currentZoomLevel = zoomLevel;
+
+      // Calculate the translation needed to center the view on the Internet Boundary
+      const translateX = width / 2 - centerX * zoomLevel;
+      const translateY = height / 2 - centerY * zoomLevel;
+
+      // Apply the zoom transform with a smooth transition
       this.svg.transition().duration(500).call(
           this.zoom.transform,
-          d3.zoomIdentity.translate(width / 3, height / 3).scale(0.5)
+          d3.zoomIdentity.translate(translateX, translateY).scale(zoomLevel)
       );
 
-            // Apply sizes based on selection state
-            this.updateNodeSizes();
+      // Apply sizes based on selection state
+      this.updateNodeSizes();
 
       this.$emit('zoom-change', this.currentZoomLevel);
 
