@@ -303,7 +303,9 @@ export default {
         this.publicNodes = visData.nodes.filter(node => 
           node.data && node.data.public_ip === true);
         this.privateNodes = visData.nodes.filter(node => 
-          !node.data || node.data.public_ip !== true);
+          (!node.data || node.data.public_ip !== true) && 
+          // Application nodes should not be placed in private networks
+          node.type !== 'Application');
 
         console.log('Nodes with public_ip=true:', this.publicNodes.length);
         console.log('Nodes with public_ip=false:', this.privateNodes.length);
@@ -428,6 +430,24 @@ export default {
       const width = container.clientWidth;
       const height = container.clientHeight || 600;
 
+      // Calculate the center of the visualization
+      const centerX = width / 2;
+      const centerY = height / 2;
+
+      // In Application View, we only show the Internet Boundary, not private networks
+      if (this.viewMode === 'application') {
+        console.log("D3: Application View - showing only Internet Boundary");
+
+        // Add the Internet Boundary
+        this.addInternetBoundary(centerX, centerY);
+
+        // Apply forces to keep public nodes outside the Internet Boundary
+        this.updateSimulationForces();
+
+        return;
+      }
+
+      // For Detailed View, continue with normal private network visualization
       // Get the number of cluster networks
       const clusters = Object.keys(this.providerNetworks);
       const networkCount = clusters.length;
@@ -442,10 +462,6 @@ export default {
       // Calculate layout for multiple networks
       // We'll arrange them in a grid or circle depending on the number
       this.networkContainers = [];
-
-      // Calculate the center of the visualization
-      const centerX = width / 2;
-      const centerY = height / 2;
 
       // Calculate positions for each network
       if (networkCount === 1) {
@@ -569,26 +585,38 @@ export default {
      */
     addInternetBoundary(centerX, centerY) {
       // Calculate the radius of the Internet Boundary
-      // It should be large enough to enclose all private networks with some padding
       let maxDistance = 0;
       let maxRadius = 0;
 
-      Object.keys(this.providerNetworks).forEach(cluster => {
-        const networkData = this.providerNetworks[cluster];
-        if (!networkData) return;
+      // For Application View, we need a larger default boundary since there are no private networks
+      const container = this.$refs.d3Container;
+      const width = container.clientWidth;
+      const height = container.clientHeight || 600;
+      const minBoundaryRadius = Math.min(width, height) * 0.4; // 40% of the smaller dimension
 
-        // Calculate distance from center to network center
-        const dx = networkData.centerX - centerX;
-        const dy = networkData.centerY - centerY;
-        const distance = Math.sqrt(dx*dx + dy*dy);
+      // If we have private networks, calculate based on them
+      if (this.viewMode !== 'application') {
+        Object.keys(this.providerNetworks).forEach(cluster => {
+          const networkData = this.providerNetworks[cluster];
+          if (!networkData) return;
 
-        // Update max distance and radius
-        maxDistance = Math.max(maxDistance, distance);
-        maxRadius = Math.max(maxRadius, networkData.radius);
-      });
+          // Calculate distance from center to network center
+          const dx = networkData.centerX - centerX;
+          const dy = networkData.centerY - centerY;
+          const distance = Math.sqrt(dx*dx + dy*dy);
+
+          // Update max distance and radius
+          maxDistance = Math.max(maxDistance, distance);
+          maxRadius = Math.max(maxRadius, networkData.radius);
+        });
+      }
 
       // Set the Internet Boundary radius to enclose all networks with padding
-      this.internetBoundaryRadius = maxDistance + maxRadius + 50; // 50px padding
+      // For Application View, use the minimum radius if calculated radius is too small
+      const calculatedRadius = maxDistance + maxRadius + 50; // 50px padding
+      this.internetBoundaryRadius = this.viewMode === 'application' 
+        ? Math.max(minBoundaryRadius, calculatedRadius)
+        : calculatedRadius;
       this.internetBoundaryCenterX = centerX;
       this.internetBoundaryCenterY = centerY;
 
@@ -723,7 +751,6 @@ export default {
 
       // Get clusters with networks
       const clusters = Object.keys(this.providerNetworks);
-      if (clusters.length === 0) return;
 
       // Add force to keep private nodes inside their respective networks and public nodes outside all networks
       this.simulation.force('network-containment', (alpha) => {
@@ -734,6 +761,54 @@ export default {
 
           const isPublic = node.data && node.data.public_ip === true;
 
+          // Handle application view differently
+          if (this.viewMode === 'application') {
+            if (isPublic) {
+              // For public nodes in application view - keep outside the Internet Boundary
+              if (this.internetBoundaryContainer) {
+                this.keepNodeOutsideInternetBoundary(node);
+              }
+            } else {
+              // For non-public nodes in application view - keep inside the Internet Boundary
+              if (this.internetBoundaryContainer) {
+                this.keepNodeInsideInternetBoundary(node);
+              }
+            }
+            return;
+          }
+
+          // Detailed view handling
+          // Application nodes should drift towards center by default in detailed view
+          if (node.type === 'Application') {
+            // For Application nodes in Detailed View, only keep them outside the Internet Boundary if they have public_ip=true
+            if (isPublic && this.internetBoundaryContainer) {
+              // Keep Application nodes with public_ip=true outside the Internet Boundary
+              this.keepNodeOutsideInternetBoundary(node);
+            } else {
+              // For non-public Application nodes in detailed view, apply a very weak center-pull force
+              const container = this.$refs.d3Container;
+              const width = container.clientWidth;
+              const height = container.clientHeight || 600;
+              const centerX = width / 2;
+              const centerY = height / 2;
+
+              // Calculate distance from node to center
+              const dx = node.x - centerX;
+              const dy = node.y - centerY;
+              const distance = Math.sqrt(dx*dx + dy*dy);
+
+              // Apply a center-pull force that gets stronger as nodes get farther from center
+              // Reduced by 2 orders of magnitude as requested
+              const pullStrength = 0.00003 * distance / 100;
+
+              // Apply the pull toward the center
+              node.x -= dx * pullStrength;
+              node.y -= dy * pullStrength;
+            }
+            return;
+          }
+
+          // For non-Application nodes in detailed view
           if (isPublic) {
             // For public nodes - keep outside ALL networks with buffer
             this.keepNodeOutsideAllNetworks(node);
@@ -756,8 +831,27 @@ export default {
           node.data && node.data.public_ip === true && 
           node.fx === undefined && node.fy === undefined);
 
-        // For each public node, add repulsion from all network boundaries
+        // For each public node, add repulsion from appropriate network boundaries
         publicNodes.forEach(node => {
+          // In application view, only apply repulsion from the Internet Boundary for all nodes
+          if (this.viewMode === 'application') {
+            if (this.internetBoundaryContainer) {
+              this.applyInternetBoundaryRepulsion(node, alpha);
+            }
+            return;
+          }
+
+          // Detailed view handling
+          // For Application nodes, only apply repulsion from the Internet Boundary
+          if (node.type === 'Application') {
+            // Add repulsion from Internet Boundary only
+            if (this.internetBoundaryContainer) {
+              this.applyInternetBoundaryRepulsion(node, alpha);
+            }
+            return;
+          }
+
+          // For non-Application public nodes in detailed view, add repulsion from all network boundaries
           // Add repulsion from private network boundaries
           clusters.forEach(cluster => {
             const networkData = this.providerNetworks[cluster];
@@ -846,23 +940,70 @@ export default {
 
       // Also keep the node outside the Internet Boundary
       if (this.internetBoundaryContainer) {
-        const centerX = this.internetBoundaryCenterX;
-        const centerY = this.internetBoundaryCenterY;
-        const radius = this.internetBoundaryRadius;
+        this.keepNodeOutsideInternetBoundary(node);
+      }
+    },
 
-        // Calculate distance from node to Internet Boundary center
-        const dx = node.x - centerX;
-        const dy = node.y - centerY;
-        const distance = Math.sqrt(dx*dx + dy*dy);
+    /**
+     * Keep a node outside the Internet Boundary only
+     * @param {Object} node The node to keep outside the Internet Boundary
+     */
+    keepNodeOutsideInternetBoundary(node) {
+      if (!this.internetBoundaryContainer) return;
 
-        // If node is inside Internet Boundary or too close, push it out
-        // Add a buffer (80px) from the edge
-        const internetBoundaryBuffer = 80;
-        if (distance < radius + internetBoundaryBuffer) {
-          const scale = (radius + internetBoundaryBuffer) / Math.max(distance, 1);
-          node.x = centerX + dx * scale;
-          node.y = centerY + dy * scale;
-        }
+      const centerX = this.internetBoundaryCenterX;
+      const centerY = this.internetBoundaryCenterY;
+      const radius = this.internetBoundaryRadius;
+
+      // Calculate distance from node to Internet Boundary center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is inside Internet Boundary or too close, push it out
+      // Add a buffer (80px) from the edge
+      const internetBoundaryBuffer = 80;
+      if (distance < radius + internetBoundaryBuffer) {
+        const scale = (radius + internetBoundaryBuffer) / Math.max(distance, 1);
+        node.x = centerX + dx * scale;
+        node.y = centerY + dy * scale;
+      }
+    },
+
+    /**
+     * Keep a node inside the Internet Boundary
+     * @param {Object} node The node to keep inside the Internet Boundary
+     */
+    keepNodeInsideInternetBoundary(node) {
+      if (!this.internetBoundaryContainer) return;
+
+      const centerX = this.internetBoundaryCenterX;
+      const centerY = this.internetBoundaryCenterY;
+      const radius = this.internetBoundaryRadius;
+
+      // Calculate distance from node to Internet Boundary center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is outside Internet Boundary, pull it back in
+      // Leave a small buffer (20px) from the edge
+      if (distance > radius - 20) {
+        const scale = (radius - 20) / distance;
+        node.x = centerX + dx * scale;
+        node.y = centerY + dy * scale;
+      } 
+      // Apply a center-pull force that gets stronger as nodes get farther from center
+      // This creates a stronger "gravity" toward the center of the boundary
+      else {
+        // Calculate the pull strength - increases with distance from center
+        // The 0.05 factor controls how strong the pull is - higher values = stronger pull
+        const pullStrength = 0.05 * (distance / radius);
+
+        // Apply the pull toward the center
+        // The direction is opposite to the displacement vector (dx, dy)
+        node.x -= dx * pullStrength;
+        node.y -= dy * pullStrength;
       }
     },
 
