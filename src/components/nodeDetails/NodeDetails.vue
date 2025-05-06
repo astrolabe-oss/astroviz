@@ -9,6 +9,15 @@
     <h3>Node: <span class="node-type-header-badge" :style="{ backgroundColor: getNodeTypeColor(node.type) }">{{ node.type }}</span></h3>
     <button class="close-button" @click="closeDetails">×</button>
 
+    <!-- Profile Timestamp Section -->
+    <div class="detail-section">
+      <div class="profile-timestamp-container">
+        <div class="connections-header profile-timestamp-header">
+          <h5>Last profiled: {{ node.profile_timestamp ? formattedProfileTimestamp : '&lt;Unknown&gt;' }}</h5>
+        </div>
+      </div>
+    </div>
+
     <!-- Node Main Properties Section -->
     <div class="detail-section">
       <div class="node-main-properties">
@@ -305,6 +314,29 @@ export default {
 
   computed: {
     /**
+     * Format the profile timestamp in a human-readable local time format
+     * Handles both millisecond and second timestamps
+     */
+    formattedProfileTimestamp() {
+      if (!this.node || !this.node.profile_timestamp) return '';
+
+      // Check if timestamp might be in seconds (Unix epoch)
+      let timestampValue = this.node.profile_timestamp;
+
+      // If timestamp is a number and appears to be in seconds (before year 2100)
+      if (typeof timestampValue === 'number' && timestampValue < 4102444800) {
+        // Convert seconds to milliseconds
+        timestampValue = timestampValue * 1000;
+      }
+
+      // Convert timestamp to Date object
+      const timestamp = new Date(timestampValue);
+
+      // Format the date in local time
+      return timestamp.toLocaleString();
+    },
+
+    /**
      * Get filtered node properties excluding primary properties
      * that are already shown separately
      */
@@ -315,7 +347,7 @@ export default {
       // Add additional properties to exclude from the "Other Properties" section
       const excludedKeys = [
         'type', 'app_name', 'name', 'address', 'components', 
-        'typeCounts', 'componentCounts'
+        'typeCounts', 'componentCounts', 'profile_timestamp'
       ];
 
       Object.entries(this.node).forEach(([key, value]) => {
@@ -728,7 +760,6 @@ export default {
   padding: 10px;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.05);
   overflow: hidden;
-  overflow: hidden; /* Ensure the header doesn't break the container's rounded corners */
 }
 
 .connections-header {
@@ -750,6 +781,18 @@ export default {
   width: 4px;
   background-color: #4CAF50;
   border-radius: 6px 0 0 0;
+}
+
+.profile-timestamp-header {
+  background-color: #FFE0D0;
+  border-radius: 6px 6px 6px 6px;
+  margin-left: 0px;
+  margin-right: 0px;
+}
+
+.profile-timestamp-header::before {
+  background-color: #FF6A33;
+  border-radius: 6px 0 0 6px;
 }
 
 .component-graph-header::before {
