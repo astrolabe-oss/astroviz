@@ -60,6 +60,9 @@ export default {
       // Network container properties
       networkContainers: [], // Array of network containers, one for each cluster
 
+      // App group container properties
+      appGroupContainers: [], // Array of app group containers, one for each app_name within a cluster
+
       // Internet boundary container properties
       internetBoundaryContainer: null,
       internetBoundaryRadius: 0,
@@ -67,7 +70,7 @@ export default {
       internetBoundaryCenterY: 0,
 
       // Map to store cluster-specific data
-      providerNetworks: {}, // Structure: { cluster: { container, nodes, centerX, centerY, radius } }
+      providerNetworks: {}, // Structure: { cluster: { container, nodes, centerX, centerY, radius, appGroups: { app_name: { container, nodes, centerX, centerY, radius } } } }
 
       // Map to store fixed node positions
       nodePositions: {},
@@ -245,14 +248,14 @@ export default {
         this.simulation = d3.forceSimulation()
             // Shorter link distance for more compact layout
             .force('link', d3.forceLink().id(d => d.id).distance(60))
-            // Weaker repulsion force between nodes
-            .force('charge', d3.forceManyBody().strength(-150))
-            // Center force
-            .force('center', d3.forceCenter(width / 2, height / 2))
+            // Stronger repulsion force between nodes
+            .force('charge', d3.forceManyBody().strength(-300))
+            // Stronger center force to keep nodes centered
+            .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2))
             // Larger collision radius to prevent nodes from getting too close
             .force('collision', d3.forceCollide().radius(30))
-            // Add a radial force to keep nodes within a certain radius
-            .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.05))
+            // Add a stronger radial force to keep nodes within a certain radius
+            .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.25))
             .on('tick', this.tick);
 
         // Network containers will be positioned when created
@@ -320,13 +323,38 @@ export default {
               container: null,
               centerX: 0,
               centerY: 0,
-              radius: 0
+              radius: 0,
+              appGroups: {}
             };
           }
           this.providerNetworks[cluster].nodes.push(node);
+
+          // Skip Application nodes for app_name grouping
+          if (node.type === 'Application') {
+            return;
+          }
+
+          // Group nodes by app_name within each cluster
+          const app_name = (node.data && node.data.app_name) || 'unknown';
+          if (!this.providerNetworks[cluster].appGroups[app_name]) {
+            this.providerNetworks[cluster].appGroups[app_name] = {
+              nodes: [],
+              container: null,
+              centerX: 0,
+              centerY: 0,
+              radius: 0
+            };
+          }
+          this.providerNetworks[cluster].appGroups[app_name].nodes.push(node);
         });
 
         console.log('Cluster networks:', Object.keys(this.providerNetworks).length);
+
+        // Log app groups for each cluster
+        Object.keys(this.providerNetworks).forEach(cluster => {
+          const appGroups = Object.keys(this.providerNetworks[cluster].appGroups);
+          console.log(`Cluster ${cluster} has ${appGroups.length} app groups:`, appGroups);
+        });
 
         // Update simulation with new node data
         this.updateSimulation(visData);
@@ -403,14 +431,30 @@ export default {
         this.g.selectAll('.internet-boundary').remove();
         this.g.selectAll('.internet-boundary-label').remove();
 
+        // Remove all app group-related elements
+        this.g.selectAll('.app-group-container').remove();
+        this.g.selectAll('.app-group-label-group').remove();
+        this.g.selectAll('.app-group-label').remove();
+        this.g.selectAll('.app-group-label-background').remove();
+
         // Reset network containers
         this.networkContainers = [];
+        this.appGroupContainers = [];
         this.internetBoundaryContainer = null;
 
-        // Reset cluster networks containers
+        // Reset cluster networks containers and app group containers
         Object.keys(this.providerNetworks).forEach(cluster => {
           if (this.providerNetworks[cluster]) {
             this.providerNetworks[cluster].container = null;
+
+            // Reset app group containers
+            if (this.providerNetworks[cluster].appGroups) {
+              Object.keys(this.providerNetworks[cluster].appGroups).forEach(app_name => {
+                if (this.providerNetworks[cluster].appGroups[app_name]) {
+                  this.providerNetworks[cluster].appGroups[app_name].container = null;
+                }
+              });
+            }
           }
         });
 
@@ -557,6 +601,9 @@ export default {
         clusters.forEach((cluster) => {
           const networkData = this.providerNetworks[cluster];
 
+          // Add app group containers first to ensure stacking order
+          this.addAppGroupContainers(cluster, networkData);
+
           // Create network container
           networkData.container = this.createNetworkContainer(
             cluster,
@@ -576,6 +623,144 @@ export default {
       this.updateSimulationForces();
 
       console.log(`D3: Added ${networkCount} network containers for private nodes`);
+    },
+
+    /**
+     * Add app group containers within a network container
+     * @param {string} cluster The cluster name
+     * @param {Object} networkData The network data containing centerX, centerY, radius, and appGroups
+     */
+    addAppGroupContainers(cluster, networkData) {
+      // Get the app groups for this cluster
+      const appGroups = Object.keys(networkData.appGroups || {});
+      const appGroupCount = appGroups.length;
+
+      if (appGroupCount === 0) {
+        console.log(`D3: No app groups to display for cluster ${cluster}`);
+        return;
+      }
+
+      console.log(`D3: Creating ${appGroupCount} app group containers for cluster ${cluster}`);
+
+      // Calculate positions for each app group within the network container
+      if (appGroupCount === 1) {
+        // Single app group - center it within the network
+        const app_name = appGroups[0];
+        const appGroupData = networkData.appGroups[app_name];
+        const nodeCount = appGroupData.nodes.length;
+
+        // Set app group center to network center
+        appGroupData.centerX = networkData.centerX;
+        appGroupData.centerY = networkData.centerY;
+
+        // Adjust radius based on number of nodes, but smaller than network radius
+        appGroupData.radius = Math.min(
+          Math.max(50, Math.sqrt(nodeCount) * 25),
+          networkData.radius * 0.8 // Ensure app group is smaller than network
+        );
+
+        // Create app group container
+        appGroupData.container = this.createAppGroupContainer(
+          app_name,
+          cluster,
+          appGroupData.centerX,
+          appGroupData.centerY,
+          appGroupData.radius
+        );
+
+        this.appGroupContainers.push(appGroupData.container);
+      } else {
+        // Multiple app groups - arrange in a circle within the network
+        // Calculate the radius of the circle on which to place app groups
+        const circleRadius = networkData.radius * 0.6; // 60% of network radius
+
+        // First pass: calculate app group sizes and initial positions
+        appGroups.forEach((app_name, index) => {
+          const appGroupData = networkData.appGroups[app_name];
+          const nodeCount = appGroupData.nodes.length;
+
+          // Adjust radius based on number of nodes, but smaller for multiple app groups
+          appGroupData.radius = Math.min(
+            Math.max(40, Math.sqrt(nodeCount) * 20),
+            networkData.radius * 0.4 // Ensure app groups are much smaller than network
+          );
+
+          // Calculate initial position on the circle within the network
+          const angle = (2 * Math.PI * index) / appGroupCount;
+          appGroupData.centerX = networkData.centerX + circleRadius * Math.cos(angle);
+          appGroupData.centerY = networkData.centerY + circleRadius * Math.sin(angle);
+        });
+
+        // Second pass: adjust positions to prevent overlaps
+        let hasOverlap = true;
+        let currentCircleRadius = circleRadius;
+        const maxIterations = 10; // Prevent infinite loops
+        let iteration = 0;
+
+        while (hasOverlap && iteration < maxIterations) {
+          hasOverlap = false;
+          iteration++;
+
+          // Check for overlaps between all pairs of app groups
+          for (let i = 0; i < appGroups.length; i++) {
+            const app1 = appGroups[i];
+            const appGroup1 = networkData.appGroups[app1];
+
+            for (let j = i + 1; j < appGroups.length; j++) {
+              const app2 = appGroups[j];
+              const appGroup2 = networkData.appGroups[app2];
+
+              // Calculate distance between app group centers
+              const dx = appGroup1.centerX - appGroup2.centerX;
+              const dy = appGroup1.centerY - appGroup2.centerY;
+              const distance = Math.sqrt(dx*dx + dy*dy);
+
+              // Calculate minimum required distance (sum of radii plus buffer)
+              const minDistance = appGroup1.radius + appGroup2.radius + 10; // 10px buffer
+
+              // If app groups overlap, increase the circle radius
+              if (distance < minDistance) {
+                hasOverlap = true;
+                currentCircleRadius += 10; // Increase by 10px each iteration
+
+                // Recalculate all app group positions with the new circle radius
+                // But ensure we stay within the network boundary
+                const maxAllowedRadius = networkData.radius * 0.7; // 70% of network radius
+                const adjustedCircleRadius = Math.min(currentCircleRadius, maxAllowedRadius);
+
+                appGroups.forEach((app_name, index) => {
+                  const appGroupData = networkData.appGroups[app_name];
+                  const angle = (2 * Math.PI * index) / appGroupCount;
+                  appGroupData.centerX = networkData.centerX + adjustedCircleRadius * Math.cos(angle);
+                  appGroupData.centerY = networkData.centerY + adjustedCircleRadius * Math.sin(angle);
+                });
+
+                break; // Break inner loop and restart checking
+              }
+            }
+
+            if (hasOverlap) break; // Break outer loop if overlap found
+          }
+        }
+
+        // Create app group containers with final positions
+        appGroups.forEach((app_name) => {
+          const appGroupData = networkData.appGroups[app_name];
+
+          // Create app group container
+          appGroupData.container = this.createAppGroupContainer(
+            app_name,
+            cluster,
+            appGroupData.centerX,
+            appGroupData.centerY,
+            appGroupData.radius
+          );
+
+          this.appGroupContainers.push(appGroupData.container);
+        });
+      }
+
+      console.log(`D3: Added ${appGroupCount} app group containers for cluster ${cluster}`);
     },
 
     /**
@@ -740,6 +925,87 @@ export default {
     },
 
     /**
+     * Create a single app group container with label within a network container
+     * @param {string} app_name The app_name for the group
+     * @param {string} cluster The cluster name for the parent network
+     * @param {number} centerX The x-coordinate of the center
+     * @param {number} centerY The y-coordinate of the center
+     * @param {number} radius The radius of the app group circle
+     * @returns {Object} The container element
+     */
+    createAppGroupContainer(app_name, cluster, centerX, centerY, radius) {
+      // Create app group container - keep it behind nodes but in front of network container
+      const container = this.g.append('circle')
+        .attr('class', 'app-group-container')
+        .attr('data-app-name', app_name)
+        .attr('data-cluster', cluster)
+        .attr('cx', centerX)
+        .attr('cy', centerY)
+        .attr('r', radius)
+        .attr('fill', 'rgba(245, 245, 250, 0.6)')
+        .attr('stroke', '#F9696E')  // Red color matching Application icon
+        .attr('stroke-width', 2)    // Slightly thicker for better visibility
+        .attr('stroke-dasharray', '1,1');  // Dotted line
+
+      // Keep container in front of other circles but behind nodes
+      container.lower()
+
+      // Create a group for the badge-style label
+      const labelGroup = this.g.append('g')
+        .attr('class', 'app-group-label-group')
+        .attr('data-app-name', app_name)
+        .attr('data-cluster', cluster)
+        .attr('transform', `translate(${centerX}, ${centerY - radius - 5})`);
+
+      // Create the label text to measure its width
+      const labelText = `${app_name}`;
+      const tempText = this.g.append('text')
+        .attr('font-size', '12px')
+        .attr('font-weight', 'bold')
+        .text(labelText)
+        .attr('visibility', 'hidden');
+
+      // Get the text width for sizing the badge background
+      const textWidth = tempText.node().getComputedTextLength();
+      tempText.remove();
+
+      // Calculate dynamic padding based on text width
+      const paddingPercentage = 0.1; // 10% of text width for padding
+      const minPadding = 15; // Minimum padding in pixels
+      const dynamicPadding = Math.max(minPadding, textWidth * paddingPercentage);
+      const totalPadding = dynamicPadding * 2; // Total padding (left and right)
+
+      // Add the badge background with dynamic width
+      const badgeBackground = labelGroup.append('rect')
+        .attr('class', 'app-group-label-background')
+        .attr('x', -textWidth/2 - dynamicPadding) // Dynamic padding on left
+        .attr('y', -12) // Position above the text baseline
+        .attr('width', textWidth + totalPadding) // Text width plus dynamic padding
+        .attr('height', 20) // Fixed height for the badge
+        .attr('rx', 10) // Rounded corners (half of height for pill shape)
+        .attr('ry', 10)
+        .attr('fill', 'rgba(245, 245, 250, 0.85)') // Translucent background
+        .attr('stroke', '#999')
+        .attr('stroke-width', 1);
+
+      // Add the label text on top of the background
+      const label = labelGroup.append('text')
+        .attr('class', 'app-group-label')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .attr('y', -2) // Slight adjustment to center text vertically
+        .attr('fill', '#555')
+        .attr('font-weight', 'bold')
+        .attr('font-size', '12px')
+        .text(labelText);
+
+      // Ensure label group is in front of everything
+      labelGroup.raise();
+
+      return container;
+    },
+
+    /**
      * Update simulation forces to handle multiple network containment
      */
     updateSimulationForces() {
@@ -879,6 +1145,21 @@ export default {
     keepNodeInsideNetwork(node, networkData) {
       if (!networkData) return;
 
+      // Check if this node belongs to an app group
+      const cluster = (node.data && node.data.cluster) || 'unknown';
+      const app_name = (node.data && node.data.app_name) || 'unknown';
+
+      // Skip Application nodes for app_name grouping
+      if (node.type !== 'Application' && 
+          networkData.appGroups && 
+          networkData.appGroups[app_name] && 
+          networkData.appGroups[app_name].container) {
+        // If node belongs to an app group, keep it inside that app group
+        this.keepNodeInsideAppGroup(node, networkData.appGroups[app_name]);
+        return;
+      }
+
+      // For nodes not in app groups or Application nodes, keep them inside the network
       const centerX = networkData.centerX;
       const centerY = networkData.centerY;
       const radius = networkData.radius;
@@ -901,6 +1182,44 @@ export default {
         // Calculate the pull strength - increases with distance from center
         // The 0.05 factor controls how strong the pull is - higher values = stronger pull
         const pullStrength = 0.05 * (distance / radius);
+
+        // Apply the pull toward the center
+        // The direction is opposite to the displacement vector (dx, dy)
+        node.x -= dx * pullStrength;
+        node.y -= dy * pullStrength;
+      }
+    },
+
+    /**
+     * Keep a node inside its app group container and apply a center-pull force
+     * @param {Object} node The node to keep inside
+     * @param {Object} appGroupData The app group data containing centerX, centerY, and radius
+     */
+    keepNodeInsideAppGroup(node, appGroupData) {
+      if (!appGroupData) return;
+
+      const centerX = appGroupData.centerX;
+      const centerY = appGroupData.centerY;
+      const radius = appGroupData.radius;
+
+      // Calculate distance from node to app group center
+      const dx = node.x - centerX;
+      const dy = node.y - centerY;
+      const distance = Math.sqrt(dx*dx + dy*dy);
+
+      // If node is outside app group, pull it back in
+      // Leave a small buffer (10px) from the edge
+      if (distance > radius - 10) {
+        const scale = (radius - 10) / distance;
+        node.x = centerX + dx * scale;
+        node.y = centerY + dy * scale;
+      } 
+      // Apply a center-pull force that gets stronger as nodes get farther from center
+      // This creates a stronger "gravity" toward the center of the app group
+      else {
+        // Calculate the pull strength - increases with distance from center
+        // The 0.08 factor controls how strong the pull is - higher values = stronger pull
+        const pullStrength = 0.08 * (distance / radius);
 
         // Apply the pull toward the center
         // The direction is opposite to the displacement vector (dx, dy)
@@ -1098,7 +1417,7 @@ export default {
         if (collisionForce) collisionForce.radius(20);
 
         const radialForce = this.simulation.force('radial');
-        if (radialForce) radialForce.strength(0.1);
+        if (radialForce) radialForce.strength(0.2);
       } else {
         const linkForce = this.simulation.force('link');
         if (linkForce) linkForce.distance(60);
@@ -1110,7 +1429,7 @@ export default {
         if (collisionForce) collisionForce.radius(25);
 
         const radialForce = this.simulation.force('radial');
-        if (radialForce) radialForce.strength(0.05);
+        if (radialForce) radialForce.strength(0.15);
       }
 
       // Create links
@@ -1119,8 +1438,9 @@ export default {
           .enter()
           .append('line')
           .attr('class', 'link')
-          .attr('stroke-width', .5)
-          .attr('stroke', '#999')
+          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
+          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
+          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
           .attr('marker-end', 'url(#arrowhead)');
 
       // Create node groups
@@ -1215,8 +1535,8 @@ export default {
           .nodes(data.nodes)
           .force('link').links(data.links);
 
-      // Use a higher alpha for better initial layout
-      this.simulation.alpha(1).alphaDecay(0.02).restart();
+      // Use a moderate alpha with faster decay for smoother animation
+      this.simulation.alpha(0.3).alphaDecay(0.05).restart();
     },
 
     /**
@@ -1243,7 +1563,7 @@ export default {
     drag() {
       return d3.drag()
           .on('start', (event, d) => {
-            if (!event.active) this.simulation.alphaTarget(0.3).restart();
+            if (!event.active) this.simulation.alphaTarget(0.1).restart();
             d.fx = d.x;
             d.fy = d.y;
           })
@@ -1264,10 +1584,37 @@ export default {
           })
           .on('end', (event, d) => {
             if (!event.active) this.simulation.alphaTarget(0);
-            // Keep fx and fy set to maintain the node's position
-            // We no longer set d.fx = null; d.fy = null;
-          });
 
+            // Get container dimensions to determine center
+            const container = this.$refs.d3Container;
+            const width = container.clientWidth;
+            const height = container.clientHeight;
+
+            // Calculate distance from center
+            const centerX = width / 2;
+            const centerY = height / 2;
+            const distanceFromCenter = Math.sqrt(
+              Math.pow((d.x - centerX), 2) + 
+              Math.pow((d.y - centerY), 2)
+            );
+
+            // If node is dragged too far from center (more than 40% of container width),
+            // unfix it so it can be pulled back by center force
+            if (distanceFromCenter > width * 0.4) {
+              d.fx = null;
+              d.fy = null;
+              // Apply a small alpha to allow the node to move back toward center
+              this.simulation.alpha(0.1).restart();
+            }
+            // Otherwise keep it fixed where user dragged it
+          });
+    },
+
+    /**
+     * Enhance the selected node's detail label
+     * @param {string} nodeId ID of the node to enhance
+     */
+    enhanceNodeDetail(nodeId) {
       // Make the selected node's detail label larger and bring it to front
       this.enhanceSelectedNodeDetail(nodeId);
 
@@ -1362,7 +1709,7 @@ export default {
         this.removeNetworkContainers();
         this.addNetworkContainers();
 
-        this.simulation.alpha(0.3).restart();
+        this.simulation.alpha(0.2).alphaDecay(0.05).restart();
       }
 
       // Node detail labels will be updated automatically in the next tick
@@ -2129,7 +2476,7 @@ export default {
       // Update simulation center force
       if (this.simulation) {
         this.simulation
-            .force('center', d3.forceCenter(width / 2, height / 2))
+            .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2))
             .alpha(0.3)
             .restart();
       }
