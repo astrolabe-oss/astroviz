@@ -2142,10 +2142,11 @@ export default {
      * @param {Array} connectedLinks Array of connected link indices that should be highlighted
      */
     updateLinksVisibility(connectedLinks) {
-      // Reset all links to faded first
+      // Reset all links to faded first, preserving type-specific styling
       this.g.selectAll('.link')
           .attr('stroke-width', 1)
-          .attr('stroke-dasharray', '3,3')
+          .attr('stroke-dasharray', d => d.type === 'CALLS' ? '3,3' : '5,3')
+          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
           .attr('stroke-opacity', 0.2);
 
       // Then highlight connected links
@@ -2223,7 +2224,11 @@ export default {
       }
 
       // Make all links semi-transparent for better focus on filtered nodes
+      // Preserve type-specific styling while reducing opacity
       this.g.selectAll('.link')
+          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
+          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
+          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
           .attr('stroke-opacity', 0.2);
     },
 
@@ -2342,11 +2347,11 @@ export default {
             textEl.style('font-weight', 'normal');
           });
 
-      // Restore original link appearance
+      // Restore original link appearance based on link type
       this.g.selectAll('.link')
-          .attr('stroke-width', .5)
-          .attr('stroke', '#999')
-          .attr('stroke-dasharray', null) // Remove dotted style
+          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
+          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
+          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
           .attr('stroke-opacity', 1); // Restore opacity
 
       // Remove all node and edge labels
