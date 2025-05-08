@@ -38,6 +38,11 @@ export default {
     highlightedNodeIds: {
       type: Set,
       default: () => new Set()
+    },
+    // Filters from parent component
+    filters: {
+      type: Object,
+      default: () => ({})
     }
   },
 
@@ -139,6 +144,65 @@ export default {
           this.highlightFilteredNodes(newVal);
         } catch (error) {
           console.error("D3: Error in highlightedNodeIds watcher", error);
+        }
+      },
+      deep: true
+    },
+    filters: {
+      handler(newVal) {
+        console.log("D3: Filters changed", newVal);
+        try {
+          if (this.graphData && this.graphData.vertices &&
+              Object.keys(this.graphData.vertices).length > 0) {
+            // Get the current transformed data
+            const visData = this.transformNeo4JDataForD3(this.graphData, newVal);
+
+            // Update simulation with new node data - this will set this.currentNodes and this.currentLinks
+            this.updateSimulation(visData);
+
+            // Remove any existing network containers before recreating
+            this.removeNetworkContainers();
+
+            // Group private nodes by cluster
+            this.providerNetworks = {};
+            this.privateNodes.forEach(node => {
+              const cluster = (node.data && node.data.cluster) || 'unknown';
+              if (!this.providerNetworks[cluster]) {
+                this.providerNetworks[cluster] = {
+                  nodes: [],
+                  container: null,
+                  centerX: 0,
+                  centerY: 0,
+                  radius: 0,
+                  appGroups: {}
+                };
+              }
+              this.providerNetworks[cluster].nodes.push(node);
+
+              // Skip Application nodes for app_name grouping
+              if (node.type === 'Application') {
+                return;
+              }
+
+              // Group nodes by app_name within each cluster
+              const app_name = (node.data && node.data.app_name) || 'unknown';
+              if (!this.providerNetworks[cluster].appGroups[app_name]) {
+                this.providerNetworks[cluster].appGroups[app_name] = {
+                  nodes: [],
+                  container: null,
+                  centerX: 0,
+                  centerY: 0,
+                  radius: 0
+                };
+              }
+              this.providerNetworks[cluster].appGroups[app_name].nodes.push(node);
+            });
+
+            // Add network containers after nodes are created
+            this.addNetworkContainers();
+          }
+        } catch (error) {
+          console.error("D3: Error in filters watcher", error);
         }
       },
       deep: true
@@ -290,7 +354,8 @@ export default {
         let visData;
 
         // No need to transform based on view mode - data is already transformed in App.vue
-        visData = this.transformNeo4JDataForD3(this.graphData);
+        // Use filters from props
+        visData = this.transformNeo4JDataForD3(this.graphData, this.filters);
 
         // Store node positions before updating
         this.saveNodePositions();
@@ -298,17 +363,8 @@ export default {
         // Apply any saved positions to the new nodes
         this.applyNodePositions(visData.nodes);
 
-        // Store current nodes and links
-        this.currentNodes = visData.nodes;
-        this.currentLinks = visData.links;
-
-        // Separate private and public nodes
-        this.publicNodes = visData.nodes.filter(node => 
-          node.data && node.data.public_ip === true);
-        this.privateNodes = visData.nodes.filter(node => 
-          (!node.data || node.data.public_ip !== true) && 
-          // Application nodes should not be placed in private networks
-          node.type !== 'Application');
+        // Update simulation with new node data - this will set this.currentNodes and this.currentLinks
+        this.updateSimulation(visData);
 
         console.log('Nodes with public_ip=true:', this.publicNodes.length);
         console.log('Nodes with public_ip=false:', this.privateNodes.length);
@@ -355,9 +411,6 @@ export default {
           const appGroups = Object.keys(this.providerNetworks[cluster].appGroups);
           console.log(`Cluster ${cluster} has ${appGroups.length} app groups:`, appGroups);
         });
-
-        // Update simulation with new node data
-        this.updateSimulation(visData);
 
         // Add network containers after nodes are created
         this.addNetworkContainers();
@@ -1402,8 +1455,49 @@ export default {
       this.g.selectAll('.network-container-glow').remove();
       this.g.selectAll('.network-label').remove();
 
+      // Filter nodes - always hide Application nodes in detailed view
+      let filteredNodes = data.nodes;
+      if (this.viewMode === 'detailed') {
+        filteredNodes = data.nodes.filter(node => node.type !== 'Application');
+      }
+
+      // Filter links - show or hide public traffic based on the filter
+      let filteredLinks = data.links;
+      // Invert the logic: when hidePublicTraffic is false, hide public traffic
+      if (!this.filters.hidePublicTraffic) {
+        filteredLinks = data.links.filter(link => {
+          if (link.type === 'CALLS') {
+            // Find the target node
+            const targetNode = data.nodes.find(node => node.id === link.target);
+            // Skip if target has public_ip=true
+            if (targetNode && targetNode.data && targetNode.data.public_ip === true) {
+              return false;
+            }
+          }
+          return true;
+        });
+      }
+
+      // Also filter links that connect to hidden nodes
+      const visibleNodeIds = new Set(filteredNodes.map(node => node.id));
+      filteredLinks = filteredLinks.filter(link => 
+        visibleNodeIds.has(link.source) && visibleNodeIds.has(link.target)
+      );
+
+      // Update current nodes and links with filtered data
+      this.currentNodes = filteredNodes;
+      this.currentLinks = filteredLinks;
+
+      // Separate private and public nodes
+      this.publicNodes = filteredNodes.filter(node => 
+        node.data && node.data.public_ip === true);
+      this.privateNodes = filteredNodes.filter(node => 
+        (!node.data || node.data.public_ip !== true) && 
+        // Application nodes should not be placed in private networks
+        node.type !== 'Application');
+
       // Adjust force parameters based on graph size
-      const nodeCount = data.nodes.length;
+      const nodeCount = filteredNodes.length;
 
       // For larger graphs, use even more compact settings
       if (nodeCount > 100) {
@@ -1434,7 +1528,7 @@ export default {
 
       // Create links
       const link = this.g.selectAll('.link')
-          .data(data.links)
+          .data(filteredLinks)
           .enter()
           .append('line')
           .attr('class', 'link')
@@ -1445,7 +1539,7 @@ export default {
 
       // Create node groups
       const node = this.g.selectAll('.node')
-          .data(data.nodes)
+          .data(filteredNodes)
           .enter()
           .append('g')
           .attr('class', 'node')

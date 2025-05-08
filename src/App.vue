@@ -25,7 +25,7 @@
             @disconnect="disconnect"
         />
       </div>
-      
+
       <div class="filter-container">
         <div class="view-mode-wrapper">
           <ViewModeSelector v-model="viewMode" />
@@ -36,7 +36,7 @@
           @input="updateFilters" 
         />
       </div>
-      
+
       <div class="connect-container" v-if="!connected">
         <button @click="connect" class="connect-button">Connect to Neo4j</button>
       </div>
@@ -54,7 +54,7 @@
           </button>
         </div>
       </div>
-      
+
       <D3NetworkGraph
           ref="networkGraph"
           :graph-data="filteredGraphData"
@@ -142,7 +142,8 @@ export default {
         provider: '',
         protocolMux: '',
         address: '',
-        publicIp: ''
+        publicIp: '',
+        hidePublicTraffic: true
       },
       selectedNode: null,
       selectedNodes: [] // Array to track multiple selected nodes
@@ -158,7 +159,7 @@ export default {
       localStorage.setItem('viewMode', newValue);
     }
   },
-  
+
   computed: {
     /**
      * Get filtered graph data based on current filters and view mode
@@ -170,7 +171,7 @@ export default {
       }
       return this.rawGraphData;
     },
-    
+
     /**
      * Get set of node IDs that match current filters
      */
@@ -181,7 +182,7 @@ export default {
           !this.filters.publicIp) {
         return new Set();
       }
-    
+
       // Find vertices that match filters
       const matchingNodeIds = new Set();
       Object.entries(this.rawGraphData.vertices).forEach(([id, vertex]) => {
@@ -189,7 +190,7 @@ export default {
         const publicIpMatch = !this.filters.publicIp || 
           (this.filters.publicIp === 'public' && vertex.public_ip) || 
           (this.filters.publicIp === 'private' && !vertex.public_ip);
-        
+
         if (
             (!this.filters.appName || vertex.app_name === this.filters.appName) &&
             (!this.filters.provider || vertex.provider === this.filters.provider) &&
@@ -200,11 +201,11 @@ export default {
           matchingNodeIds.add(id);
         }
       });
-    
+
       console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.rawGraphData.vertices).length} vertices`);
       return matchingNodeIds;
     },
-    
+
     /**
      * Get formatted connection info string
      */
@@ -233,7 +234,7 @@ export default {
         // Update the component's loading status and progress
         this.loadingStatus = status;
         this.loadingProgress = progress;
-        
+
         // Call the callbacks if provided
         if (statusCallback && typeof statusCallback === 'function') {
           statusCallback(status);
@@ -242,20 +243,20 @@ export default {
           progressCallback(progress);
         }
       });
-      
+
       // Always generate aggregated data regardless of view mode
       const aggregatedData = neo4jService.aggregateDataForApplicationView(rawData);
-      
+
       console.log(`APP: Fetched raw data with ${Object.keys(rawData.vertices).length} nodes and ${rawData.edges.length} edges`);
       console.log(`APP: Generated aggregated data with ${Object.keys(aggregatedData.vertices).length} nodes and ${aggregatedData.edges.length} edges`);
-      
+
       // Update both data stores
       this.rawGraphData = rawData;
       this.aggregatedGraphData = aggregatedData;
-      
+
       return rawData;
     },
-    
+
     /**
      * Refresh graph data from Neo4j
      */
@@ -265,13 +266,13 @@ export default {
         this.loading = true;
         this.loadingStatus = "Refreshing graph data...";
         this.loadingProgress = 10;
-        
+
         // Call the consolidated method to update both raw and aggregated data
         await this.fetchGraphFromNeo4j();
-        
+
         // Hide loading state
         this.loading = false;
-        
+
         console.log("APP: Graph data refreshed successfully");
       } catch (error) {
         console.error("Failed to refresh graph data:", error);
@@ -279,7 +280,7 @@ export default {
         this.loading = false;
       }
     },
-    
+
     /**
      * Connect to Neo4j database
      */
@@ -340,7 +341,7 @@ export default {
         console.log("APP: Preparing to fetch data");
         this.loadingStatus = "Fetching graph data...";
         this.loadingProgress = 10;
-        
+
         // Call the consolidated method with status logging callback
         const graphData = await this.fetchGraphFromNeo4j(
           (status) => {
@@ -354,7 +355,7 @@ export default {
         // Store the graph data
         // We are not directly assigning to this.graphData as we maintain separate
         // rawGraphData and aggregatedGraphData properties
-        
+
         // Extract unique values for filters
         console.log("APP: Extracting filter values");
         this.loadingStatus = "Extracting filter values...";
@@ -363,7 +364,7 @@ export default {
         const providers = new Set();
         const protocolMuxes = new Set();
         const addresses = new Set();
-        
+
         console.log(`APP: Processing ${Object.keys(this.rawGraphData.vertices).length} vertices for filter values`);
         Object.values(this.rawGraphData.vertices).forEach(vertex => {
           if (vertex.app_name) appNames.add(vertex.app_name);
@@ -371,7 +372,7 @@ export default {
           if (vertex.protocol_multiplexor) protocolMuxes.add(vertex.protocol_multiplexor);
           if (vertex.address) addresses.add(vertex.address);
         });
-        
+
         this.uniqueValues = {
           appNames: Array.from(appNames).sort(),
           providers: Array.from(providers).sort(),
@@ -407,44 +408,44 @@ export default {
      */
     onNodeClicked(node, isShiftKey) {
       console.log("APP: Node clicked with shift key:", isShiftKey);
-      
+
       // Always update the currently selected node for the details panel
       this.selectedNode = node;
-      
+
       if (!this.$refs.networkGraph) {
         console.warn("APP: Network graph reference not available");
         return;
       }
-      
+
       // Find the node ID in the graph data for visualization
       const nodeId = findNodeIdByProperties(node, this.filteredGraphData);
       if (!nodeId) {
         console.warn("APP: Could not find node ID for clicked node:", node);
         return;
       }
-      
+
       // Multi-select handling with shift key
       if (isShiftKey) {
         // Check if this node is already selected to avoid duplicates
         const nodeAlreadySelected = this.selectedNodes.some(
           selectedNode => JSON.stringify(selectedNode) === JSON.stringify(node)
         );
-        
+
         // If not already selected, add to the selection
         if (!nodeAlreadySelected) {
           this.selectedNodes.push(node);
-          
+
           // Tell the graph visualization to highlight this node without clearing others
           this.$refs.networkGraph.selectNodeById(nodeId, true);
         }
       } else {
         // Regular click (no shift) - replace the selection
         this.selectedNodes = [node];
-        
+
         // Tell the graph visualization to highlight only this node
         this.$refs.networkGraph.selectNodeById(nodeId, false);
       }
-      
+
       console.log("APP: Selected nodes count:", this.selectedNodes.length);
     },
 
@@ -455,21 +456,21 @@ export default {
      */
     onSelectConnectedNode(nodeData, isShiftKey = false) {
       console.log("APP: Selecting connected node", nodeData, isShiftKey ? "with shift" : "");
-    
+
       // Find the node ID in the graph data
       const nodeId = findNodeIdByProperties(nodeData, this.filteredGraphData);
-    
+
       if (nodeId) {
         // Always update the currently selected node for the details panel
         this.selectedNode = nodeData;
-        
+
         // Multi-select handling
         if (isShiftKey) {
           // Check if node already selected to avoid duplicates
           const nodeAlreadySelected = this.selectedNodes.some(
             selectedNode => JSON.stringify(selectedNode) === JSON.stringify(nodeData)
           );
-          
+
           // If not already selected, add to the selection
           if (!nodeAlreadySelected) {
             this.selectedNodes.push(nodeData);
@@ -478,7 +479,7 @@ export default {
           // Regular selection - replace the selection
           this.selectedNodes = [nodeData];
         }
-        
+
         // Tell the graph visualization to highlight this node
         if (this.$refs.networkGraph) {
           this.$refs.networkGraph.selectNodeById(nodeId, isShiftKey);
@@ -487,7 +488,7 @@ export default {
         console.warn("APP: Connected node not found in graph data", nodeData);
       }
     },
-    
+
     /**
      * Update filters from FilterControls component
      */

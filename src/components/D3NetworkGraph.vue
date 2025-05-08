@@ -26,6 +26,7 @@
         :viewMode="viewMode"
         :nodeColors="nodeColors"
         :highlighted-node-ids="highlightedNodeIds"
+        :filters="$parent.filters"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
