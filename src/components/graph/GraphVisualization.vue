@@ -1441,7 +1441,12 @@ export default {
           .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
           .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
           .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
-          .attr('marker-end', 'url(#arrowhead)');
+          .attr('marker-end', 'url(#arrowhead)')
+          .style('cursor', 'pointer')
+          .on('click', (event, d) => {
+            event.stopPropagation(); // Prevent click from reaching the SVG
+            this.onLinkClick(d, event);
+          });
 
       // Create node groups
       const node = this.g.selectAll('.node')
@@ -1536,7 +1541,7 @@ export default {
           .force('link').links(data.links);
 
       // Use a moderate alpha with faster decay for smoother animation
-      this.simulation.alpha(0.3).alphaDecay(0.05).restart();
+      this.simulation.alpha(0.3).alphaDecay(0.02).restart();
     },
 
     /**
@@ -1724,6 +1729,141 @@ export default {
     onNodeClick(node, event) {
       // Emit node clicked event with the node data and shift key state
       this.$emit('node-clicked', node.data, event);
+    },
+
+    /**
+     * Handle link click event
+     * @param {Object} link The clicked link data
+     * @param {Object} event The original DOM event
+     */
+    onLinkClick(link, event) {
+      // Highlight the link and its connected nodes
+      this.highlightLink(link, event.shiftKey);
+    },
+
+    /**
+     * Highlight a link and its connected nodes
+     * @param {Object} link The link to highlight
+     * @param {boolean} appendToSelection Whether to add to existing selection
+     */
+    highlightLink(link, appendToSelection = false) {
+      console.log("D3: Highlighting link", link, "append =", appendToSelection);
+
+      // Only clear existing highlight if not appending
+      if (!appendToSelection) {
+        this.clearHighlight();
+        this.selectedNodeIds.clear(); // Clear the set when not appending
+      }
+
+      // Get the source and target nodes
+      const sourceNode = typeof link.source === 'object' ? link.source : this.currentNodes.find(n => n.id === link.source);
+      const targetNode = typeof link.target === 'object' ? link.target : this.currentNodes.find(n => n.id === link.target);
+
+      if (!sourceNode || !targetNode) {
+        console.warn("D3: Could not find source or target node for link", link);
+        return;
+      }
+
+      // Add the source and target nodes to the selection
+      this.selectedNodeIds.add(sourceNode.id);
+      this.selectedNodeIds.add(targetNode.id);
+
+      // Create a set of nodes to highlight (source and target)
+      const nodesToHighlight = new Set([sourceNode.id, targetNode.id]);
+
+      // Find the index of the clicked link
+      const linkIndex = this.currentLinks.findIndex(l => 
+        (l.source === link.source && l.target === link.target) || 
+        (l.source.id === link.source.id && l.target.id === link.target.id)
+      );
+
+      if (linkIndex === -1) {
+        console.warn("D3: Could not find link index", link);
+        return;
+      }
+
+      // Create an array with just this link's index
+      const linksToHighlight = [linkIndex];
+
+      // Apply highlight to the source and target nodes
+      this.g.selectAll('.node')
+          .filter(d => nodesToHighlight.has(d.id))
+          .each(function(d) {
+            const node = d3.select(this);
+
+            // Skip if this node is already transformed (for multi-select)
+            if (appendToSelection && node.attr('data-original-transform')) {
+              return;
+            }
+
+            // Store original transform for later restoration
+            const currentTransform = node.attr('transform');
+            node.attr('data-original-transform', currentTransform);
+
+            // Scale up the node
+            const translate = currentTransform.match(/translate\(([^)]+)\)/)[1].split(',');
+            const x = parseFloat(translate[0]);
+            const y = parseFloat(translate[1]);
+
+            // Apply transform - same scale for both nodes
+            node.attr('transform', `translate(${x},${y}) scale(1.5)`)
+                .style('filter', 'drop-shadow(0 0 5px #4444ff)');
+
+            // Get the SVG icon element and change its color
+            const svgIcon = node.select('svg');
+            if (!svgIcon.empty()) {
+              // Store original color if not already stored
+              if (!node.attr('data-original-color')) {
+                const originalColor = svgIcon.style('color');
+                node.attr('data-original-color', originalColor);
+              }
+
+              // Apply purple color for connected nodes
+              svgIcon.style('color', '#7030A0'); // Dark purple for both nodes
+
+              // For Unknown nodes, also change the circle fill color and make question mark more visible
+              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
+                svgIcon.select('circle').attr('fill', '#7030A0');
+                // Make the question mark white and bolder for better visibility
+                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
+              }
+            }
+          })
+          .select('text')
+          .style('font-weight', 'bold')
+          .style('font-size', function() {
+            const textEl = d3.select(this);
+            // Check if we've already stored the original font size
+            if (!textEl.attr('data-original-font-size')) {
+              const currentSize = textEl.style('font-size');
+              textEl.attr('data-original-font-size', currentSize);
+            }
+            // Use the stored original size to calculate the enhanced size
+            const originalSize = textEl.attr('data-original-font-size');
+            const size = parseFloat(originalSize);
+            const unit = originalSize.replace(/[\d.]/g, '');
+            return `${size * 1.2}${unit}`; // Apply 1.2x sizing once
+          });
+
+      // Update opacity for all nodes - keep source and target nodes fully opaque
+      this.updateNodesOpacity(nodesToHighlight);
+
+      // Highlight the clicked link
+      this.g.selectAll('.link')
+          .filter((d, i) => i === linkIndex)
+          .attr('stroke-width', 3)
+          .attr('stroke', '#4444ff')
+          .attr('stroke-dasharray', null)
+          .attr('stroke-opacity', 1);
+
+      // Update link styling for all links
+      this.updateLinksVisibility(linksToHighlight);
+
+      // Show node labels for the source and target nodes
+      this.showSelectedNodeLabels();
+
+      // Show label for the clicked link
+      this.showEdgeLabels();
     },
 
     /**
