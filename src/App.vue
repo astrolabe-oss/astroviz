@@ -17,6 +17,8 @@
         :progress="loadingProgress"
     />
 
+    <AlphaBanner />
+    
     <div class="header-row">
       <div class="logo-container">
         <ConnectionHeader
@@ -85,6 +87,7 @@ import LoadingOverlay from '@/components/connection/LoadingOverlay.vue';
 import D3NetworkGraph from '@/components/D3NetworkGraph.vue';
 import FilterControls from '@/components/filter/FilterControls.vue';
 import ViewModeSelector from '@/components/filter/ViewModeSelector.vue';
+import AlphaBanner from '@/components/AlphaBanner.vue';
 
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
@@ -104,7 +107,8 @@ export default {
     FilterControls,
     ViewModeSelector,
     D3NetworkGraph,
-    NodeDetails
+    NodeDetails,
+    AlphaBanner
   },
 
   data() {
