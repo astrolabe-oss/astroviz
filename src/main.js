@@ -6,6 +6,15 @@
 // src/main.js
 import Vue from 'vue';
 import App from './App.vue';
+import VueCytoscape from 'vue-cytoscape';
+import cytoscape from 'cytoscape';
+import coseBilkent from 'cytoscape-cose-bilkent';
+
+// Register layout extensions globally
+cytoscape.use(coseBilkent);
+
+// Register VueCytoscape globally
+Vue.use(VueCytoscape);
 
 Vue.config.productionTip = false;
 

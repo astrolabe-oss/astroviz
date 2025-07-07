@@ -3,43 +3,35 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 
-// src/components/graph/GraphVisualization.vue
 <template>
-  <div id="d3-container" ref="d3Container"></div>
+  <cytoscape :config="config" @afterCreated="onAfterCreated" class="cytoscape-widget">
+    <cy-element
+      v-for="element in elements"
+      :key="element.data.id"
+      :definition="element"
+    />
+  </cytoscape>
 </template>
 
 <script>
-import * as d3 from 'd3';
-import networkIcons from '../networkIcons';
-import { transformNeo4JDataForD3, getNodeLabel } from './graphTransformUtils';
-
 export default {
   name: 'GraphVisualization',
 
   props: {
-    // Graph data from Neo4j
     graphData: {
       type: Object,
       required: true,
       default: () => ({ vertices: {}, edges: [] })
     },
-    // Current view mode: 'detailed' or 'application'
     viewMode: {
       type: String,
       required: true,
       default: 'detailed'
     },
-    // Node color mapping
     nodeColors: {
       type: Object,
       required: true
     },
-    // Set of node IDs that should be highlighted
-    highlightedNodeIds: {
-      type: Set,
-      default: () => new Set()
-    },
-    // Filters from parent component
     filters: {
       type: Object,
       default: () => ({})
@@ -48,2804 +40,426 @@ export default {
 
   data() {
     return {
-      simulation: null,
-      svg: null,
-      g: null, // Main group for zoom/pan
-      zoom: null,
-      currentZoomLevel: 1, // Track current zoom level
-
-      // Store current nodes and links for updates
-      currentNodes: [],
-      currentLinks: [],
-
-      // Store public and private nodes separately
-      publicNodes: [],
-      privateNodes: [],
-
-      // Network container properties
-      networkContainers: [], // Array of network containers, one for each cluster
-
-      // App group container properties
-      appGroupContainers: [], // Array of app group containers, one for each app_name within a cluster
-
-      // Internet boundary container properties
-      internetBoundaryContainer: null,
-      internetBoundaryRadius: 0,
-      internetBoundaryCenterX: 0,
-      internetBoundaryCenterY: 0,
-
-      // Map to store cluster-specific data
-      providerNetworks: {}, // Structure: { cluster: { container, nodes, centerX, centerY, radius, appGroups: { app_name: { container, nodes, centerX, centerY, radius } } } }
-
-      // Map to store fixed node positions
-      nodePositions: {},
-
-      // Track selected node IDs (multi-selection mode)
-      selectedNodeIds: new Set(),
-
-      // Track the most recently selected node ID
-      lastSelectedNodeId: null,
-
-      // Store node colors for restoration
-      nodeOriginalColors: {},
-
-      // Node size for rendering
-      nodeSize: 18,
-
-      // Larger node size for selected nodes
-      selectedNodeSize: 24
+      cy: null
     };
   },
 
   computed: {
-    nodeCount() {
-      return this.currentNodes.length;
-    },
-
-    linkCount() {
-      return this.currentLinks.length;
-    }
-  },
-
-  watch: {
-    // Update visualization when graph data or view mode changes
-    graphData: {
-      handler(newVal) {
-        console.log("D3: Graph data changed");
-        try {
-          if (newVal && newVal.vertices && Object.keys(newVal.vertices).length > 0) {
-            this.updateVisualization();
+    config() {
+      return {
+        style: [
+          {
+            selector: 'node',
+            style: {
+              'background-color': 'data(color)',
+              'label': 'data(label)',
+              'text-valign': 'center',
+              'text-halign': 'center',
+              'font-size': '8px',
+              'width': 20,
+              'height': 20,
+              'color': '#000',
+              'text-outline-width': 1,
+              'text-outline-color': '#fff'
+            }
+          },
+          {
+            selector: '.boundary-node',
+            style: {
+              'width': 600,
+              'height': 600,
+              'shape': 'ellipse',
+              'background-opacity': 0,
+              'border-width': 3,
+              'border-style': 'dashed',
+              'border-color': '#4A98E3',
+              'border-opacity': 0.8,
+              'label': 'data(label)',
+              'text-valign': 'top',
+              'text-margin-y': -320,
+              'font-size': '14px',
+              'font-weight': 'bold',
+              'color': '#4A98E3',
+              'events': 'no',
+              'z-index': -1
+            }
+          },
+          {
+            selector: 'edge',
+            style: {
+              'width': 1,
+              'line-color': '#ccc',
+              'target-arrow-color': '#ccc',
+              'target-arrow-shape': 'triangle',
+              'curve-style': 'bezier'
+            }
+          },
+          {
+            selector: ':parent',
+            style: {
+              'background-opacity': 0.2,
+              'background-color': 'data(color)',
+              'border-width': 5,
+              'border-style': 'solid',
+              'border-color': 'data(color)',
+              'border-opacity': 0.9,
+              'label': 'data(label)',
+              'text-valign': 'top',
+              'text-halign': 'center',
+              'font-size': '16px',
+              'font-weight': 'bold',
+              'color': '#333',
+              'text-margin-y': -20,
+              'padding': 30,
+              'shape': 'roundrectangle'
+            }
           }
-        } catch (error) {
-          console.error("D3: Error in graphData watcher", error);
-        }
-      },
-      deep: true
+        ],
+        layout: this.layoutConfig
+      };
     },
-    viewMode() {
-      console.log("D3: View mode changed");
-      try {
-        // First remove any existing network containers to prevent ghosts
-        this.removeNetworkContainers();
-
-        if (this.graphData && this.graphData.vertices &&
-            Object.keys(this.graphData.vertices).length > 0) {
-          this.updateVisualization();
-        }
-      } catch (error) {
-        console.error("D3: Error in viewMode watcher", error);
-      }
-    },
-    highlightedNodeIds: {
-      handler(newVal) {
-        console.log("D3: Highlighted nodes changed", newVal?.size);
-        try {
-          // Apply highlighting to filtered nodes
-          this.highlightFilteredNodes(newVal);
-        } catch (error) {
-          console.error("D3: Error in highlightedNodeIds watcher", error);
-        }
-      },
-      deep: true
-    },
-    filters: {
-      handler(newVal) {
-        console.log("D3: Filters changed", newVal);
-        try {
-          if (this.graphData && this.graphData.vertices &&
-              Object.keys(this.graphData.vertices).length > 0) {
-            // Get the current transformed data
-            const visData = this.transformNeo4JDataForD3(this.graphData, newVal);
-
-            // Update simulation with new node data - this will set this.currentNodes and this.currentLinks
-            this.updateSimulation(visData);
-
-            // Remove any existing network containers before recreating
-            this.removeNetworkContainers();
-
-            // Group private nodes by cluster
-            this.providerNetworks = {};
-            this.privateNodes.forEach(node => {
-              const cluster = (node.data && node.data.cluster) || 'unknown';
-              if (!this.providerNetworks[cluster]) {
-                this.providerNetworks[cluster] = {
-                  nodes: [],
-                  container: null,
-                  centerX: 0,
-                  centerY: 0,
-                  radius: 0,
-                  appGroups: {}
-                };
-              }
-              this.providerNetworks[cluster].nodes.push(node);
-
-              // Skip Application nodes for app_name grouping
-              if (node.type === 'Application') {
-                return;
-              }
-
-              // Group nodes by app_name within each cluster
-              const app_name = (node.data && node.data.app_name) || 'unknown';
-              if (!this.providerNetworks[cluster].appGroups[app_name]) {
-                this.providerNetworks[cluster].appGroups[app_name] = {
-                  nodes: [],
-                  container: null,
-                  centerX: 0,
-                  centerY: 0,
-                  radius: 0
-                };
-              }
-              this.providerNetworks[cluster].appGroups[app_name].nodes.push(node);
-            });
-
-            // Add network containers after nodes are created
-            this.addNetworkContainers();
-          }
-        } catch (error) {
-          console.error("D3: Error in filters watcher", error);
-        }
-      },
-      deep: true
-    }
-  },
-
-  mounted() {
-    // Initialize D3 visualization
-    try {
-      this.initD3();
-
-      // Update with initial data if available
-      if (this.graphData.vertices && Object.keys(this.graphData.vertices).length > 0) {
-        this.updateVisualization();
+    
+    elements() {
+      console.log(`Computing elements for ${this.viewMode} view`);
+      
+      if (!this.graphData || !this.graphData.vertices || !this.graphData.edges) {
+        console.log('No graph data available');
+        return [];
       }
 
-      // Handle window resize
-      window.addEventListener('resize', this.onResize);
-    } catch (error) {
-      console.error("D3: Error in mounted", error);
-    }
-  },
-
-  beforeDestroy() {
-    // Clean up
-    window.removeEventListener('resize', this.onResize);
-
-    // Remove network containers
-    this.removeNetworkContainers();
-
-    // Stop simulation
-    if (this.simulation) {
-      this.simulation.stop();
-    }
-
-    // Clear SVG content
-    if (this.g) {
-      this.g.selectAll('*').remove();
+      if (this.viewMode === 'application') {
+        return this.createCompoundNodeElements();
+      } else {
+        return this.createDetailedElements();
+      }
+    },
+    
+    layoutConfig() {
+      // Use preset layout for detailed view (manual positioning)
+      // Use cose-bilkent for application view (compound nodes)
+      if (this.viewMode === 'detailed') {
+        return {
+          name: 'preset',
+          fit: true,
+          padding: 100
+        };
+      } else {
+        return {
+          name: 'cose-bilkent',
+          fit: true,
+          padding: 80,
+          nodeOverlap: 20,
+          idealEdgeLength: 80,
+          edgeElasticity: 0.45,
+          nestingFactor: 0.1,
+          gravity: 0.25,
+          gravityCompound: 1.5,
+          gravityRangeCompound: 2.0,
+          numIter: 2500,
+          initialTemp: 200,
+          coolingFactor: 0.95,
+          minTemp: 1.0,
+          nodeRepulsion: 5000,
+          tile: true,
+          animate: 'end',
+          animationDuration: 1000,
+          randomize: false,
+          tilingPaddingVertical: 40,
+          tilingPaddingHorizontal: 40
+        };
+      }
     }
   },
 
   methods: {
-    // Utility functions for graph transformations
-    transformNeo4JDataForD3,
-    getNodeLabel,
-
-    // The updateNodeHighlighting method has been replaced by highlightFilteredNodes
-
-    /**
-     * Initialize the D3 visualization
-     */
-    initD3() {
-      try {
-        console.log("D3: Initializing visualization");
-        const container = this.$refs.d3Container;
-        const width = container.clientWidth;
-        const height = container.clientHeight || 600;
-
-        // Create SVG element
-        this.svg = d3.select(container)
-            .append('svg')
-            .attr('width', '100%')
-            .attr('height', '100%')
-            .attr('viewBox', `0 0 ${width} ${height}`)
-            .attr('preserveAspectRatio', 'xMidYMid meet')
-            .on('click', (event) => {
-              // Only clear highlight when not pressing shift key
-              if (!event.shiftKey) {
-                this.clearHighlight();
-                // Make sure we reset the selectedNodeIds
-                this.selectedNodeIds.clear();
-              }
-            });
-
-        // Create zoom behavior
-        this.zoom = d3.zoom()
-            .scaleExtent([0.1, 5])
-            .on('zoom', (event) => {
-              // Update current zoom level
-              this.currentZoomLevel = event.transform.k;
-              this.g.attr('transform', event.transform);
-              this.$emit('zoom-change', event.transform.k);
-            });
-
-        // Apply zoom to the SVG
-        this.svg.call(this.zoom);
-
-        // Create a group for the graph elements
-        this.g = this.svg.append('g');
-
-        // Create arrow marker definition
-        this.svg.append('defs').append('marker')
-            .attr('id', 'arrowhead')
-            .attr('viewBox', '-0 -5 10 10')
-            .attr('refX', 20)
-            .attr('refY', 0)
-            .attr('orient', 'auto')
-            .attr('markerWidth', 6)
-            .attr('markerHeight', 6)
-            .attr('xoverflow', 'visible')
-            .append('svg:path')
-            .attr('d', 'M 0,-5 L 10 ,0 L 0,5')
-            .attr('fill', '#999')
-            .style('stroke', 'none');
-
-        // Initialize force simulation with more compact settings
-        this.simulation = d3.forceSimulation()
-            // Shorter link distance for more compact layout
-            .force('link', d3.forceLink().id(d => d.id).distance(60))
-            // Stronger repulsion force between nodes
-            .force('charge', d3.forceManyBody().strength(-300))
-            // Stronger center force to keep nodes centered
-            .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2))
-            // Larger collision radius to prevent nodes from getting too close
-            .force('collision', d3.forceCollide().radius(30))
-            // Add a stronger radial force to keep nodes within a certain radius
-            .force('radial', d3.forceRadial(Math.min(width, height) / 3, width / 2, height / 2).strength(0.25))
-            .on('tick', this.tick);
-
-        // Network containers will be positioned when created
-
-        console.log("D3: Visualization initialized with compact force layout");
-      } catch (error) {
-        console.error("D3: Error initializing D3", error);
-        throw error;
-      }
-    },
-
-    /**
-     * Update the visualization based on current graph data and view mode
-     */
-    updateVisualization() {
-      try {
-        console.log("D3: Updating visualization");
-        if (!this.svg || !this.graphData.vertices || Object.keys(this.graphData.vertices).length === 0) {
-          console.log("D3: Nothing to visualize");
-          return;
+    createDetailedElements() {
+      console.log('Creating detailed view with public/private boundary visualization');
+      const elements = [];
+      
+      // Center of the visualization
+      const centerX = 500;
+      const centerY = 400;
+      
+      // Radii for positioning
+      const innerRadius = 250; // Private nodes inside this circle
+      const outerRadius = 400; // Public nodes outside inner circle
+      const boundaryRadius = 300; // Visual boundary between public/private
+      
+      // First, classify nodes as public or private
+      const publicNodes = [];
+      const privateNodes = [];
+      
+      Object.entries(this.graphData.vertices).forEach(([id, vertex]) => {
+        // Same logic as compound view for detecting public nodes
+        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true' || 
+                         vertex.publicIp === true || vertex.publicIp === 'true' ||
+                         vertex.is_public === true || vertex.is_public === 'true' ||
+                         vertex.type === 'InternetIP';
+        
+        if (isPublic) {
+          publicNodes.push({ id, vertex });
+        } else {
+          privateNodes.push({ id, vertex });
         }
-
-        this.$emit('rendering-start');
-
-        // Reset selection state
-        this.selectedNodeIds.clear();
-        this.nodeOriginalColors = {};
-
-        // Remove any existing network containers before redrawing
-        this.removeNetworkContainers();
-
-        let visData;
-
-        // No need to transform based on view mode - data is already transformed in App.vue
-        // Use filters from props
-        visData = this.transformNeo4JDataForD3(this.graphData, this.filters);
-
-        // Store node positions before updating
-        this.saveNodePositions();
-
-        // Apply any saved positions to the new nodes
-        this.applyNodePositions(visData.nodes);
-
-        // Update simulation with new node data - this will set this.currentNodes and this.currentLinks
-        this.updateSimulation(visData);
-
-        console.log('Nodes with public_ip=true:', this.publicNodes.length);
-        console.log('Nodes with public_ip=false:', this.privateNodes.length);
-
-        // Group private nodes by cluster
-        this.providerNetworks = {};
-        this.privateNodes.forEach(node => {
-          const cluster = (node.data && node.data.cluster) || 'unknown';
-          if (!this.providerNetworks[cluster]) {
-            this.providerNetworks[cluster] = {
-              nodes: [],
-              container: null,
-              centerX: 0,
-              centerY: 0,
-              radius: 0,
-              appGroups: {}
-            };
-          }
-          this.providerNetworks[cluster].nodes.push(node);
-
-          // Skip Application nodes for app_name grouping
-          if (node.type === 'Application') {
-            return;
-          }
-
-          // Group nodes by app_name within each cluster
-          const app_name = (node.data && node.data.app_name) || 'unknown';
-          if (!this.providerNetworks[cluster].appGroups[app_name]) {
-            this.providerNetworks[cluster].appGroups[app_name] = {
-              nodes: [],
-              container: null,
-              centerX: 0,
-              centerY: 0,
-              radius: 0
-            };
-          }
-          this.providerNetworks[cluster].appGroups[app_name].nodes.push(node);
-        });
-
-        console.log('Cluster networks:', Object.keys(this.providerNetworks).length);
-
-        // Log app groups for each cluster
-        Object.keys(this.providerNetworks).forEach(cluster => {
-          const appGroups = Object.keys(this.providerNetworks[cluster].appGroups);
-          console.log(`Cluster ${cluster} has ${appGroups.length} app groups:`, appGroups);
-        });
-
-        // Add network containers after nodes are created
-        this.addNetworkContainers();
-
-        // Reset view to ensure the entire Internet Boundary is visible
-        this.resetView();
-
-        // Notify parent component about rendering completion
-        setTimeout(() => {
-          // Apply highlighting based on current highlighted nodes
-          if (this.highlightedNodeIds && this.highlightedNodeIds.size > 0) {
-            this.highlightFilteredNodes(this.highlightedNodeIds);
-          }
-
-          this.$emit('rendering-complete', {
-            nodeCount: this.currentNodes.length,
-            linkCount: this.currentLinks.length
-          });
-        }, 1000);
-
-        console.log("D3: Visualization updated");
-      } catch (error) {
-        console.error("D3: Error updating visualization", error);
-        throw error;
-      }
-    },
-
-    /**
-     * Save current node positions
-     */
-    saveNodePositions() {
-      this.nodePositions = {};
-      if (this.currentNodes && this.currentNodes.length > 0) {
-        this.currentNodes.forEach(node => {
-          if (node.fx !== undefined && node.fy !== undefined) {
-            this.nodePositions[node.id] = { fx: node.fx, fy: node.fy };
+      });
+      
+      console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
+      
+      // Create a visual boundary circle (as a special node)
+      elements.push({
+        data: {
+          id: 'boundary-circle',
+          label: 'Internet Boundary',
+          type: 'boundary',
+          color: 'transparent'
+        },
+        position: { x: centerX, y: centerY },
+        classes: 'boundary-node'
+      });
+      
+      // Position private nodes inside the circle
+      privateNodes.forEach(({ id, vertex }, index) => {
+        const angle = (index * 2 * Math.PI) / privateNodes.length;
+        const r = innerRadius * (0.5 + Math.random() * 0.4); // Vary radius for better distribution
+        
+        elements.push({
+          data: {
+            id: id,
+            label: this.getNodeLabel(vertex),
+            color: this.getNodeColor(vertex.type),
+            type: vertex.type,
+            originalData: vertex
+          },
+          position: {
+            x: centerX + Math.cos(angle) * r,
+            y: centerY + Math.sin(angle) * r
           }
         });
-      }
-      console.log("D3: Saved positions for", Object.keys(this.nodePositions).length, "nodes");
-    },
-
-    /**
-     * Apply saved node positions to new nodes
-     */
-    applyNodePositions(nodes) {
-      if (nodes && nodes.length > 0) {
-        nodes.forEach(node => {
-          if (this.nodePositions[node.id]) {
-            node.fx = this.nodePositions[node.id].fx;
-            node.fy = this.nodePositions[node.id].fy;
-          }
-        });
-      }
-
-      // Force update to apply styles and bring selected elements to front
-      this.tick();
-    },
-
-    /**
-     * Remove all network container elements
-     */
-    removeNetworkContainers() {
-      if (this.g) {
-        // Remove all network-related elements
-        this.g.selectAll('.network-container').remove();
-        this.g.selectAll('.network-container-glow').remove();
-        this.g.selectAll('.network-label').remove();
-        this.g.selectAll('.network-label-group').remove();
-        this.g.selectAll('.network-label-background').remove();
-        this.g.selectAll('.internet-boundary').remove();
-        this.g.selectAll('.internet-boundary-label').remove();
-
-        // Remove all app group-related elements
-        this.g.selectAll('.app-group-container').remove();
-        this.g.selectAll('.app-group-label-group').remove();
-        this.g.selectAll('.app-group-label').remove();
-        this.g.selectAll('.app-group-label-background').remove();
-
-        // Reset network containers
-        this.networkContainers = [];
-        this.appGroupContainers = [];
-        this.internetBoundaryContainer = null;
-
-        // Reset cluster networks containers and app group containers
-        Object.keys(this.providerNetworks).forEach(cluster => {
-          if (this.providerNetworks[cluster]) {
-            this.providerNetworks[cluster].container = null;
-
-            // Reset app group containers
-            if (this.providerNetworks[cluster].appGroups) {
-              Object.keys(this.providerNetworks[cluster].appGroups).forEach(app_name => {
-                if (this.providerNetworks[cluster].appGroups[app_name]) {
-                  this.providerNetworks[cluster].appGroups[app_name].container = null;
-                }
-              });
-            }
-          }
-        });
-
-        console.log("D3: Removed network container elements");
-      }
-    },
-
-    /**
-     * Add network containers for private nodes grouped by cluster
-     */
-    addNetworkContainers() {
-      // First remove any existing network elements
-      this.removeNetworkContainers();
-
-      // Calculate container position based on visualization center
-      const container = this.$refs.d3Container;
-      const width = container.clientWidth;
-      const height = container.clientHeight || 600;
-
-      // Calculate the center of the visualization
-      const centerX = width / 2;
-      const centerY = height / 2;
-
-      // In Application View, we only show the Internet Boundary, not private networks
-      if (this.viewMode === 'application') {
-        console.log("D3: Application View - showing only Internet Boundary");
-
-        // Add the Internet Boundary
-        this.addInternetBoundary(centerX, centerY);
-
-        // Apply forces to keep public nodes outside the Internet Boundary
-        this.updateSimulationForces();
-
-        return;
-      }
-
-      // For Detailed View, continue with normal private network visualization
-      // Get the number of cluster networks
-      const clusters = Object.keys(this.providerNetworks);
-      const networkCount = clusters.length;
-
-      if (networkCount === 0) {
-        console.log("D3: No cluster networks to display");
-        return;
-      }
-
-      console.log(`D3: Creating ${networkCount} cluster networks`);
-
-      // Calculate layout for multiple networks
-      // We'll arrange them in a grid or circle depending on the number
-      this.networkContainers = [];
-
-      // Calculate positions for each network
-      if (networkCount === 1) {
-        // Single network - center it
-        const cluster = clusters[0];
-        const networkData = this.providerNetworks[cluster];
-        const nodeCount = networkData.nodes.length;
-
-        // Set network center
-        networkData.centerX = centerX;
-        networkData.centerY = centerY + 50; // Slightly below center
-
-        // Adjust radius based on number of nodes
-        networkData.radius = Math.max(150, Math.sqrt(nodeCount) * 40);
-
-        // Create network container
-        networkData.container = this.createNetworkContainer(
-          cluster,
-          networkData.centerX,
-          networkData.centerY,
-          networkData.radius
-        );
-
-        this.networkContainers.push(networkData.container);
-      } else {
-        // Multiple networks - arrange in a circle around the center with overlap prevention
-        const circleRadius = Math.min(width, height) * 0.35; // Radius of the circle of networks
-
-        // First pass: calculate network sizes and initial positions
-        clusters.forEach((cluster, index) => {
-          const networkData = this.providerNetworks[cluster];
-          const nodeCount = networkData.nodes.length;
-
-          // Adjust radius based on number of nodes, but smaller for multiple networks
-          networkData.radius = Math.max(100, Math.sqrt(nodeCount) * 30);
-
-          // Calculate initial position on the circle
-          const angle = (2 * Math.PI * index) / networkCount;
-          networkData.centerX = centerX + circleRadius * Math.cos(angle);
-          networkData.centerY = centerY + circleRadius * Math.sin(angle);
-        });
-
-        // Second pass: adjust positions to prevent overlaps
-        // Simple approach: increase the circle radius until no overlaps
-        let hasOverlap = true;
-        let currentCircleRadius = circleRadius;
-        const maxIterations = 10; // Prevent infinite loops
-        let iteration = 0;
-
-        while (hasOverlap && iteration < maxIterations) {
-          hasOverlap = false;
-          iteration++;
-
-          // Check for overlaps between all pairs of networks
-          for (let i = 0; i < clusters.length; i++) {
-            const cluster1 = clusters[i];
-            const network1 = this.providerNetworks[cluster1];
-
-            for (let j = i + 1; j < clusters.length; j++) {
-              const cluster2 = clusters[j];
-              const network2 = this.providerNetworks[cluster2];
-
-              // Calculate distance between network centers
-              const dx = network1.centerX - network2.centerX;
-              const dy = network1.centerY - network2.centerY;
-              const distance = Math.sqrt(dx*dx + dy*dy);
-
-              // Calculate minimum required distance (sum of radii plus buffer)
-              const minDistance = network1.radius + network2.radius + 20; // 20px buffer
-
-              // If networks overlap, increase the circle radius
-              if (distance < minDistance) {
-                hasOverlap = true;
-                currentCircleRadius += 20; // Increase by 20px each iteration
-
-                // Recalculate all network positions with the new circle radius
-                clusters.forEach((cluster, index) => {
-                  const networkData = this.providerNetworks[cluster];
-                  const angle = (2 * Math.PI * index) / networkCount;
-                  networkData.centerX = centerX + currentCircleRadius * Math.cos(angle);
-                  networkData.centerY = centerY + currentCircleRadius * Math.sin(angle);
-                });
-
-                break; // Break inner loop and restart checking
-              }
-            }
-
-            if (hasOverlap) break; // Break outer loop if overlap found
-          }
-        }
-
-        // Create network containers with final positions
-        clusters.forEach((cluster) => {
-          const networkData = this.providerNetworks[cluster];
-
-          // Add app group containers first to ensure stacking order
-          this.addAppGroupContainers(cluster, networkData);
-
-          // Create network container
-          networkData.container = this.createNetworkContainer(
-            cluster,
-            networkData.centerX,
-            networkData.centerY,
-            networkData.radius
-          );
-
-          this.networkContainers.push(networkData.container);
-        });
-      }
-
-      // Add the Internet Boundary that encloses all private networks
-      this.addInternetBoundary(centerX, centerY);
-
-      // Apply additional forces for private nodes to stay in their respective networks
-      this.updateSimulationForces();
-
-      console.log(`D3: Added ${networkCount} network containers for private nodes`);
-    },
-
-    /**
-     * Add app group containers within a network container
-     * @param {string} cluster The cluster name
-     * @param {Object} networkData The network data containing centerX, centerY, radius, and appGroups
-     */
-    addAppGroupContainers(cluster, networkData) {
-      // Get the app groups for this cluster
-      const appGroups = Object.keys(networkData.appGroups || {});
-      const appGroupCount = appGroups.length;
-
-      if (appGroupCount === 0) {
-        console.log(`D3: No app groups to display for cluster ${cluster}`);
-        return;
-      }
-
-      console.log(`D3: Creating ${appGroupCount} app group containers for cluster ${cluster}`);
-
-      // Calculate positions for each app group within the network container
-      if (appGroupCount === 1) {
-        // Single app group - center it within the network
-        const app_name = appGroups[0];
-        const appGroupData = networkData.appGroups[app_name];
-        const nodeCount = appGroupData.nodes.length;
-
-        // Set app group center to network center
-        appGroupData.centerX = networkData.centerX;
-        appGroupData.centerY = networkData.centerY;
-
-        // Adjust radius based on number of nodes, but smaller than network radius
-        appGroupData.radius = Math.min(
-          Math.max(50, Math.sqrt(nodeCount) * 25),
-          networkData.radius * 0.8 // Ensure app group is smaller than network
-        );
-
-        // Create app group container
-        appGroupData.container = this.createAppGroupContainer(
-          app_name,
-          cluster,
-          appGroupData.centerX,
-          appGroupData.centerY,
-          appGroupData.radius
-        );
-
-        this.appGroupContainers.push(appGroupData.container);
-      } else {
-        // Multiple app groups - arrange in a circle within the network
-        // Calculate the radius of the circle on which to place app groups
-        const circleRadius = networkData.radius * 0.6; // 60% of network radius
-
-        // First pass: calculate app group sizes and initial positions
-        appGroups.forEach((app_name, index) => {
-          const appGroupData = networkData.appGroups[app_name];
-          const nodeCount = appGroupData.nodes.length;
-
-          // Adjust radius based on number of nodes, but smaller for multiple app groups
-          appGroupData.radius = Math.min(
-            Math.max(40, Math.sqrt(nodeCount) * 20),
-            networkData.radius * 0.4 // Ensure app groups are much smaller than network
-          );
-
-          // Calculate initial position on the circle within the network
-          const angle = (2 * Math.PI * index) / appGroupCount;
-          appGroupData.centerX = networkData.centerX + circleRadius * Math.cos(angle);
-          appGroupData.centerY = networkData.centerY + circleRadius * Math.sin(angle);
-        });
-
-        // Second pass: adjust positions to prevent overlaps
-        let hasOverlap = true;
-        let currentCircleRadius = circleRadius;
-        const maxIterations = 10; // Prevent infinite loops
-        let iteration = 0;
-
-        while (hasOverlap && iteration < maxIterations) {
-          hasOverlap = false;
-          iteration++;
-
-          // Check for overlaps between all pairs of app groups
-          for (let i = 0; i < appGroups.length; i++) {
-            const app1 = appGroups[i];
-            const appGroup1 = networkData.appGroups[app1];
-
-            for (let j = i + 1; j < appGroups.length; j++) {
-              const app2 = appGroups[j];
-              const appGroup2 = networkData.appGroups[app2];
-
-              // Calculate distance between app group centers
-              const dx = appGroup1.centerX - appGroup2.centerX;
-              const dy = appGroup1.centerY - appGroup2.centerY;
-              const distance = Math.sqrt(dx*dx + dy*dy);
-
-              // Calculate minimum required distance (sum of radii plus buffer)
-              const minDistance = appGroup1.radius + appGroup2.radius + 10; // 10px buffer
-
-              // If app groups overlap, increase the circle radius
-              if (distance < minDistance) {
-                hasOverlap = true;
-                currentCircleRadius += 10; // Increase by 10px each iteration
-
-                // Recalculate all app group positions with the new circle radius
-                // But ensure we stay within the network boundary
-                const maxAllowedRadius = networkData.radius * 0.7; // 70% of network radius
-                const adjustedCircleRadius = Math.min(currentCircleRadius, maxAllowedRadius);
-
-                appGroups.forEach((app_name, index) => {
-                  const appGroupData = networkData.appGroups[app_name];
-                  const angle = (2 * Math.PI * index) / appGroupCount;
-                  appGroupData.centerX = networkData.centerX + adjustedCircleRadius * Math.cos(angle);
-                  appGroupData.centerY = networkData.centerY + adjustedCircleRadius * Math.sin(angle);
-                });
-
-                break; // Break inner loop and restart checking
-              }
-            }
-
-            if (hasOverlap) break; // Break outer loop if overlap found
-          }
-        }
-
-        // Create app group containers with final positions
-        appGroups.forEach((app_name) => {
-          const appGroupData = networkData.appGroups[app_name];
-
-          // Create app group container
-          appGroupData.container = this.createAppGroupContainer(
-            app_name,
-            cluster,
-            appGroupData.centerX,
-            appGroupData.centerY,
-            appGroupData.radius
-          );
-
-          this.appGroupContainers.push(appGroupData.container);
-        });
-      }
-
-      console.log(`D3: Added ${appGroupCount} app group containers for cluster ${cluster}`);
-    },
-
-    /**
-     * Add the Internet Boundary that encloses all private networks
-     * @param {number} centerX The x-coordinate of the center
-     * @param {number} centerY The y-coordinate of the center
-     */
-    addInternetBoundary(centerX, centerY) {
-      // Calculate the radius of the Internet Boundary
-      let maxDistance = 0;
-      let maxRadius = 0;
-
-      // For Application View, we need a larger default boundary since there are no private networks
-      const container = this.$refs.d3Container;
-      const width = container.clientWidth;
-      const height = container.clientHeight || 600;
-      const minBoundaryRadius = Math.min(width, height) * 0.4; // 40% of the smaller dimension
-
-      // If we have private networks, calculate based on them
-      if (this.viewMode !== 'application') {
-        Object.keys(this.providerNetworks).forEach(cluster => {
-          const networkData = this.providerNetworks[cluster];
-          if (!networkData) return;
-
-          // Calculate distance from center to network center
-          const dx = networkData.centerX - centerX;
-          const dy = networkData.centerY - centerY;
-          const distance = Math.sqrt(dx*dx + dy*dy);
-
-          // Update max distance and radius
-          maxDistance = Math.max(maxDistance, distance);
-          maxRadius = Math.max(maxRadius, networkData.radius);
-        });
-      }
-
-      // Set the Internet Boundary radius to enclose all networks with padding
-      // For Application View, use the minimum radius if calculated radius is too small
-      const calculatedRadius = maxDistance + maxRadius + 50; // 50px padding
-      this.internetBoundaryRadius = this.viewMode === 'application' 
-        ? Math.max(minBoundaryRadius, calculatedRadius)
-        : calculatedRadius;
-      this.internetBoundaryCenterX = centerX;
-      this.internetBoundaryCenterY = centerY;
-
-      // Create the Internet Boundary container
-      this.internetBoundaryContainer = this.g.append('circle')
-        .attr('class', 'internet-boundary')
-        .attr('cx', centerX)
-        .attr('cy', centerY)
-        .attr('r', this.internetBoundaryRadius)
-        .attr('fill', 'none')
-        .attr('stroke', '#4A98E3') // Blue color
-        .attr('stroke-width', 2)
-        .attr('stroke-dasharray', '15,5,3,5') // Long and short dashes: --- - --- -
-        .lower(); // Ensure container is behind nodes but above network containers
-
-      // Add Internet Boundary label - keep it in front of everything
-      const label = this.g.append('text')
-        .attr('class', 'internet-boundary-label')
-        .attr('x', centerX)
-        .attr('y', centerY - this.internetBoundaryRadius - 10)
-        .attr('text-anchor', 'middle')
-        .attr('fill', '#4A98E3') // Blue color
-        .attr('font-weight', 'bold')
-        .text('Internet Boundary');
-
-      // Ensure label is in front of everything
-      label.raise();
-
-      console.log("D3: Added Internet Boundary");
-    },
-
-    /**
-     * Create a single network container with label
-     * @param {string} cluster The cluster name for the network
-     * @param {number} centerX The x-coordinate of the center
-     * @param {number} centerY The y-coordinate of the center
-     * @param {number} radius The radius of the network circle
-     * @returns {Object} The container element
-     */
-    createNetworkContainer(cluster, centerX, centerY, radius) {
-      // Create network container - keep it behind nodes but in front of links
-      const container = this.g.append('circle')
-        .attr('class', 'network-container')
-        .attr('data-cluster', cluster)
-        .attr('cx', centerX)
-        .attr('cy', centerY)
-        .attr('r', radius)
-        .attr('fill', 'rgba(240, 240, 245, 0.8)')
-        .attr('stroke', '#666')
-        .attr('stroke-width', 2)
-        .attr('stroke-dasharray', '5,5');
-
-      // Move container behind nodes but in front of links
-      container.lower();
-
-      // Add a subtle outer glow to make boundary more visible
-      this.g.append('circle')
-        .attr('class', 'network-container-glow')
-        .attr('data-cluster', cluster)
-        .attr('cx', centerX)
-        .attr('cy', centerY)
-        .attr('r', radius + 2)
-        .attr('fill', 'none')
-        .attr('stroke', 'rgba(100, 100, 150, 0.3)')
-        .attr('stroke-width', 6)
-        .attr('filter', 'blur(4px)')
-        .lower(); // Keep behind main container
-
-      // Create a group for the badge-style label
-      const labelGroup = this.g.append('g')
-        .attr('class', 'network-label-group')
-        .attr('data-cluster', cluster)
-        .attr('transform', `translate(${centerX}, ${centerY - radius - 10})`);
-
-      // Create the label text to measure its width
-      const labelText = `Private Network: ${cluster}`;
-      const tempText = this.g.append('text')
-        .attr('font-size', '14px')
-        .attr('font-weight', 'bold')
-        .text(labelText)
-        .attr('visibility', 'hidden');
-
-      // Get the text width for sizing the badge background
-      const textWidth = tempText.node().getComputedTextLength();
-      tempText.remove();
-
-      // Calculate dynamic padding based on text width
-      // Use a percentage of the text width with a minimum value
-      const paddingPercentage = 0.1; // 10% of text width for padding (reduced from 20%)
-      const minPadding = 20; // Minimum padding in pixels
-      const dynamicPadding = Math.max(minPadding, textWidth * paddingPercentage);
-      const totalPadding = dynamicPadding * 2; // Total padding (left and right)
-
-      // Add the badge background with dynamic width
-      const badgeBackground = labelGroup.append('rect')
-        .attr('class', 'network-label-background')
-        .attr('x', -textWidth/2 - dynamicPadding) // Dynamic padding on left
-        .attr('y', -15) // Position above the text baseline
-        .attr('width', textWidth + totalPadding) // Text width plus dynamic padding
-        .attr('height', 24) // Fixed height for the badge
-        .attr('rx', 12) // Rounded corners (half of height for pill shape)
-        .attr('ry', 12)
-        .attr('fill', 'rgba(240, 240, 245, 0.85)') // Translucent background
-        .attr('stroke', '#666')
-        .attr('stroke-width', 1);
-
-      // Add the label text on top of the background
-      const label = labelGroup.append('text')
-        .attr('class', 'network-label')
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .attr('y', -3) // Slight adjustment to center text vertically
-        .attr('fill', '#333')
-        .attr('font-weight', 'bold')
-        .text(labelText);
-
-      // Ensure label group is in front of everything
-      labelGroup.raise();
-
-      return container;
-    },
-
-    /**
-     * Create a single app group container with label within a network container
-     * @param {string} app_name The app_name for the group
-     * @param {string} cluster The cluster name for the parent network
-     * @param {number} centerX The x-coordinate of the center
-     * @param {number} centerY The y-coordinate of the center
-     * @param {number} radius The radius of the app group circle
-     * @returns {Object} The container element
-     */
-    createAppGroupContainer(app_name, cluster, centerX, centerY, radius) {
-      // Create app group container - keep it behind nodes but in front of network container
-      const container = this.g.append('circle')
-        .attr('class', 'app-group-container')
-        .attr('data-app-name', app_name)
-        .attr('data-cluster', cluster)
-        .attr('cx', centerX)
-        .attr('cy', centerY)
-        .attr('r', radius)
-        .attr('fill', 'rgba(245, 245, 250, 0.6)')
-        .attr('stroke', '#F9696E')  // Red color matching Application icon
-        .attr('stroke-width', 2)    // Slightly thicker for better visibility
-        .attr('stroke-dasharray', '1,1');  // Dotted line
-
-      // Keep container in front of other circles but behind nodes
-      container.lower()
-
-      // Create a group for the badge-style label
-      const labelGroup = this.g.append('g')
-        .attr('class', 'app-group-label-group')
-        .attr('data-app-name', app_name)
-        .attr('data-cluster', cluster)
-        .attr('transform', `translate(${centerX}, ${centerY - radius - 5})`);
-
-      // Create the label text to measure its width
-      const labelText = `${app_name}`;
-      const tempText = this.g.append('text')
-        .attr('font-size', '12px')
-        .attr('font-weight', 'bold')
-        .text(labelText)
-        .attr('visibility', 'hidden');
-
-      // Get the text width for sizing the badge background
-      const textWidth = tempText.node().getComputedTextLength();
-      tempText.remove();
-
-      // Calculate dynamic padding based on text width
-      const paddingPercentage = 0.1; // 10% of text width for padding
-      const minPadding = 15; // Minimum padding in pixels
-      const dynamicPadding = Math.max(minPadding, textWidth * paddingPercentage);
-      const totalPadding = dynamicPadding * 2; // Total padding (left and right)
-
-      // Add the badge background with dynamic width
-      const badgeBackground = labelGroup.append('rect')
-        .attr('class', 'app-group-label-background')
-        .attr('x', -textWidth/2 - dynamicPadding) // Dynamic padding on left
-        .attr('y', -12) // Position above the text baseline
-        .attr('width', textWidth + totalPadding) // Text width plus dynamic padding
-        .attr('height', 20) // Fixed height for the badge
-        .attr('rx', 10) // Rounded corners (half of height for pill shape)
-        .attr('ry', 10)
-        .attr('fill', 'rgba(245, 245, 250, 0.85)') // Translucent background
-        .attr('stroke', '#999')
-        .attr('stroke-width', 1);
-
-      // Add the label text on top of the background
-      const label = labelGroup.append('text')
-        .attr('class', 'app-group-label')
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .attr('y', -2) // Slight adjustment to center text vertically
-        .attr('fill', '#555')
-        .attr('font-weight', 'bold')
-        .attr('font-size', '12px')
-        .text(labelText);
-
-      // Ensure label group is in front of everything
-      labelGroup.raise();
-
-      return container;
-    },
-
-    /**
-     * Update simulation forces to handle multiple network containment
-     */
-    updateSimulationForces() {
-      if (!this.simulation) return;
-
-      // Clear previous forces
-      this.simulation.force('network-containment', null);
-      this.simulation.force('boundary-repulsion', null);
-
-      // Get clusters with networks
-      const clusters = Object.keys(this.providerNetworks);
-
-      // Add force to keep private nodes inside their respective networks and public nodes outside all networks
-      this.simulation.force('network-containment', (alpha) => {
-        // Apply to each node
-        this.currentNodes.forEach(node => {
-          // Skip nodes with fixed positions
-          if (node.fx !== undefined && node.fy !== undefined) return;
-
-          const isPublic = node.data && node.data.public_ip === true;
-
-          // Handle application view differently
-          if (this.viewMode === 'application') {
-            if (isPublic) {
-              // For public nodes in application view - keep outside the Internet Boundary
-              if (this.internetBoundaryContainer) {
-                this.keepNodeOutsideInternetBoundary(node);
-              }
-            } else {
-              // For non-public nodes in application view - keep inside the Internet Boundary
-              if (this.internetBoundaryContainer) {
-                this.keepNodeInsideInternetBoundary(node);
-              }
-            }
-            return;
-          }
-
-          // Detailed view handling
-          // Application nodes should drift towards center by default in detailed view
-          if (node.type === 'Application') {
-            // For Application nodes in Detailed View, only keep them outside the Internet Boundary if they have public_ip=true
-            if (isPublic && this.internetBoundaryContainer) {
-              // Keep Application nodes with public_ip=true outside the Internet Boundary
-              this.keepNodeOutsideInternetBoundary(node);
-            } else {
-              // For non-public Application nodes in detailed view, apply a very weak center-pull force
-              const container = this.$refs.d3Container;
-              const width = container.clientWidth;
-              const height = container.clientHeight || 600;
-              const centerX = width / 2;
-              const centerY = height / 2;
-
-              // Calculate distance from node to center
-              const dx = node.x - centerX;
-              const dy = node.y - centerY;
-              const distance = Math.sqrt(dx*dx + dy*dy);
-
-              // Apply a center-pull force that gets stronger as nodes get farther from center
-              // Reduced by 2 orders of magnitude as requested
-              const pullStrength = 0.00003 * distance / 100;
-
-              // Apply the pull toward the center
-              node.x -= dx * pullStrength;
-              node.y -= dy * pullStrength;
-            }
-            return;
-          }
-
-          // For non-Application nodes in detailed view
-          if (isPublic) {
-            // For public nodes - keep outside ALL networks with buffer
-            this.keepNodeOutsideAllNetworks(node);
-          } else {
-            // For private nodes - find their cluster and keep inside that network
-            const cluster = (node.data && node.data.cluster) || 'unknown';
-            const networkData = this.providerNetworks[cluster];
-
-            if (networkData) {
-              this.keepNodeInsideNetwork(node, networkData);
-            }
+      });
+      
+      // Position public nodes outside the circle
+      publicNodes.forEach(({ id, vertex }, index) => {
+        const angle = (index * 2 * Math.PI) / publicNodes.length;
+        const r = outerRadius + (Math.random() * 100); // Vary radius for natural look
+        
+        elements.push({
+          data: {
+            id: id,
+            label: this.getNodeLabel(vertex),
+            color: this.getNodeColor(vertex.type),
+            type: vertex.type,
+            originalData: vertex
+          },
+          position: {
+            x: centerX + Math.cos(angle) * r,
+            y: centerY + Math.sin(angle) * r
           }
         });
       });
 
-      // Add a special force that adds repulsion between public nodes and all network boundaries
-      this.simulation.force('boundary-repulsion', (alpha) => {
-        // Get public nodes that aren't fixed
-        const publicNodes = this.currentNodes.filter(node => 
-          node.data && node.data.public_ip === true && 
-          node.fx === undefined && node.fy === undefined);
-
-        // For each public node, add repulsion from appropriate network boundaries
-        publicNodes.forEach(node => {
-          // In application view, only apply repulsion from the Internet Boundary for all nodes
-          if (this.viewMode === 'application') {
-            if (this.internetBoundaryContainer) {
-              this.applyInternetBoundaryRepulsion(node, alpha);
-            }
-            return;
-          }
-
-          // Detailed view handling
-          // For Application nodes, only apply repulsion from the Internet Boundary
-          if (node.type === 'Application') {
-            // Add repulsion from Internet Boundary only
-            if (this.internetBoundaryContainer) {
-              this.applyInternetBoundaryRepulsion(node, alpha);
-            }
-            return;
-          }
-
-          // For non-Application public nodes in detailed view, add repulsion from all network boundaries
-          // Add repulsion from private network boundaries
-          clusters.forEach(cluster => {
-            const networkData = this.providerNetworks[cluster];
-            if (!networkData) return;
-
-            this.applyBoundaryRepulsion(node, networkData, alpha);
-          });
-
-          // Add repulsion from Internet Boundary
-          if (this.internetBoundaryContainer) {
-            this.applyInternetBoundaryRepulsion(node, alpha);
+      // Add edges
+      this.graphData.edges.forEach((edge, index) => {
+        elements.push({
+          data: {
+            id: `edge-${index}`,
+            source: edge.start_node,
+            target: edge.end_node,
+            edgeType: edge.type
           }
         });
       });
 
-      // Restart simulation with updated forces
-      this.simulation.alpha(0.3).restart();
+      console.log(`Generated detailed view: ${elements.length} elements (${privateNodes.length} private + ${publicNodes.length} public + 1 boundary + ${this.graphData.edges.length} edges)`);
+      return elements;
     },
 
-    /**
-     * Keep a node inside its network container and apply a center-pull force
-     * @param {Object} node The node to keep inside
-     * @param {Object} networkData The network data containing centerX, centerY, and radius
-     */
-    keepNodeInsideNetwork(node, networkData) {
-      if (!networkData) return;
-
-      // Check if this node belongs to an app group
-      const cluster = (node.data && node.data.cluster) || 'unknown';
-      const app_name = (node.data && node.data.app_name) || 'unknown';
-
-      // Skip Application nodes for app_name grouping
-      if (node.type !== 'Application' && 
-          networkData.appGroups && 
-          networkData.appGroups[app_name] && 
-          networkData.appGroups[app_name].container) {
-        // If node belongs to an app group, keep it inside that app group
-        this.keepNodeInsideAppGroup(node, networkData.appGroups[app_name]);
-        return;
-      }
-
-      // For nodes not in app groups or Application nodes, keep them inside the network
-      const centerX = networkData.centerX;
-      const centerY = networkData.centerY;
-      const radius = networkData.radius;
-
-      // Calculate distance from node to network center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is outside network, pull it back in
-      // Leave a small buffer (20px) from the edge
-      if (distance > radius - 20) {
-        const scale = (radius - 20) / distance;
-        node.x = centerX + dx * scale;
-        node.y = centerY + dy * scale;
-      } 
-      // Apply a center-pull force that gets stronger as nodes get farther from center
-      // This creates a stronger "gravity" toward the center of the network
-      else {
-        // Calculate the pull strength - increases with distance from center
-        // The 0.05 factor controls how strong the pull is - higher values = stronger pull
-        const pullStrength = 0.05 * (distance / radius);
-
-        // Apply the pull toward the center
-        // The direction is opposite to the displacement vector (dx, dy)
-        node.x -= dx * pullStrength;
-        node.y -= dy * pullStrength;
-      }
-    },
-
-    /**
-     * Keep a node inside its app group container and apply a center-pull force
-     * @param {Object} node The node to keep inside
-     * @param {Object} appGroupData The app group data containing centerX, centerY, and radius
-     */
-    keepNodeInsideAppGroup(node, appGroupData) {
-      if (!appGroupData) return;
-
-      const centerX = appGroupData.centerX;
-      const centerY = appGroupData.centerY;
-      const radius = appGroupData.radius;
-
-      // Calculate distance from node to app group center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is outside app group, pull it back in
-      // Leave a small buffer (10px) from the edge
-      if (distance > radius - 10) {
-        const scale = (radius - 10) / distance;
-        node.x = centerX + dx * scale;
-        node.y = centerY + dy * scale;
-      } 
-      // Apply a center-pull force that gets stronger as nodes get farther from center
-      // This creates a stronger "gravity" toward the center of the app group
-      else {
-        // Calculate the pull strength - increases with distance from center
-        // The 0.08 factor controls how strong the pull is - higher values = stronger pull
-        const pullStrength = 0.08 * (distance / radius);
-
-        // Apply the pull toward the center
-        // The direction is opposite to the displacement vector (dx, dy)
-        node.x -= dx * pullStrength;
-        node.y -= dy * pullStrength;
-      }
-    },
-
-    /**
-     * Keep a node outside all network containers
-     * @param {Object} node The node to keep outside
-     */
-    keepNodeOutsideAllNetworks(node) {
-      // For each network, check if the node is inside or too close
-      Object.keys(this.providerNetworks).forEach(cluster => {
-        const networkData = this.providerNetworks[cluster];
-        if (!networkData) return;
-
-        const centerX = networkData.centerX;
-        const centerY = networkData.centerY;
-        const radius = networkData.radius;
-
-        // Calculate distance from node to network center
-        const dx = node.x - centerX;
-        const dy = node.y - centerY;
-        const distance = Math.sqrt(dx*dx + dy*dy);
-
-        // If node is inside network or too close, push it out
-        // Add a buffer (60px) from the edge
-        const publicNodeBuffer = 60;
-        if (distance < radius + publicNodeBuffer) {
-          const scale = (radius + publicNodeBuffer) / Math.max(distance, 1);
-          node.x = centerX + dx * scale;
-          node.y = centerY + dy * scale;
-        }
+    createCompoundNodeElements() {
+      console.log('Creating simple 2-level compound hierarchy: Public/Private boundaries only');
+      const elements = [];
+      
+      // Debug: Log sample vertex properties to understand data structure
+      const sampleVertex = Object.values(this.graphData.vertices)[0];
+      console.log('Sample vertex properties:', Object.keys(sampleVertex));
+      console.log('Sample vertex:', sampleVertex);
+      
+      // Group nodes by public_ip only (simple 2-level structure)
+      const publicGroups = { public: [], private: [] };
+      Object.entries(this.graphData.vertices).forEach(([id, vertex]) => {
+        // Debug multiple possible property names for public IP
+        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true' || 
+                         vertex.publicIp === true || vertex.publicIp === 'true' ||
+                         vertex.is_public === true || vertex.is_public === 'true' ||
+                         vertex.type === 'InternetIP';
+        
+        console.log(`Node ${id} (${vertex.type}): public_ip=${vertex.public_ip}, type=${vertex.type} → ${isPublic ? 'public' : 'private'}`);
+        publicGroups[isPublic ? 'public' : 'private'].push({ id, vertex });
       });
 
-      // Also keep the node outside the Internet Boundary
-      if (this.internetBoundaryContainer) {
-        this.keepNodeOutsideInternetBoundary(node);
-      }
-    },
-
-    /**
-     * Keep a node outside the Internet Boundary only
-     * @param {Object} node The node to keep outside the Internet Boundary
-     */
-    keepNodeOutsideInternetBoundary(node) {
-      if (!this.internetBoundaryContainer) return;
-
-      const centerX = this.internetBoundaryCenterX;
-      const centerY = this.internetBoundaryCenterY;
-      const radius = this.internetBoundaryRadius;
-
-      // Calculate distance from node to Internet Boundary center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is inside Internet Boundary or too close, push it out
-      // Add a buffer (80px) from the edge
-      const internetBoundaryBuffer = 80;
-      if (distance < radius + internetBoundaryBuffer) {
-        const scale = (radius + internetBoundaryBuffer) / Math.max(distance, 1);
-        node.x = centerX + dx * scale;
-        node.y = centerY + dy * scale;
-      }
-    },
-
-    /**
-     * Keep a node inside the Internet Boundary
-     * @param {Object} node The node to keep inside the Internet Boundary
-     */
-    keepNodeInsideInternetBoundary(node) {
-      if (!this.internetBoundaryContainer) return;
-
-      const centerX = this.internetBoundaryCenterX;
-      const centerY = this.internetBoundaryCenterY;
-      const radius = this.internetBoundaryRadius;
-
-      // Calculate distance from node to Internet Boundary center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is outside Internet Boundary, pull it back in
-      // Leave a small buffer (20px) from the edge
-      if (distance > radius - 20) {
-        const scale = (radius - 20) / distance;
-        node.x = centerX + dx * scale;
-        node.y = centerY + dy * scale;
-      } 
-      // Apply a center-pull force that gets stronger as nodes get farther from center
-      // This creates a stronger "gravity" toward the center of the boundary
-      else {
-        // Calculate the pull strength - increases with distance from center
-        // The 0.05 factor controls how strong the pull is - higher values = stronger pull
-        const pullStrength = 0.05 * (distance / radius);
-
-        // Apply the pull toward the center
-        // The direction is opposite to the displacement vector (dx, dy)
-        node.x -= dx * pullStrength;
-        node.y -= dy * pullStrength;
-      }
-    },
-
-    /**
-     * Apply repulsion force between a node and a network boundary
-     * @param {Object} node The node to apply force to
-     * @param {Object} networkData The network data
-     * @param {number} alpha The simulation alpha value
-     */
-    applyBoundaryRepulsion(node, networkData, alpha) {
-      const centerX = networkData.centerX;
-      const centerY = networkData.centerY;
-      const radius = networkData.radius;
-      const bufferZone = 80; // Zone where repulsion starts
-
-      // Calculate distance from node to network center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is in buffer zone, add repulsive force
-      if (distance < radius + bufferZone && distance > radius) {
-        // Calculate repulsion strength (stronger when closer to boundary)
-        const repulsionStrength = alpha * 5 * (1 - ((distance - radius) / bufferZone));
-
-        // Normalize direction vector
-        const nx = dx / distance;
-        const ny = dy / distance;
-
-        // Apply repulsive force
-        node.x += nx * repulsionStrength;
-        node.y += ny * repulsionStrength;
-      }
-    },
-
-    /**
-     * Apply repulsion force between a node and the Internet Boundary
-     * @param {Object} node The node to apply force to
-     * @param {number} alpha The simulation alpha value
-     */
-    applyInternetBoundaryRepulsion(node, alpha) {
-      const centerX = this.internetBoundaryCenterX;
-      const centerY = this.internetBoundaryCenterY;
-      const radius = this.internetBoundaryRadius;
-      const bufferZone = 100; // Larger buffer zone for Internet Boundary
-
-      // Calculate distance from node to Internet Boundary center
-      const dx = node.x - centerX;
-      const dy = node.y - centerY;
-      const distance = Math.sqrt(dx*dx + dy*dy);
-
-      // If node is in buffer zone, add repulsive force
-      if (distance < radius + bufferZone && distance > radius) {
-        // Calculate repulsion strength (stronger when closer to boundary)
-        const repulsionStrength = alpha * 7 * (1 - ((distance - radius) / bufferZone)); // Stronger repulsion
-
-        // Normalize direction vector
-        const nx = dx / distance;
-        const ny = dy / distance;
-
-        // Apply repulsive force
-        node.x += nx * repulsionStrength;
-        node.y += ny * repulsionStrength;
-      }
-    },
-
-    /**
-     * Update D3 force simulation with new data
-     * @param {Object} data The visualization data (nodes and links)
-     */
-    updateSimulation(data) {
-      // Clear all existing elements to prevent ghost artifacts
-      this.g.selectAll('.link').remove();
-      this.g.selectAll('.node').remove();
-      this.g.selectAll('.node-label').remove();
-      this.g.selectAll('.network-container').remove();
-      this.g.selectAll('.network-container-glow').remove();
-      this.g.selectAll('.network-label').remove();
-
-      // Filter nodes - always hide Application nodes in detailed view
-      let filteredNodes = data.nodes;
-      if (this.viewMode === 'detailed') {
-        filteredNodes = data.nodes.filter(node => node.type !== 'Application');
-      }
-
-      // Filter links - show or hide public traffic based on the filter
-      let filteredLinks = data.links;
-      // Invert the logic: when hidePublicTraffic is false, hide public traffic
-      if (!this.filters.hidePublicTraffic) {
-        filteredLinks = data.links.filter(link => {
-          if (link.type === 'CALLS') {
-            // Find the target node
-            const targetNode = data.nodes.find(node => node.id === link.target);
-            // Skip if target has public_ip=true
-            if (targetNode && targetNode.data && targetNode.data.public_ip === true) {
-              return false;
-            }
+      console.log(`Final grouping: ${publicGroups.public.length} public nodes, ${publicGroups.private.length} private nodes`);
+      
+      // Create Level 1: Public/Private boundary containers
+      if (publicGroups.public.length > 0) {
+        elements.push({
+          data: {
+            id: 'public-boundary',
+            label: `Public Network (${publicGroups.public.length} nodes)`,
+            type: 'PublicBoundary',
+            color: '#FF6B6B'
           }
-          return true;
         });
       }
 
-      // Also filter links that connect to hidden nodes
-      const visibleNodeIds = new Set(filteredNodes.map(node => node.id));
-      filteredLinks = filteredLinks.filter(link => 
-        visibleNodeIds.has(link.source) && visibleNodeIds.has(link.target)
-      );
-
-      // Update current nodes and links with filtered data
-      this.currentNodes = filteredNodes;
-      this.currentLinks = filteredLinks;
-
-      // Separate private and public nodes
-      this.publicNodes = filteredNodes.filter(node => 
-        node.data && node.data.public_ip === true);
-      this.privateNodes = filteredNodes.filter(node => 
-        (!node.data || node.data.public_ip !== true) && 
-        // Application nodes should not be placed in private networks
-        node.type !== 'Application');
-
-      // Adjust force parameters based on graph size
-      const nodeCount = filteredNodes.length;
-
-      // For larger graphs, use even more compact settings
-      if (nodeCount > 100) {
-        const linkForce = this.simulation.force('link');
-        if (linkForce) linkForce.distance(40);
-
-        const chargeForce = this.simulation.force('charge');
-        if (chargeForce) chargeForce.strength(-100);
-
-        const collisionForce = this.simulation.force('collision');
-        if (collisionForce) collisionForce.radius(20);
-
-        const radialForce = this.simulation.force('radial');
-        if (radialForce) radialForce.strength(0.2);
-      } else {
-        const linkForce = this.simulation.force('link');
-        if (linkForce) linkForce.distance(60);
-
-        const chargeForce = this.simulation.force('charge');
-        if (chargeForce) chargeForce.strength(-150);
-
-        const collisionForce = this.simulation.force('collision');
-        if (collisionForce) collisionForce.radius(25);
-
-        const radialForce = this.simulation.force('radial');
-        if (radialForce) radialForce.strength(0.15);
-      }
-
-      // Create links
-      const link = this.g.selectAll('.link')
-          .data(filteredLinks)
-          .enter()
-          .append('line')
-          .attr('class', 'link')
-          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
-          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
-          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
-          .attr('marker-end', 'url(#arrowhead)')
-          .style('cursor', 'pointer')
-          .on('click', (event, d) => {
-            event.stopPropagation(); // Prevent click from reaching the SVG
-            this.onLinkClick(d, event);
-          });
-
-      // Create node groups
-      const node = this.g.selectAll('.node')
-          .data(filteredNodes)
-          .enter()
-          .append('g')
-          .attr('class', 'node')
-          .call(this.drag())
-          .on('click', (event, d) => {
-            event.stopPropagation(); // Prevent click from reaching the SVG
-            this.onNodeClick(d, event);
-            this.highlightNode(d.id, event.shiftKey);
-          });
-
-      // Add network icon shapes using SVG
-      const self = this;
-
-      // Set nodeSize based on graph size - do this ONCE before the loop
-      this.nodeSize = nodeCount > 100 ? 14 : 18;
-
-      node.each(function(d) {
-        const color = self.nodeColors[d.type] || '#ccc';
-
-        // Store original color for later restoration
-        self.nodeOriginalColors[d.id] = color;
-
-        // Check if this is a virtual application node
-        const isVirtual = d.type === 'Application' && d.data.virtual === true;
-
-        // Draw dashed circle for virtual application nodes
-        if (isVirtual) {
-          d3.select(this).append('circle')
-            .attr('r', self.nodeSize * 1.3)
-            .attr('fill', 'none')
-            .attr('stroke', color)
-            .attr('stroke-dasharray', '3,3')
-            .attr('class', 'virtual-node-circle');
-        }
-
-        // Create group for the icon
-        const iconGroup = d3.select(this).append('g')
-            .attr('transform', `translate(${-self.nodeSize},${-self.nodeSize})`)
-            .attr('width', self.nodeSize * 2)
-            .attr('height', self.nodeSize * 2)
-            .attr('class', 'node-icon-group');
-
-        // Get the appropriate icon SVG based on node type
-        const iconSvg = networkIcons[d.type] || networkIcons.default;
-
-        // Create a temporary div to hold the SVG content
-        const tempDiv = document.createElement('div');
-        tempDiv.innerHTML = iconSvg;
-
-        // Extract the SVG element and its child nodes
-        const svgElement = tempDiv.querySelector('svg');
-        const svgContent = svgElement.innerHTML;
-
-        // Create a new SVG element and set its attributes
-        const newSvg = iconGroup.append('svg')
-            .attr('width', self.nodeSize * 2)
-            .attr('height', self.nodeSize * 2)
-            .attr('viewBox', svgElement.getAttribute('viewBox'))
-            .style('color', color) // This works with the "currentColor" fill in the icons
-            .style('opacity', isVirtual ? 0.50 : 1) // 25% transparent for virtual nodes
-            .html(svgContent);
-
-        // Store the node size as a data attribute for later use
-        d3.select(this).attr('data-node-size', self.nodeSize);
-      });
-
-      // Add text labels
-      node.append('text')
-          .attr('class', 'node-label')
-          .attr('dx', nodeCount > 100 ? 15 : 20)
-          .attr('dy', 4)
-          .text(d => nodeCount > 200 ? '' : d.label)
-          .attr('font-size', nodeCount > 100 ? '8px' : '10px');
-
-      // Add tooltips
-      node.append('title')
-          .text(d => {
-            return `Type: ${d.type}\nName: ${d.label}`;
-          });
-
-      // Add secondary cloud icon for nodes with public_ip = true
-      console.log('Adding secondary icons to nodes');
-      this.addSecondaryIcons(node);
-
-      // Update simulation
-      this.simulation
-          .nodes(data.nodes)
-          .force('link').links(data.links);
-
-      // Use a moderate alpha with faster decay for smoother animation
-      this.simulation.alpha(0.3).alphaDecay(0.02).restart();
-    },
-
-    /**
-     * Simulation tick function to update positions
-     */
-    tick() {
-      this.g.selectAll('.link')
-          .attr('x1', d => d.source.x)
-          .attr('y1', d => d.source.y)
-          .attr('x2', d => d.target.x)
-          .attr('y2', d => d.target.y);
-
-      this.g.selectAll('.node')
-          .attr('transform', d => `translate(${d.x},${d.y})`);
-
-      // Update label positions
-      this.updateEdgeLabelPositions();
-      this.updateNodeDetailPositions();
-    },
-
-    /**
-     * Create drag behavior for nodes that keeps them fixed after dragging
-     */
-    drag() {
-      return d3.drag()
-          .on('start', (event, d) => {
-            if (!event.active) this.simulation.alphaTarget(0.1).restart();
-            d.fx = d.x;
-            d.fy = d.y;
-          })
-          .on('drag', (event, d) => {
-            d.fx = event.x;
-            d.fy = event.y;
-
-            // Update node label position immediately during drag
-            this.g.selectAll('.node-label')
-                .filter(labelData => labelData.id === d.id)
-                .attr('x', d.x)
-                .attr('y', d.y + this.nodeSize + 14);
-
-            // Update any node detail labels for this node immediately during drag
-            this.g.selectAll('.node-detail-label')
-                .filter(labelData => labelData.id === d.id)
-                .attr('transform', `translate(${d.x + 20}, ${d.y})`);
-          })
-          .on('end', (event, d) => {
-            if (!event.active) this.simulation.alphaTarget(0);
-
-            // Get container dimensions to determine center
-            const container = this.$refs.d3Container;
-            const width = container.clientWidth;
-            const height = container.clientHeight;
-
-            // Calculate distance from center
-            const centerX = width / 2;
-            const centerY = height / 2;
-            const distanceFromCenter = Math.sqrt(
-              Math.pow((d.x - centerX), 2) + 
-              Math.pow((d.y - centerY), 2)
-            );
-
-            // If node is dragged too far from center (more than 40% of container width),
-            // unfix it so it can be pulled back by center force
-            if (distanceFromCenter > width * 0.4) {
-              d.fx = null;
-              d.fy = null;
-              // Apply a small alpha to allow the node to move back toward center
-              this.simulation.alpha(0.1).restart();
-            }
-            // Otherwise keep it fixed where user dragged it
-          });
-    },
-
-    /**
-     * Enhance the selected node's detail label
-     * @param {string} nodeId ID of the node to enhance
-     */
-    enhanceNodeDetail(nodeId) {
-      // Make the selected node's detail label larger and bring it to front
-      this.enhanceSelectedNodeDetail(nodeId);
-
-      // Force a tick to update all positions and z-ordering
-      if (this.simulation) {
-        this.tick();
-      }
-    },
-
-    /**
-     * Enhance the selected node's detail label and icon
-     * Makes them larger and brings them to front
-     * @param {string} selectedNodeId The ID of the selected node
-     */
-    enhanceSelectedNodeDetail(selectedNodeId) {
-      // Find the node detail label for the selected node
-      const detailLabels = this.g.selectAll('.node-detail-label');
-
-      // Reset all detail labels first
-      detailLabels
-        .style('font-size', null)
-        .style('font-weight', null);
-
-      // Select all node icons and reset them
-      this.g.selectAll('.node-icon')
-        .attr('width', 20)
-        .attr('height', 20)
-        .attr('x', d => d.x - 10)
-        .attr('y', d => d.y - 10);
-
-      // Find the selected node's detail label and enhance it
-      detailLabels.each(function(d) {
-        if (d && d.id === selectedNodeId) {
-          // Get the label element
-          const label = d3.select(this);
-
-          // Make it larger and bold
-          label.style('font-size', '14px')
-               .style('font-weight', 'bold');
-
-          // Bring to front using D3's raise method
-          label.raise();
-        }
-      });
-
-      // Find the selected node's icon and make it larger
-      this.g.selectAll('.node-icon').each(function(d) {
-        if (d && d.id === selectedNodeId) {
-          const icon = d3.select(this);
-
-          // Make icon larger
-          icon.attr('width', 24)
-              .attr('height', 24)
-              .attr('x', d.x - 12)
-              .attr('y', d.y - 12);
-
-          // Bring to front
-          icon.raise();
-        }
-      });
-
-      // Also bring the node circle itself to front
-      this.g.selectAll('.node').each(function(d) {
-        if (d && d.id === selectedNodeId) {
-          // Make node slightly larger
-          const node = d3.select(this);
-          node.attr('r', 22); // Larger radius than default
-
-          // Bring to front
-          node.raise();
-        }
-      });
-    },
-
-    /**
-     * Reset all node positions (make them unfixed)
-     */
-    resetNodePositions() {
-      if (this.currentNodes) {
-        this.currentNodes.forEach(node => {
-          node.fx = null;
-          node.fy = null;
-        });
-
-        // Clear saved positions
-        this.nodePositions = {};
-
-        // Update the simulation with the unfixed nodes
-        this.simulation.nodes(this.currentNodes);
-
-        // Reset network containers - it's easier to remove and recreate them
-        this.removeNetworkContainers();
-        this.addNetworkContainers();
-
-        this.simulation.alpha(0.2).alphaDecay(0.05).restart();
-      }
-
-      // Node detail labels will be updated automatically in the next tick
-      // via updateNodeDetailPositions, so no manual update needed here
-    },
-
-    /**
-     * Handle node click event
-     * @param {Object} node The clicked node data
-     * @param {Object} event The original DOM event
-     */
-    onNodeClick(node, event) {
-      // Emit node clicked event with the node data and shift key state
-      this.$emit('node-clicked', node.data, event);
-    },
-
-    /**
-     * Handle link click event
-     * @param {Object} link The clicked link data
-     * @param {Object} event The original DOM event
-     */
-    onLinkClick(link, event) {
-      // Highlight the link and its connected nodes
-      this.highlightLink(link, event.shiftKey);
-    },
-
-    /**
-     * Highlight a link and its connected nodes
-     * @param {Object} link The link to highlight
-     * @param {boolean} appendToSelection Whether to add to existing selection
-     */
-    highlightLink(link, appendToSelection = false) {
-      console.log("D3: Highlighting link", link, "append =", appendToSelection);
-
-      // Only clear existing highlight if not appending
-      if (!appendToSelection) {
-        this.clearHighlight();
-        this.selectedNodeIds.clear(); // Clear the set when not appending
-      }
-
-      // Get the source and target nodes
-      const sourceNode = typeof link.source === 'object' ? link.source : this.currentNodes.find(n => n.id === link.source);
-      const targetNode = typeof link.target === 'object' ? link.target : this.currentNodes.find(n => n.id === link.target);
-
-      if (!sourceNode || !targetNode) {
-        console.warn("D3: Could not find source or target node for link", link);
-        return;
-      }
-
-      // Add the source and target nodes to the selection
-      this.selectedNodeIds.add(sourceNode.id);
-      this.selectedNodeIds.add(targetNode.id);
-
-      // Create a set of nodes to highlight (source and target)
-      const nodesToHighlight = new Set([sourceNode.id, targetNode.id]);
-
-      // Find the index of the clicked link
-      const linkIndex = this.currentLinks.findIndex(l => 
-        (l.source === link.source && l.target === link.target) || 
-        (l.source.id === link.source.id && l.target.id === link.target.id)
-      );
-
-      if (linkIndex === -1) {
-        console.warn("D3: Could not find link index", link);
-        return;
-      }
-
-      // Create an array with just this link's index
-      const linksToHighlight = [linkIndex];
-
-      // Apply highlight to the source and target nodes
-      this.g.selectAll('.node')
-          .filter(d => nodesToHighlight.has(d.id))
-          .each(function(d) {
-            const node = d3.select(this);
-
-            // Skip if this node is already transformed (for multi-select)
-            if (appendToSelection && node.attr('data-original-transform')) {
-              return;
-            }
-
-            // Store original transform for later restoration
-            const currentTransform = node.attr('transform');
-            node.attr('data-original-transform', currentTransform);
-
-            // Scale up the node
-            const translate = currentTransform.match(/translate\(([^)]+)\)/)[1].split(',');
-            const x = parseFloat(translate[0]);
-            const y = parseFloat(translate[1]);
-
-            // Apply transform - same scale for both nodes
-            node.attr('transform', `translate(${x},${y}) scale(1.5)`)
-                .style('filter', 'drop-shadow(0 0 5px #4444ff)');
-
-            // Get the SVG icon element and change its color
-            const svgIcon = node.select('svg');
-            if (!svgIcon.empty()) {
-              // Store original color if not already stored
-              if (!node.attr('data-original-color')) {
-                const originalColor = svgIcon.style('color');
-                node.attr('data-original-color', originalColor);
-              }
-
-              // Apply purple color for connected nodes
-              svgIcon.style('color', '#7030A0'); // Dark purple for both nodes
-
-              // For Unknown nodes, also change the circle fill color and make question mark more visible
-              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
-                svgIcon.select('circle').attr('fill', '#7030A0');
-                // Make the question mark white and bolder for better visibility
-                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
-              }
-            }
-          })
-          .select('text')
-          .style('font-weight', 'bold')
-          .style('font-size', function() {
-            const textEl = d3.select(this);
-            // Check if we've already stored the original font size
-            if (!textEl.attr('data-original-font-size')) {
-              const currentSize = textEl.style('font-size');
-              textEl.attr('data-original-font-size', currentSize);
-            }
-            // Use the stored original size to calculate the enhanced size
-            const originalSize = textEl.attr('data-original-font-size');
-            const size = parseFloat(originalSize);
-            const unit = originalSize.replace(/[\d.]/g, '');
-            return `${size * 1.2}${unit}`; // Apply 1.2x sizing once
-          });
-
-      // Update opacity for all nodes - keep source and target nodes fully opaque
-      this.updateNodesOpacity(nodesToHighlight);
-
-      // Highlight the clicked link
-      this.g.selectAll('.link')
-          .filter((d, i) => i === linkIndex)
-          .attr('stroke-width', 3)
-          .attr('stroke', '#4444ff')
-          .attr('stroke-dasharray', null)
-          .attr('stroke-opacity', 1);
-
-      // Update link styling for all links
-      this.updateLinksVisibility(linksToHighlight);
-
-      // Show node labels for the source and target nodes
-      this.showSelectedNodeLabels();
-
-      // Show label for the clicked link
-      this.showEdgeLabels();
-    },
-
-    /**
-     * Select and highlight a node by its ID
-     * @param {string} nodeId ID of the node to select and highlight
-     * @param {boolean} appendToSelection Whether to add to existing selection
-     */
-    selectAndHighlightNode(nodeId, appendToSelection = false) {
-      // Only clear existing highlight if not appending
-      if (!appendToSelection) {
-        this.clearHighlight();
-      }
-
-      // Find the node in the current nodes
-      const node = this.currentNodes.find(n => n.id === nodeId);
-
-      if (node) {
-        console.log("D3: Selecting and highlighting node", node);
-
-        // Emit the node clicked event (without causing recursive loop)
-        // Don't call onNodeClick as it would trigger another highlight
-
-        // Add a class to mark this as a selected node
-        this.g.selectAll('.node')
-            .classed('selected-node', d => d.id === nodeId || 
-              (appendToSelection && this.selectedNodeIds.has(d.id)));
-
-        // Highlight the node and its connections
-        this.highlightNode(nodeId, appendToSelection);
-
-        // Center view on the selected node with animation
-        this.centerOnNode(node);
-
-        // If we have filtered nodes, re-apply that highlighting
-        if (this.highlightedNodeIds && this.highlightedNodeIds.size > 0) {
-          // Re-apply filter highlighting but preserve selected node's connections
-          this.highlightFilteredNodes(this.highlightedNodeIds);
-        }
-      } else {
-        console.warn("D3: Node not found with ID", nodeId);
-      }
-
-      // Remove any node detail labels
-      this.g.selectAll('.node-detail-label').remove();
-    },
-
-    /**
-     * Center the view on a specific node
-     * @param {Object} node The node to center on
-     */
-    centerOnNode(node) {
-      if (!node || !node.x || !node.y) return;
-
-      const container = this.$refs.d3Container;
-      const width = container.clientWidth;
-      const height = container.clientHeight;
-
-      // Calculate the transform to center on this node
-      const scale = this.currentZoomLevel;
-      const x = width / 2 - node.x * scale;
-      const y = height / 2 - node.y * scale;
-
-      // Apply the transform with a smooth transition
-      this.svg.transition().duration(500).call(
-          this.zoom.transform,
-          d3.zoomIdentity.translate(x, y).scale(scale)
-      );
-    },
-
-    /**
-     * Highlight a node and its connections
-     * @param {string} nodeId ID of the node to highlight
-     * @param {boolean} appendToSelection Whether to add to existing selection
-     */
-    highlightNode(nodeId, appendToSelection = false) {
-      console.log("D3: Highlighting node", nodeId, "append =", appendToSelection);
-
-      // Store all connected nodes and links across all selections
-      let allConnectedNodes = new Set();
-      let allConnectedLinks = [];
-
-      // Only clear existing highlight if not appending
-      if (!appendToSelection) {
-        this.clearHighlight();
-        this.selectedNodeIds.clear(); // Clear the set when not appending
-      } else {
-        // If appending, start with current highlighted connections
-        this.selectedNodeIds.forEach(id => {
-          // Find connections for each selected node
-          const connections = this.getConnectedNodes(id);
-          connections.nodes.forEach(nodeId => allConnectedNodes.add(nodeId));
-          allConnectedLinks.push(...connections.links);
+      if (publicGroups.private.length > 0) {
+        elements.push({
+          data: {
+            id: 'private-boundary', 
+            label: `Private Infrastructure (${publicGroups.private.length} nodes)`,
+            type: 'PrivateBoundary',
+            color: '#4ECDC4'
+          }
         });
       }
 
-      // Add the new node to the selection
-      this.selectedNodeIds.add(nodeId);
+      // Create Level 2: Add all nodes directly as children of boundaries
+      let nodeIndex = 0;
+      
+      // Add public nodes to public boundary
+      publicGroups.public.forEach(({ id, vertex }) => {
+        const angle = (nodeIndex * 2 * Math.PI) / publicGroups.public.length;
+        const radius = Math.max(50, publicGroups.public.length * 2);
+        
+        elements.push({
+          data: {
+            id: id,
+            label: this.getNodeLabel(vertex),
+            color: this.getNodeColor(vertex.type),
+            type: vertex.type,
+            parent: 'public-boundary',
+            originalData: vertex
+          },
+          position: {
+            x: Math.cos(angle) * radius + 300,
+            y: Math.sin(angle) * radius + 200
+          }
+        });
+        nodeIndex++;
+      });
 
-      // Get connected nodes and links for the current selection
-      const { nodes: connectedNodes, links: connectedLinks } = this.getConnectedNodes(nodeId);
+      // Add private nodes to private boundary
+      nodeIndex = 0;
+      publicGroups.private.forEach(({ id, vertex }) => {
+        const angle = (nodeIndex * 2 * Math.PI) / publicGroups.private.length;
+        const radius = Math.max(100, publicGroups.private.length * 1.5);
+        
+        elements.push({
+          data: {
+            id: id,
+            label: this.getNodeLabel(vertex),
+            color: this.getNodeColor(vertex.type),
+            type: vertex.type,
+            parent: 'private-boundary',
+            originalData: vertex
+          },
+          position: {
+            x: Math.cos(angle) * radius + 600,
+            y: Math.sin(angle) * radius + 400
+          }
+        });
+        nodeIndex++;
+      });
 
-      // Add to our complete set of connected elements
-      connectedNodes.forEach(id => allConnectedNodes.add(id));
-      allConnectedLinks.push(...connectedLinks);
-
-      console.log("D3: Total selected nodes:", this.selectedNodeIds.size, 
-                 "Connected nodes:", allConnectedNodes.size,
-                 "Connected links:", allConnectedLinks.length);
-
-      // Apply highlight to all connected nodes
-      this.g.selectAll('.node')
-          .filter(d => connectedNodes.has(d.id))
-          .each(function(d) {
-            const node = d3.select(this);
-
-            // Skip if this node is already transformed (for multi-select)
-            if (appendToSelection && node.attr('data-original-transform')) {
-              return;
-            }
-
-            // Store original transform for later restoration
-            const currentTransform = node.attr('transform');
-            node.attr('data-original-transform', currentTransform);
-
-            // Scale up the node
-            const translate = currentTransform.match(/translate\(([^)]+)\)/)[1].split(',');
-            const x = parseFloat(translate[0]);
-            const y = parseFloat(translate[1]);
-
-            // Apply transform - bigger scale for selected node
-            if (d.id === nodeId) {
-              node.attr('transform', `translate(${x},${y}) scale(1.5)`)
-                  .style('filter', 'drop-shadow(0 0 5px #4444ff)');
-            } else {
-              node.attr('transform', `translate(${x},${y}) scale(1.3)`)
-                  .style('filter', 'drop-shadow(0 0 3px #4444ff)');
-            }
-
-            // Get the SVG icon element and change its color
-            const svgIcon = node.select('svg');
-            if (!svgIcon.empty()) {
-              // Store original color if not already stored
-              if (!node.attr('data-original-color')) {
-                const originalColor = svgIcon.style('color');
-                node.attr('data-original-color', originalColor);
-              }
-
-              // Apply purple color for connected nodes
-              const highlightColor = d.id === nodeId ? '#7030A0' : '#9966CC';  // Dark purple for selected, lighter purple for connected
-              svgIcon.style('color', highlightColor);
-
-              // For Unknown nodes, also change the circle fill color and make question mark more visible
-              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
-                svgIcon.select('circle').attr('fill', highlightColor);
-                // Make the question mark white and bolder for better visibility
-                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
-              }
-            }
-          })
-          .select('text')
-          .style('font-weight', 'bold')
-          .style('font-size', function() {
-            const textEl = d3.select(this);
-            // Check if we've already stored the original font size
-            if (!textEl.attr('data-original-font-size')) {
-              const currentSize = textEl.style('font-size');
-              textEl.attr('data-original-font-size', currentSize);
-            }
-            // Use the stored original size to calculate the enhanced size
-            const originalSize = textEl.attr('data-original-font-size');
-            const size = parseFloat(originalSize);
-            const unit = originalSize.replace(/[\d.]/g, '');
-            return `${size * 1.2}${unit}`; // Apply 1.2x sizing once
-          });
-
-      // Update opacity for all nodes - keep all connected nodes fully opaque
-      this.updateNodesOpacity(allConnectedNodes);
-
-      // Highlight all connected links
-      this.g.selectAll('.link')
-          .filter((d, i) => connectedLinks.includes(i))
-          .attr('stroke-width', 3)
-          .attr('stroke', '#4444ff');
-
-      // Update link styling for all links
-      this.updateLinksVisibility(allConnectedLinks);
-
-      // Show node labels for all selected nodes
-      this.showSelectedNodeLabels();
-
-      // Show labels for edges (only outgoing connections)
-      this.showEdgeLabels();
-
-      // Show labels for edges (only outgoing connections)
-      this.showEdgeLabels();
-    },
-
-    /**
-     * Show simplified labels for all selected nodes and their connected nodes
-     * Displays just address and app name
-     */
-    showSelectedNodeLabels() {
-      // Remove any existing node detail labels first
-      this.g.selectAll('.node-detail-label').remove();
-
-      if (this.selectedNodeIds.size === 0) return;
-
-      // Create a set of all node IDs to show labels for
-      const nodesToLabelSet = new Set();
-
-      // Add all selected nodes to the set
-      this.selectedNodeIds.forEach(nodeId => {
-        nodesToLabelSet.add(nodeId);
-
-        // Also add connected nodes to the set
-        const { nodes: connectedNodes } = this.getConnectedNodes(nodeId);
-        connectedNodes.forEach(connectedId => {
-          nodesToLabelSet.add(connectedId);
+      // Add edges
+      this.graphData.edges.forEach((edge, index) => {
+        elements.push({
+          data: {
+            id: `edge-${index}`,
+            source: edge.start_node,
+            target: edge.end_node,
+            edgeType: edge.type
+          }
         });
       });
 
-      console.log("D3: Showing simplified labels for", nodesToLabelSet.size, "nodes (selected and connected)");
-
-      // Find all nodes that are in our nodesToLabel set
-      this.g.selectAll('.node')
-          .filter(d => nodesToLabelSet.has(d.id))
-          .each((d) => {
-            const nodeData = d.data || d;
-
-            // Extract just the essential information we want to display
-            const appName = nodeData.app_name || '';
-            const address = nodeData.address || '';
-
-            // Skip if we don't have anything to show
-            if (!appName && !address) return;
-
-            // Create an array of lines to display
-            const labelLines = [];
-
-            // App name is always shown first if available
-            if (appName) {
-              labelLines.push(appName);
-            }
-
-            // Add address if available
-            if (address) {
-              labelLines.push(address);
-            }
-
-            // Skip if no lines to show
-            if (labelLines.length === 0) return;
-
-            // Calculate label position (to the right of the node)
-            const labelX = d.x + 20;
-            const labelY = d.y;
-
-            // Create a group for the label and bind the node data to it
-            const labelGroup = this.g.append('g')
-                .datum(d) // Bind the node data to the label for updates in tick
-                .attr('class', 'node-detail-label')
-                .attr('data-node-id', d.id)
-                .attr('transform', `translate(${labelX}, ${labelY})`);
-
-            // Determine styling based on whether node is directly selected or just connected
-            const isSelected = this.selectedNodeIds.has(d.id);
-            const textColor = isSelected ? '#333' : '#666'; // Darker for selected, lighter for connected
-            const fontWeight = isSelected ? 'bold' : 'normal'; // Bold for selected
-
-            // Add each line of text
-            labelLines.forEach((line, i) => {
-              labelGroup.append('text')
-                  .attr('x', 0)
-                  .attr('y', i * 14) // Smaller line height
-                  .attr('fill', textColor)
-                  .attr('font-size', '11px')
-                  .attr('font-weight', fontWeight)
-                  .text(line)
-                  .style('text-shadow', '0 0 3px white, 0 0 3px white, 0 0 3px white, 0 0 3px white'); // Add white glow for readability
-            });
-          });
+      console.log(`Generated simple 2-level hierarchy: ${elements.length} elements (${publicGroups.public.length + publicGroups.private.length} nodes, ${this.graphData.edges.length} edges)`);
+      return elements;
     },
 
-    /**
-     * Get the connected nodes and links for a given node ID
-     * @param {string} nodeId ID of the node
-     * @returns {Object} Object with sets of connected nodes and links
-     */
-    getConnectedNodes(nodeId) {
-      const connectedNodes = new Set([nodeId]);
-      const connectedLinks = [];
-
-      this.currentLinks.forEach((link, index) => {
-        if (link.source.id === nodeId) {
-          connectedNodes.add(link.target.id);
-          connectedLinks.push(index);
-        } else if (link.target.id === nodeId) {
-          connectedNodes.add(link.source.id);
-          connectedLinks.push(index);
-        }
+    onAfterCreated(cy) {
+      console.log('Cytoscape created with', cy.elements().length, 'elements');
+      this.cy = cy;
+      
+      // Set up event handlers
+      cy.on('tap', 'node', (event) => {
+        const node = event.target;
+        const nodeData = node.data();
+        this.$emit('node-clicked', nodeData.originalData, event.originalEvent.shiftKey);
       });
 
-      return { nodes: connectedNodes, links: connectedLinks };
-    },
+      cy.on('zoom', () => {
+        this.$emit('zoom-change', cy.zoom());
+      });
 
-    /**
-     * Update all nodes opacity based on connected nodes
-     * @param {Set} connectedNodes Set of connected node IDs that should be fully opaque
-     */
-    updateNodesOpacity(connectedNodes) {
-      // Reset all nodes to semi-transparent first
-      this.g.selectAll('.node')
-          .style('opacity', 0.3);
-
-      // Then make connected nodes fully opaque
-      this.g.selectAll('.node')
-          .filter(d => connectedNodes.has(d.id))
-          .style('opacity', 1);
-    },
-
-    /**
-     * Update all links visibility based on connected links
-     * @param {Array} connectedLinks Array of connected link indices that should be highlighted
-     */
-    updateLinksVisibility(connectedLinks) {
-      // Reset all links to faded first, preserving type-specific styling
-      this.g.selectAll('.link')
-          .attr('stroke-width', 1)
-          .attr('stroke-dasharray', d => d.type === 'CALLS' ? '3,3' : '5,3')
-          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
-          .attr('stroke-opacity', 0.2);
-
-      // Then highlight connected links
-      this.g.selectAll('.link')
-          .filter((d, i) => connectedLinks.includes(i))
-          .attr('stroke-width', 3)
-          .attr('stroke', '#4444ff')
-          .attr('stroke-dasharray', null)
-          .attr('stroke-opacity', 1);
-    },
-
-    /**
-     * Highlight multiple nodes based on filter criteria
-     * @param {Set} nodeIds Set of node IDs to highlight
-     */
-    highlightFilteredNodes(nodeIds) {
-      // If there are no nodes to highlight, do nothing
-      if (!nodeIds || nodeIds.size === 0) {
-        this.clearHighlight();
-        return;
-      }
-
-      // Don't clear previous highlight if we have selected nodes
-      if (this.selectedNodeIds.size === 0) {
-        this.clearHighlight();
-      }
-
-      console.log(`D3: Highlighting ${nodeIds.size} filtered nodes`);
-
-      // Apply highlight to nodes that match filter
-      this.g.selectAll('.node')
-          .filter(d => nodeIds.has(d.id))
-          .each(function(d) {
-            const node = d3.select(this);
-
-            // Don't modify if this is already the selected node
-            if (node.classed('selected-node')) {
-              return;
-            }
-
-            // Store original color if not already stored
-            if (!node.attr('data-original-color')) {
-              const svgIcon = node.select('svg');
-              if (!svgIcon.empty()) {
-                const originalColor = svgIcon.style('color');
-                node.attr('data-original-color', originalColor);
-              }
-            }
-
-            // Get the SVG icon element and change its color to purple
-            const svgIcon = node.select('svg');
-            if (!svgIcon.empty()) {
-              svgIcon.style('color', '#9966CC'); // Light purple for filtered nodes
-
-              // For Unknown nodes, also change the circle fill color and make question mark more visible
-              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
-                svgIcon.select('circle').attr('fill', '#9966CC');
-                // Make the question mark white and bolder for better visibility
-                svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
-              }
-            }
-
-            // Add drop shadow
-            node.style('filter', 'drop-shadow(0 0 3px #4444ff)');
-          });
-
-      // Make non-filtered nodes semi-transparent
-      this.g.selectAll('.node')
-          .filter(d => !nodeIds.has(d.id) && !this.selectedNodeIds.has(d.id))
-          .style('opacity', 0.3);
-
-      // If we have selected nodes, keep their connections highlighted
-      if (this.selectedNodeIds.size > 0) {
-        return;
-      }
-
-      // Make all links semi-transparent for better focus on filtered nodes
-      // Preserve type-specific styling while reducing opacity
-      this.g.selectAll('.link')
-          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
-          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
-          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
-          .attr('stroke-opacity', 0.2);
-    },
-
-    /**
-     * Add cloud icon annotation for nodes with public_ip = true
-     */
-    addSecondaryIcons(nodeSelection) {
-      const self = this;
-
-      // Add cloud icons only to nodes with public_ip = true
-      nodeSelection.each(function(d) {
-        // Get the node size from the data attribute or use the global value
-        const nodeSize = d3.select(this).attr('data-node-size') || self.nodeSize;
-
-        // Check all possible paths for public_ip
-        const hasPublicIp = d.data && d.data.public_ip === true;
-
-        if (hasPublicIp) {
-          // Size of the cloud icon relative to the node - make it about 0.9x the node size
-          const iconSize = nodeSize * 0.9;
-
-          // Position in the upper right corner with 50% overlap
-          const iconX = nodeSize / 2;   // 50% to the right of center  
-          const iconY = -nodeSize / 2;  // 50% above center
-
-          // Create a group for the cloud icon to ensure proper positioning
-          const indicatorGroup = d3.select(this).append('g')
-            .attr('class', 'public-ip-indicator-group')
-            .attr('transform', `translate(${iconX}, ${iconY})`) // Position in the upper right quadrant
-            .attr('pointer-events', 'none'); // Ensure it doesn't interfere with interactions
-
-          // Get the Public IP icon from networkIcons
-          const cloudIconSvg = networkIcons.PublicIP;
-
-          // Create a temporary div to hold the SVG content
-          const tempDiv = document.createElement('div');
-          tempDiv.innerHTML = cloudIconSvg;
-
-          // Extract the SVG element and its content
-          const svgElement = tempDiv.querySelector('svg');
-          const svgContent = svgElement.innerHTML;
-          const originalViewBox = svgElement.getAttribute('viewBox') || '0 0 24 24';
-
-          // Create a new SVG element for the cloud icon
-          // We need to center the icon on the translate point
-          const cloudIcon = indicatorGroup.append('svg')
-            .attr('width', iconSize)
-            .attr('height', iconSize * 0.75) // Maintain original aspect ratio (0.75)
-            .attr('viewBox', originalViewBox)
-            .attr('x', -iconSize / 2)  // Center horizontally on the translate point
-            .attr('y', -iconSize * 0.75 / 2) // Center vertically on the translate point
-            .html(svgContent);
-
-          // Add a tooltip to show "Public IP" on hover
-          indicatorGroup.append('title')
-            .text('Public IP');
-        }
+      // Emit rendering complete
+      this.$emit('rendering-complete', {
+        nodeCount: cy.nodes().length,
+        linkCount: cy.edges().length
       });
     },
 
-    /**
-     * Clear any highlighting
-     */
-    clearHighlight() {
-      // Log for debugging
-      console.log("D3: Clearing all highlights");
-
-      // Restore original node appearance
-      this.g.selectAll('.node')
-          .each(function() {
-            const node = d3.select(this);
-
-            // Restore original transform
-            const originalTransform = node.attr('data-original-transform');
-            if (originalTransform) {
-              node.attr('transform', originalTransform);
-              // Clear the stored transform data
-              node.attr('data-original-transform', null);
-            }
-
-            // Remove drop shadow
-            node.style('filter', null);
-
-            // Restore original color
-            const originalColor = node.attr('data-original-color');
-            if (originalColor) {
-              const svgIcon = node.select('svg');
-              svgIcon.style('color', originalColor);
-
-              // Reset circle fill color and text styling for Unknown nodes
-              const d = d3.select(this).datum();
-              if (d.type === 'Unknown' || d.data?.type === 'Unknown') {
-                svgIcon.select('circle').attr('fill', '#F9C96E'); // Restore to original orange
-                // Restore question mark to original color and weight
-                svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
-              }
-
-              // Clear the stored color data
-              node.attr('data-original-color', null);
-            }
-          })
-          .style('opacity', 1) // Restore opacity
-          .classed('selected-node', false) // Remove selected class
-          .select('text')
-          .each(function() {
-            const textEl = d3.select(this);
-            // Restore original font size if stored
-            const originalSize = textEl.attr('data-original-font-size');
-            if (originalSize) {
-              textEl.style('font-size', originalSize);
-              // Clear the stored original size
-              textEl.attr('data-original-font-size', null);
-            } else {
-              textEl.style('font-size', null);
-            }
-            textEl.style('font-weight', 'normal');
-          });
-
-      // Restore original link appearance based on link type
-      this.g.selectAll('.link')
-          .attr('stroke-width', d => d.type === 'CALLS' ? 0.5 : 1.0)
-          .attr('stroke', d => d.type === 'CALLS' ? '#999' : '#F9696E')
-          .attr('stroke-dasharray', d => d.type === 'CALLS' ? null : '5,3')
-          .attr('stroke-opacity', 1); // Restore opacity
-
-      // Remove all node and edge labels
-      // Remove all node and edge labels
-      this.g.selectAll('.node-detail-label').remove();
-      this.g.selectAll('.edge-label').remove();
-
-      this.g.selectAll('.edge-label').remove();
-
-      // Clear the set of selected nodes
-      this.selectedNodeIds.clear();
+    getNodeLabel(vertex) {
+      const type = vertex.type;
+      if (type === 'Application') return vertex.name || `App: ${vertex.app_name || 'Unknown'}`;
+      if (type === 'Deployment') return vertex.name || `Deploy: ${vertex.app_name || 'Unknown'}`;
+      if (type === 'Compute') return `${vertex.name || 'Compute'}${vertex.address ? ` (${vertex.address})` : ''}`;
+      if (type === 'Resource') return `${vertex.name || 'Resource'}${vertex.address ? ` (${vertex.address})` : ''}`;
+      if (type === 'TrafficController') return `${vertex.name || 'Traffic'}${vertex.address ? ` (${vertex.address})` : ''}`;
+      if (type === 'InternetIP') return `${vertex.address || 'IP'}`;
+      return vertex.name || vertex.type;
     },
 
-    /**
-     * Update the position of edge labels when nodes move
-     * This is called during simulation ticks
-     */
-    updateEdgeLabelPositions() {
-      if (this.selectedNodeIds.size === 0) return;
-
-      // Update all edge label groups
-      this.g.selectAll('g.edge-label').each((d, i, nodes) => {
-        const labelGroup = d3.select(nodes[i]);
-        const linkIndex = parseInt(labelGroup.attr('data-link-index'));
-        const direction = labelGroup.attr('data-direction');
-
-        if (!isNaN(linkIndex) && this.currentLinks[linkIndex]) {
-          const link = this.currentLinks[linkIndex];
-          const sourceNode = link.source;
-          const targetNode = link.target;
-
-          if (sourceNode && targetNode) {
-            // Different positions based on whether it's outgoing or incoming
-            const positionRatio = (direction === 'outgoing') ? 0.4 : 0.6;
-
-            // Calculate new position
-            const posX = sourceNode.x + (targetNode.x - sourceNode.x) * positionRatio;
-            const posY = sourceNode.y + (targetNode.y - sourceNode.y) * positionRatio;
-
-            // Update group position
-            labelGroup.attr('transform', `translate(${posX},${posY})`);
-          }
-        }
-      });
+    getNodeColor(type) {
+      return this.nodeColors[type] || '#999';
     },
 
-    /**
-     * Show labels for edges of selected nodes (both outgoing and incoming connections)
-     */
-    showEdgeLabels() {
-      // Remove any existing edge labels
-      this.g.selectAll('.edge-label').remove();
-
-      // For each selected node, show labels for its connections
-      this.selectedNodeIds.forEach(nodeId => {
-        // Get all connected links
-        const { links: connectedLinkIndices } = this.getConnectedNodes(nodeId);
-
-        // Process each connected link
-        connectedLinkIndices.forEach(linkIndex => {
-          const link = this.currentLinks[linkIndex];
-          if (!link) return;
-
-          // Get the source and target nodes
-          const sourceNode = link.source;
-          const targetNode = link.target;
-
-          // Determine if this is an outgoing or incoming connection
-          const isOutgoing = sourceNode.id === nodeId;
-
-          // The relationship type will be our label with directional indicator
-          let labelText = link.type || '_UNKNOWN_';
-
-          // For CALLS relationships, include the protocol_mux property from the target node
-          if (link.type === 'CALLS' && targetNode && targetNode.data && targetNode.data.protocol_multiplexor) {
-            labelText = `CALLS [:${targetNode.data.protocol_multiplexor}]`;
-          }
-
-          // Position the label differently based on direction
-          // For outgoing: 40% of the way from source to target
-          // For incoming: 60% of the way from source to target (closer to target)
-          const positionRatio = isOutgoing ? 0.4 : 0.6;
-          const posX = sourceNode.x + (targetNode.x - sourceNode.x) * positionRatio;
-          const posY = sourceNode.y + (targetNode.y - sourceNode.y) * positionRatio;
-
-          // Calculate label width based on text length
-          const labelWidth = labelText.length * 5 + 10;
-
-          // Create a group for the label
-          const labelGroup = this.g.append('g')
-            .attr('class', 'edge-label')
-            .attr('data-link-index', linkIndex)
-            .attr('data-direction', isOutgoing ? 'outgoing' : 'incoming')
-            .attr('transform', `translate(${posX},${posY})`);
-
-          // Add a background rectangle for better visibility
-          labelGroup.append('rect')
-            .attr('x', -labelWidth/2)
-            .attr('y', -9)
-            .attr('width', labelWidth)
-            .attr('height', 18)
-            .attr('rx', 3) // Rounded corners
-            .attr('ry', 3)
-            .attr('fill', 'white')
-            .attr('opacity', 0.85);
-
-          // Add the text label
-          labelGroup.append('text')
-            .attr('x', 0)
-            .attr('y', 2)
-            .attr('text-anchor', 'middle')
-            .attr('alignment-baseline', 'middle')
-            .attr('fill', '#9966CC') // Light purple like connected nodes
-            .attr('font-size', '10px')
-            .attr('font-weight', 'bold')
-            .text(labelText);
-        });
-      });
-    },
-
-    // This duplicate method is removed, as we already have updateEdgeLabelPositions defined above
-
-    /**
-     * Update the position of node detail labels when nodes move
-     * This is called during simulation ticks
-     */
-    updateNodeDetailPositions() {
-      const self = this;
-      // Update all node detail label positions
-      this.g.selectAll('.node-detail-label').each(function(d) {
-        if (d && d.x !== undefined && d.y !== undefined) {
-          // Position to the right of the node
-          const labelX = d.x + 20;
-          const labelY = d.y;
-
-          // Check if this is the selected node
-          const isSelected = self.selectedNodeIds.has(d.id);
-
-          // Get the label element
-          const label = d3.select(this);
-
-          // Update the label position
-          label.attr('transform', `translate(${labelX}, ${labelY})`);
-
-          // Make selected node label visibly larger
-          if (isSelected) {
-            // Find the text element within this label group
-            const textElement = label.select('text');
-            textElement.style('font-size', '16px')
-                      .style('font-weight', 'bold')
-                      .style('stroke-width', '3px'); // Thicker outline for better readability
-
-            // Bring the label to the front
-            label.raise();
-
-            // Also make the corresponding node circle larger and bring it to front
-            self.g.selectAll('.node').each(function(nodeData) {
-              if (nodeData.id === d.id) {
-                const nodeElement = d3.select(this);
-                // Make the node 50% larger than normal
-                nodeElement.attr('r', self.nodeSize * 1.5);
-                // Bring to front
-                nodeElement.raise();
-              }
-            });
-
-            // Also make the node icon larger and bring to front
-            self.g.selectAll('.node-icon').each(function(nodeData) {
-              if (nodeData.id === d.id) {
-                const iconElement = d3.select(this);
-                // Make the icon larger
-                iconElement.attr('width', 30)
-                          .attr('height', 30)
-                          .attr('x', nodeData.x - 15)
-                          .attr('y', nodeData.y - 15);
-                // Bring to front
-                iconElement.raise();
-              }
-            });
-          } else {
-            // Reset to normal style for non-selected nodes
-            const textElement = label.select('text');
-            textElement.style('font-size', '12px')
-                      .style('font-weight', 'normal')
-                      .style('stroke-width', '2px');
-          }
-
-          // Make selected node label more prominent
-          if (isSelected) {
-            // Make label larger and bold
-            label.classed('selected-node-label', true)
-                 .style('font-size', '14px')
-                 .style('font-weight', 'bold');
-
-            // Bring the selected label to the front
-            label.raise();
-          } else {
-            // Reset to normal style
-            label.classed('selected-node-label', false)
-                 .style('font-size', null)
-                 .style('font-weight', null);
-          }
-        }
-      });
-    },
-
-    /**
-     * Handle window resize
-     */
-    onResize() {
-      const container = this.$refs.d3Container;
-      const width = container.clientWidth;
-      const height = container.clientHeight || 600;
-
-      // Update SVG viewBox
-      this.svg
-          .attr('viewBox', `0 0 ${width} ${height}`)
-          .attr('width', '100%')
-          .attr('height', '100%');
-
-      // Update simulation center force
-      if (this.simulation) {
-        this.simulation
-            .force('center', d3.forceCenter(width / 2, height / 2).strength(0.2))
-            .alpha(0.3)
-            .restart();
-      }
-    },
-
-    /**
-     * Zoom in on the visualization
-     */
+    // Public methods for parent component
     zoomIn() {
-      // Use d3's built-in zoom handling with smooth transition
-      this.svg.transition().duration(300).call(
-          this.zoom.scaleBy, 1.2
-      );
-      this.currentZoomLevel *= 1.2;
-      this.$emit('zoom-change', this.currentZoomLevel);
-    },
-
-    /**
-     * Zoom out on the visualization
-     */
-    zoomOut() {
-      // Use d3's built-in zoom handling with smooth transition
-      this.svg.transition().duration(300).call(
-          this.zoom.scaleBy, 0.8
-      );
-      this.currentZoomLevel *= 0.8;
-      this.$emit('zoom-change', this.currentZoomLevel);
-    },
-
-    /**
-     * Reset zoom and pan to show the entire Internet Boundary
-     */
-    resetView() {
-      const container = this.$refs.d3Container;
-      const width = container.clientWidth;
-      const height = container.clientHeight || 600;
-
-      // Calculate zoom level based on Internet Boundary size if it exists
-      let zoomLevel = 0.5; // Default zoom level
-      let centerX = width / 2;
-      let centerY = height / 2;
-
-      if (this.internetBoundaryContainer && this.internetBoundaryRadius > 0) {
-        // Calculate the zoom level needed to fit the Internet Boundary plus or minus buffer per view mode
-        const bufferFactor = this.viewMode === 'application' ? 1 : 0.67;
-        const boundaryDiameter = this.internetBoundaryRadius * 2 * bufferFactor;
-
-        // Calculate zoom level based on container dimensions and boundary size
-        const horizontalZoom = width / boundaryDiameter;
-        const verticalZoom = height / boundaryDiameter;
-
-        // Use the smaller of the two zoom levels to ensure the entire boundary is visible
-        zoomLevel = Math.min(horizontalZoom, verticalZoom);
-
-        // Use the Internet Boundary center coordinates
-        centerX = this.internetBoundaryCenterX;
-        centerY = this.internetBoundaryCenterY;
+      if (this.cy) {
+        this.cy.zoom(this.cy.zoom() * 1.3);
+        this.cy.center();
       }
-
-      // Update current zoom level
-      this.currentZoomLevel = zoomLevel;
-
-      // Calculate the translation needed to center the view on the Internet Boundary
-      const translateX = width / 2 - centerX * zoomLevel;
-      const translateY = height / 2 - centerY * zoomLevel;
-
-      // Apply the zoom transform with a smooth transition
-      this.svg.transition().duration(500).call(
-          this.zoom.transform,
-          d3.zoomIdentity.translate(translateX, translateY).scale(zoomLevel)
-      );
-
-      // Apply sizes based on selection state
-      this.updateNodeSizes();
-
-      this.$emit('zoom-change', this.currentZoomLevel);
-
-      // Debug: Log information about nodes with public_ip
-      this.debugNodeData();
-
-      // Update node label positions
-      this.g.selectAll('.node-label')
-        .attr('x', d => d.x)
-        .attr('y', d => d.y + this.nodeSize + 12);
-
-      // Reset last selected node ID
-      this.lastSelectedNodeId = null;
-
-      // Reset node sizes
-      this.updateNodeSizes();
     },
 
-    /**
-     * Update node sizes based on selection state
-     * Makes selected nodes larger and brings them to front
-     */
-    updateNodeSizes() {
-      this.g.selectAll('.node').each((d) => {
-        const isSelected = this.selectedNodeIds.has(d.id);
-        const nodeElement = d3.select(`#node-${d.id}`);
-
-        // Set node size
-        const nodeSize = isSelected ? this.selectedNodeSize : this.nodeSize;
-        nodeElement.attr('r', nodeSize);
-
-        // Bring selected nodes to front
-        if (isSelected && d.id === this.lastSelectedNodeId) {
-          nodeElement.raise();
-        }
-      });
+    zoomOut() {
+      if (this.cy) {
+        this.cy.zoom(this.cy.zoom() * 0.7);
+        this.cy.center();
+      }
     },
 
-    /**
-     * Debug helper to inspect node data structure
-     */
-    debugNodeData() {
-      console.log('Total nodes:', this.currentNodes.length);
+    resetView() {
+      if (this.cy) {
+        this.cy.fit();
+      }
+    },
 
-      // Check for public_ip only in node.data
-      const publicIpNodes = this.currentNodes.filter(node => 
-        node.data && node.data.public_ip === true
-      );
-
-      console.log('Nodes with public_ip:', publicIpNodes.length);
-
-      if (publicIpNodes.length > 0) {
-        // Print a more complete dump of the first node
-        const sampleNode = publicIpNodes[0];
-        console.log('Sample node with public_ip:', sampleNode);
-        console.log('Node data:', JSON.stringify(sampleNode.data || {}));
+    resetNodePositions() {
+      if (this.cy) {
+        const layout = this.cy.layout({ 
+          name: 'cose-bilkent',
+          fit: true,
+          padding: 30,
+          nodeRepulsion: 4500,
+          idealEdgeLength: 100,
+          edgeElasticity: 0.45,
+          nestingFactor: 0.1,
+          gravity: 0.25,
+          numIter: 2500,
+          tile: true,
+          animate: 'end',
+          animationDuration: 1000,
+          randomize: false
+        });
+        layout.run();
       }
     }
   }
@@ -2853,78 +467,9 @@ export default {
 </script>
 
 <style scoped>
-#d3-container {
+.cytoscape-widget {
   width: 100%;
-  height: 75vh;
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  background-color: #f9f9f9;
-  overflow: hidden;
-}
-
-  /* Node detail labels (applied through D3) */
-  :deep(.node-detail-label) {
-  pointer-events: none; /* Prevent interfering with clicks */
-  z-index: 10;
-  }
-
-  :deep(.node-detail-label text) {
-    font-family: 'Inter', 'Avenir', Helvetica, Arial, sans-serif;
-  pointer-events: none;
-  user-select: none;
-  }
-
-/* Style for the nodes and links */
-:deep(.link) {
-  transition: all 0.3s ease;
-}
-
-:deep(.node) {
-  cursor: pointer;
-  transition: all 0.3s ease;
-}
-
-:deep(.node-icon-group) {
-  /* Ensure icon rendering is consistent */
-  pointer-events: all;
-}
-
-:deep(.public-ip-indicator-group) {
-  pointer-events: none;
-  opacity: 0.9;
-}
-
-:deep(.node-label) {
-  font-family: sans-serif;
-  pointer-events: none;
-  transition: all 0.3s ease;
-}
-
-:deep(.public-ip-annotation) {
-  pointer-events: none;
-  transition: all 0.3s ease;
-}
-
-:deep(.public-ip-annotation-inner) {
-  pointer-events: none;
-}
-
-.network-container {
-  pointer-events: none;
-  transition: r 0.3s ease;
-}
-
-.network-label-group {
-  pointer-events: none;
-}
-
-.network-label {
-  font-size: 14px;
-  pointer-events: none;
-}
-
-.network-label-background {
-  pointer-events: none;
-  filter: drop-shadow(0px 1px 2px rgba(0, 0, 0, 0.1));
+  height: 100%;
+  background-color: #f8f9fa;
 }
 </style>
