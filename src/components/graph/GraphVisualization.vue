@@ -4,11 +4,11 @@
 -->
 
 <template>
-  <div id="cy" class="cytoscape-widget"></div>
+  <div id="g6-container" class="g6-widget"></div>
 </template>
 
 <script>
-import cytoscape from 'cytoscape';
+import { Graph } from '@antv/g6';
 
 export default {
   name: 'GraphVisualization',
@@ -36,22 +36,22 @@ export default {
 
   data() {
     return {
-      $cy: null
+      graph: null
     };
   },
 
   mounted() {
     console.log('GraphVisualization mounted, waiting for DOM...');
     this.$nextTick(() => {
-      console.log('DOM ready, initializing Cytoscape');
-      this.initializeCytoscape();
+      console.log('DOM ready, initializing G6');
+      this.initializeG6();
     });
   },
 
   beforeDestroy() {
-    if (this.$cy) {
-      console.log('Destroying Cytoscape instance');
-      this.$cy.destroy();
+    if (this.graph) {
+      console.log('Destroying G6 instance');
+      this.graph.destroy();
     }
   },
 
@@ -66,66 +66,99 @@ export default {
   },
 
   methods: {
-    initializeCytoscape() {
-      console.log('Initializing Cytoscape with dummy data');
-      
-      // Check if container exists
-      const container = document.getElementById('cy');
+    initializeG6() {
+      console.log('Initializing G6 with container');
+
+      const container = document.getElementById('g6-container');
       if (!container) {
-        console.error('Container element #cy not found!');
+        console.error('Container element #g6-container not found!');
         return;
       }
-      console.log('Container found:', container);
-      
-      console.log('Creating Cytoscape instance...');
-      this.$cy = cytoscape({
-        container: container,
-        
-        style: [
-          {
-            selector: 'node',
-            style: {
-              'background-color': 'data(color)',
-              'label': 'data(label)',
-              'text-valign': 'center',
-              'text-halign': 'center',
-              'font-size': '8px',
-              'width': 20,
-              'height': 20,
-              'color': '#000',
-              'text-outline-width': 1,
-              'text-outline-color': '#fff'
-            }
-          },
-          {
-            selector: 'edge',
-            style: {
-              'width': 1,
-              'line-color': '#ccc',
-              'target-arrow-color': '#ccc',
-              'target-arrow-shape': 'triangle',
-              'curve-style': 'bezier'
-            }
+
+      // Get container dimensions
+      const { width, height } = container.getBoundingClientRect();
+      console.log('Container dimensions:', width, 'x', height);
+
+      // Initial empty data
+      const emptyData = {
+        nodes: [],
+        edges: [],
+        combos: []
+      };
+
+      // Create G6 graph instance using the correct v5 API
+      this.graph = new Graph({
+        container: 'g6-container',
+        width: width || 800,
+        height: height || 600,
+        data: emptyData,
+        animation: false,  // Disable all animations
+        layout: {
+          type: 'force',
+          preventOverlap: true,
+          nodeSize: 30,
+          nodeSpacing: 100,
+          linkDistance: 200,
+          nodeStrength: -800,
+          edgeStrength: 0.1,
+          collideStrength: 1,
+          animate: false
+        },
+        combo: {
+          type: 'circle',
+          style: {
+            fill: 'rgba(74, 152, 227, 0.05)',
+            stroke: '#4A98E3',
+            lineWidth: 3,
+            lineDash: [8, 4],
+            opacity: 0.8,
+            labelText: (d) => d.data?.label || d.id,
+            labelFill: '#4A98E3',
+            labelFontSize: 14,
+            labelFontWeight: 'bold',
+            labelOffsetY: -20,
+            padding: 50  // Add padding inside combo
           }
-        ],
-        
+        },
+        node: {
+          style: {
+            size: 20,
+            labelText: (d) => d.data?.label || d.id,
+            labelFill: '#000',
+            labelFontSize: 8,
+            fill: (d) => d.data?.fill || '#C6E5FF',
+            stroke: (d) => d.data?.stroke || '#fff',
+            lineWidth: 2
+          }
+        },
+        edge: {
+          style: {
+            stroke: '#e2e2e2',
+            lineWidth: 1,
+            endArrow: true
+          }
+        },
+        behaviors: ['drag-element', 'drag-canvas', 'zoom-canvas'],
+        autoFit: 'view'
       });
 
       // Set up event handlers
-      this.$cy.on('tap', 'node', (event) => {
-        const node = event.target;
-        const nodeData = node.data();
-        if (nodeData.originalData) {
-          this.$emit('node-clicked', nodeData.originalData, event.originalEvent.shiftKey);
+      this.graph.on('node:click', (e) => {
+        const nodeData = e.target.model.data;
+        if (nodeData && nodeData.originalData) {
+          this.$emit('node-clicked', nodeData.originalData, e.originalEvent && e.originalEvent.shiftKey);
         }
       });
 
-      this.$cy.on('zoom', () => {
-        this.$emit('zoom-change', this.$cy.zoom());
+      this.graph.on('viewportchange', () => {
+        this.$emit('zoom-change', this.graph.getZoom());
       });
 
-      console.log('Cytoscape initialized successfully');
-      
+      console.log('G6 initialized successfully');
+
+      // Render the empty graph
+      this.graph.render();
+
       // Load real data if available
       if (this.graphData && this.graphData.vertices && Object.keys(this.graphData.vertices).length > 0) {
         console.log('Real data available, loading graph');
@@ -133,106 +166,110 @@ export default {
       }
     },
 
-    updateGraph(graphData) {
-      if (!this.$cy || !graphData || !graphData.vertices || !graphData.edges) {
-        console.log('Cannot update graph: missing cy instance or graph data');
+    updateGraph(data) {
+      if (!this.graph || !data || !data.vertices || !data.edges) {
+        console.log('Cannot update graph: missing graph instance or graph data');
         return;
       }
 
-      console.log(`Updating graph with ${Object.keys(graphData.vertices).length} nodes and ${graphData.edges.length} edges`);
-      
-      // Stop any running layouts first
-      try {
-        this.$cy.stop();
-      } catch (e) {
-        // Ignore errors if no layout is running
-      }
-      
-      // Clear existing elements
-      this.$cy.elements().remove();
-      
-      // Create elements array
-      const elements = [];
-      
-      // Add all nodes
-      Object.entries(graphData.vertices).forEach(([id, vertex]) => {
-        elements.push({
+      console.log(`Updating graph with ${Object.keys(data.vertices).length} nodes and ${data.edges.length} edges`);
+
+      // Classify nodes as public or private
+      const publicNodes = [];
+      const privateNodes = [];
+
+      Object.entries(data.vertices).forEach(([id, vertex]) => {
+        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true' ||
+                         vertex.publicIp === true || vertex.publicIp === 'true' ||
+                         vertex.is_public === true || vertex.is_public === 'true' ||
+                         vertex.type === 'InternetIP';
+
+        if (isPublic) {
+          publicNodes.push({ id, vertex });
+        } else {
+          privateNodes.push({ id, vertex });
+        }
+      });
+
+      console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
+
+      // Prepare G6 data structure
+      const nodes = [];
+      const edges = [];
+      const combos = [];
+
+      // Create combo for private network if we have private nodes
+      if (privateNodes.length > 0) {
+        combos.push({
+          id: 'private-network',
           data: {
-            id: id,
+            label: `Private Network (${privateNodes.length} nodes)`
+          }
+        });
+      }
+
+      // Add public nodes (no combo)
+      publicNodes.forEach(({ id, vertex }) => {
+        nodes.push({
+          id: id,
+          data: {
             label: this.getNodeLabel(vertex),
-            color: this.getNodeColor(vertex.type),
-            type: vertex.type,
+            fill: this.getNodeColor(vertex.type),
+            stroke: '#fff',
+            lineWidth: 2,
+            size: 20,
+            originalData: vertex
+          }
+        });
+      });
+
+      // Add private nodes as part of private-network combo
+      privateNodes.forEach(({ id, vertex }) => {
+        nodes.push({
+          id: id,
+          combo: 'private-network',
+          data: {
+            label: this.getNodeLabel(vertex),
+            fill: this.getNodeColor(vertex.type),
+            stroke: '#fff',
+            lineWidth: 2,
+            size: 20,
             originalData: vertex
           }
         });
       });
 
       // Add all edges
-      graphData.edges.forEach((edge, index) => {
-        elements.push({
+      data.edges.forEach((edge, index) => {
+        edges.push({
+          id: `edge-${index}`,
+          source: edge.start_node,
+          target: edge.end_node,
           data: {
-            id: `edge-${index}`,
-            source: edge.start_node,
-            target: edge.end_node,
-            edgeType: edge.type
+            stroke: '#e2e2e2',
+            lineWidth: 1
           }
         });
       });
 
-      console.log(`Adding ${elements.length} elements to graph`);
-      
-      // Add elements to cytoscape
-      this.$cy.add(elements);
-      
-      // Apply force-directed layout with error handling
-      console.log('Applying cose layout...');
-      const layoutOptions = {
-        name: 'fcose',
-        fit: true,
-        padding: 100,
-        nodeRepulsion: 10000,
-        nodeOverlap: 25,
-        idealEdgeLength: 180,
-        edgeElasticity: 0.3,
-        nestingFactor: 0.1,
-        gravity: 0.1,
-        numIter: 3000,
-        animate: false, // Disable animation to prevent errors
-        randomize: true,
-        // fcose specific options for large graphs
-        quality: 'default',
-        samplingType: true,
-        sampleSize: 25,
-        nodeSeparation: 75
+      console.log(`Adding ${nodes.length} nodes, ${edges.length} edges, ${combos.length} combos to G6`);
+
+      // Update graph data using the correct G6 v5 API
+      const graphData = {
+        nodes: nodes,
+        edges: edges,
+        combos: combos
       };
-      
-      console.log('Layout options:', layoutOptions);
-      console.log('Container dimensions:', this.$cy.container().offsetWidth, 'x', this.$cy.container().offsetHeight);
-      
-      try {
-        const layout = this.$cy.layout(layoutOptions);
-        
-        layout.run();
-        
-        // Auto zoom out to show full spread after layout
-        setTimeout(() => {
-          this.$cy.fit();
-          this.$cy.zoom(this.$cy.zoom() * 0.8); // Zoom out 20% more to see spacing
-          this.$cy.center();
-          console.log('Layout completed and zoomed out for better view');
-        }, 100);
-        
-        // Emit rendering complete immediately since no animation
-        this.$emit('rendering-complete', {
-          nodeCount: this.$cy.nodes().length,
-          linkCount: this.$cy.edges().length
-        });
-        
-      } catch (error) {
-        console.error('Layout failed:', error);
-        // Fallback to fit view
-        this.$cy.fit();
-      }
+
+      // Clear and set new data
+      this.graph.setData(graphData);
+      this.graph.render();
+
+      // Emit rendering complete
+      this.$emit('rendering-complete', {
+        nodeCount: nodes.length,
+        linkCount: edges.length
+      });
     },
 
     getNodeLabel(vertex) {
@@ -252,42 +289,39 @@ export default {
 
     // Public methods for parent component
     zoomIn() {
-      if (this.cy) {
-        this.cy.zoom(this.cy.zoom() * 1.3);
-        this.cy.center();
+      if (this.graph) {
+        const zoom = this.graph.getZoom();
+        this.graph.zoomTo(zoom * 1.3);
       }
     },
 
     zoomOut() {
-      if (this.cy) {
-        this.cy.zoom(this.cy.zoom() * 0.7);
-        this.cy.center();
+      if (this.graph) {
+        const zoom = this.graph.getZoom();
+        this.graph.zoomTo(zoom * 0.7);
       }
     },
 
     resetView() {
-      if (this.cy) {
-        this.cy.fit();
+      if (this.graph) {
+        this.graph.fitView();
       }
     },
 
     resetNodePositions() {
-      if (this.cy) {
-        const layout = this.cy.layout({ 
-          name: 'cose',
-          fit: true,
-          padding: 30,
-          nodeRepulsion: 4500,
-          idealEdgeLength: 100,
-          edgeElasticity: 0.45,
-          nestingFactor: 0.1,
-          gravity: 0.25,
-          numIter: 2500,
-          animate: 'end',
-          animationDuration: 1000,
-          randomize: false
+      if (this.graph) {
+        // Re-run the layout
+        this.graph.layout({
+          type: 'force',
+          preventOverlap: true,
+          nodeSize: 30,
+          nodeSpacing: 100,
+          linkDistance: 200,
+          nodeStrength: -800,
+          edgeStrength: 0.1,
+          collideStrength: 1,
+          animate: false
         });
-        layout.run();
       }
     }
   }
@@ -295,7 +329,7 @@ export default {
 </script>
 
 <style>
-#cy {
+#g6-container {
   width: 100vw;
   height: 100vh;
   background-color: #f8f9fa;
