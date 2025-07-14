@@ -9,6 +9,7 @@
 
 <script>
 import { Graph } from '@antv/g6';
+import { ConcentricLayout, ForceLayout,D3ForceLayout, CircularLayout, RandomLayout } from '@antv/layout';
 
 export default {
   name: 'GraphVisualization',
@@ -94,48 +95,80 @@ export default {
         data: emptyData,
         animation: false,  // Disable all animations
         layout: {
-          type: 'force',
-          preventOverlap: true,
-          nodeSize: 30,
-          nodeSpacing: 100,
-          linkDistance: 200,
-          nodeStrength: -800,
-          edgeStrength: 0.1,
-          collideStrength: 1,
-          animate: false
-        },
-        combo: {
-          type: 'circle',
-          style: {
-            fill: 'rgba(74, 152, 227, 0.05)',
-            stroke: '#4A98E3',
-            lineWidth: 3,
-            lineDash: [8, 4],
-            opacity: 0.8,
-            labelText: (d) => d.data?.label || d.id,
-            labelFill: '#4A98E3',
-            labelFontSize: 14,
-            labelFontWeight: 'bold',
-            labelOffsetY: -20,
-            padding: 50  // Add padding inside combo
-          }
+          // COMBO LAYOUTS (commented out for testing)
+          // type: 'combo-combined',
+          // comboPadding: 60,
+          // innerLayout: new RandomLayout({
+          //   width: 160,
+          //   height: 160,
+          //   center: [0, 0]
+          // }),
+          // outerLayout: new CircularLayout({
+          //   radius: 300,
+          //   startAngle: 0,
+          //   endAngle: 2 * Math.PI,
+          //   divisions: 1,
+          //   ordering: 'topology'
+          // })
+          
+          // SIMPLE FORCE LAYOUT
+          // type: 'd3-force',
+          // preventOverlap: true,
+          // nodeSize: 30,
+          // linkDistance: 150,
+          // nodeStrength: -300,
+          // edgeStrength: 0.2,
+          // collideStrength: 1
+          
+          // COMBO-COMBINED: Concentric outside, D3Force inside
+          type: 'combo-combined',
+          comboPadding: 60,
+          innerLayout: new D3ForceLayout({
+            preventOverlap: true,
+            nodeSize: 20,
+            linkDistance: 50,
+            nodeStrength: -200,
+            edgeStrength: 0.3,
+            center: [0, 0]
+          }),
+          outerLayout: new ConcentricLayout({
+            sortBy: 'degree',
+            nodeSize: 30,
+            clockwise: true,
+            preventOverlap: true,
+            minNodeSpacing: 40,
+            radius: 200,
+            startRadius: 150
+          })
         },
         node: {
           style: {
             size: 20,
-            labelText: (d) => d.data?.label || d.id,
-            labelFill: '#000',
-            labelFontSize: 8,
             fill: (d) => d.data?.fill || '#C6E5FF',
             stroke: (d) => d.data?.stroke || '#fff',
-            lineWidth: 2
+            lineWidth: 2,
+            // labelText: (d) => d.id,
+            // labelFill: '#000',
+            // labelFontSize: 10,
+            // labelOffsetY: 25
           }
         },
         edge: {
           style: {
-            stroke: '#e2e2e2',
+            stroke: '#666666',
             lineWidth: 1,
             endArrow: true
+          }
+        },
+        combo: {
+          style: {
+            fill: '#E8F4FD',
+            stroke: '#5B8FF9',
+            lineWidth: 2,
+            lineDash: [5, 5],
+            opacity: 0.6,
+            radius: 10,
+            padding: [20, 20, 20, 20]
           }
         },
         behaviors: ['drag-element', 'drag-canvas', 'zoom-canvas'],
@@ -144,9 +177,17 @@ export default {
 
       // Set up event handlers
       this.graph.on('node:click', (e) => {
-        const nodeData = e.target.model.data;
-        if (nodeData && nodeData.originalData) {
-          this.$emit('node-clicked', nodeData.originalData, e.originalEvent && e.originalEvent.shiftKey);
+        console.log('Node click event:', e);
+        // G6 v5 event structure
+        const nodeId = e.target?.id || e.itemId;
+        if (nodeId) {
+          // Find the node data by ID
+          const nodeData = this.graph.getNodeData(nodeId);
+          console.log('Node data for ID', nodeId, ':', nodeData);
+          if (nodeData && nodeData.originalData) {
+            // Emit the originalData which now includes the ID
+            this.$emit('node-clicked', nodeData.originalData, e.originalEvent?.shiftKey || false);
+          }
         }
       });
 
@@ -179,10 +220,7 @@ export default {
       const privateNodes = [];
 
       Object.entries(data.vertices).forEach(([id, vertex]) => {
-        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true' ||
-                         vertex.publicIp === true || vertex.publicIp === 'true' ||
-                         vertex.is_public === true || vertex.is_public === 'true' ||
-                         vertex.type === 'InternetIP';
+        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true';
 
         if (isPublic) {
           publicNodes.push({ id, vertex });
@@ -218,7 +256,7 @@ export default {
             stroke: '#fff',
             lineWidth: 2,
             size: 20,
-            originalData: vertex
+            originalData: { ...vertex, id }  // Include ID in originalData
           }
         });
       });
@@ -234,7 +272,7 @@ export default {
             stroke: '#fff',
             lineWidth: 2,
             size: 20,
-            originalData: vertex
+            originalData: { ...vertex, id }  // Include ID in originalData
           }
         });
       });
@@ -311,17 +349,26 @@ export default {
     resetNodePositions() {
       if (this.graph) {
         // Re-run the layout
-        this.graph.layout({
-          type: 'force',
-          preventOverlap: true,
-          nodeSize: 30,
-          nodeSpacing: 100,
-          linkDistance: 200,
-          nodeStrength: -800,
-          edgeStrength: 0.1,
-          collideStrength: 1,
-          animate: false
-        });
+        // this.graph.layout({
+        //   type: 'combo-combined',
+        //   comboPadding: 50,
+        //   innerLayout: new ConcentricLayout({
+        //     sortBy: 'id',
+        //     nodeSize: 20,
+        //     clockwise: true,
+        //     preventOverlap: true,
+        //     minNodeSpacing: 25
+        //   }),
+        //   outerLayout: new ForceLayout({
+        //     gravity: 1,
+        //     factor: 2,
+        //     preventOverlap: true,
+        //     nodeSize: 30,
+        //     linkDistance: 200,
+        //     nodeStrength: -800,
+        //     edgeStrength: 0.1
+        //   })
+        // });
       }
     }
   }
