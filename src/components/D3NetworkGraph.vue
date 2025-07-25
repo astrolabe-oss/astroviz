@@ -18,6 +18,8 @@
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
         @reset-positions="onResetPositions"
+        @expand-all-apps="onExpandAllApps"
+        @collapse-all-apps="onCollapseAllApps"
     />
 
     <GraphVisualization
@@ -207,6 +209,24 @@ export default {
     onResetPositions() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetNodePositions();
+      }
+    },
+
+    /**
+     * Handle expand all applications button click
+     */
+    onExpandAllApps() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.expandAllApplications();
+      }
+    },
+
+    /**
+     * Handle collapse all applications button click
+     */
+    onCollapseAllApps() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.collapseAllApplications();
       }
     }
   }
