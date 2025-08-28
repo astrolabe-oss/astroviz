@@ -9,7 +9,7 @@
 
 <script>
 import { Graph } from '@antv/g6';
-import { ConcentricLayout, ForceLayout, D3ForceLayout, FruchtermanLayout, ForceAtlas2Layout, CircularLayout, RandomLayout } from '@antv/layout';
+import { ConcentricLayout, RadialLayout, ForceLayout, D3ForceLayout, FruchtermanLayout, ForceAtlas2Layout, CircularLayout, RandomLayout } from '@antv/layout';
 
 export default {
   name: 'GraphVisualization',
@@ -95,6 +95,99 @@ export default {
         data: emptyData,
         animation: false,  // Disable animations to avoid rendering issues
         // layout: {
+        //   // COMBO-COMBINED: Better spacing layouts
+        //   type: 'combo-combined',
+        //   comboPadding: 80,  // Increased padding
+        //   innerLayout: new RandomLayout({
+        //     // Simple random for inner nodes
+        //   }),
+        //   outerLayout: new CircularLayout({
+        //     radius: 300,
+        //     startAngle: 0,
+        //     endAngle: 2 * Math.PI,
+        //     divisions: 1,
+        //     ordering: 'topology'
+        //   })
+        // },
+        // OPTION 2: Concentric layout for better spacing
+        // layout: {
+        //   type: 'combo-combined',
+        //   comboPadding: 100,
+        //   innerLayout: new RandomLayout({}),
+        //   outerLayout: new ConcentricLayout({
+        //     sortBy: 'degree',
+        //     nodeSize: 80,
+        //     clockwise: true,
+        //     preventOverlap: true,
+        //     minNodeSpacing: 120,
+        //     radius: 250,
+        //     startRadius: 150
+        //   })
+        // },
+        //
+        // OPTION 3: Force layout for combo spacing
+        // layout: {
+        //   type: 'combo-combined',
+        //   comboPadding: 60,
+        //   innerLayout: new CircularLayout({ radius: 40 }),
+        //   outerLayout: new ForceLayout({
+        //     preventOverlap: true,
+        //     nodeSize: 120,
+        //     linkDistance: 250,
+        //     nodeStrength: -400,
+        //     edgeStrength: 0.1
+        //   })
+        // },
+        layout: {
+          preventOverlap: true,
+          type: 'custom-combo-combined',
+          spacing: 50,  // Increased spacing between all nodes
+          comboPadding: 20,  // Increased padding inside combos
+          // Force layout for outer (combos and public nodes)
+          // outerLayout: new ForceLayout({
+          //   preventOverlap: true,
+          //   // preventNodeOverlap: true,
+          //   // nodeStrength: 300,
+          //   // edgeStrength: 0.2,
+          //   // iterations: 300,
+          //   // center: [window.innerWidth / 2, window.innerHeight / 2]
+          // }),
+          // // Concentric layout for inner (nodes within combos)
+          // innerLayout: new RadialLayout({
+          //   nodeSize: 30,
+          //   minNodeSpacing: 10,
+          //   preventOverlap: true,
+          //   sortBy: 'degree'
+          // })
+        },
+        // layout: {
+        //   // COMBO-COMBINED: Concentric outside, D3Force inside
+        //   type: 'combo-combined',
+        //   comboPadding: 60,
+        //   nodeSpacing: (d) => 8,
+        //   preventOverlap: true,
+        //   innerLayout: new RandomLayout({
+        //     comboPadding: 60,
+        //     nodeSpacing: (d) => 8,
+        //     preventOverlap: true,
+        //     nodeSize: 20,
+        //     // linkDistance: 50,
+        //     // nodeStrength: -200,
+        //     // edgeStrength: 0.3,
+        //     // center: [0, 0]
+        //   }),
+        //   outerLayout: new RandomLayout({
+        //     sortBy: 'degree',
+        //     nodeSize: 30,
+        //     comboPadding: 60,
+        //     nodeSpacing: (d) => 10,
+        //     preventOverlap: true,
+        //     minNodeSpacing: 40,
+        //     // radius: 200,
+        //     // startRadius: 150
+        //   })
+        // },
+        // layout: {
         //   // COMBO-COMBINED: Concentric outside, D3Force inside
         //   type: 'combo-combined',
         //   comboPadding: 60,
@@ -138,15 +231,15 @@ export default {
         //     ordering: 'topology'
         //   })
         // },
-        layout: {
-          // D3-FORCE with custom combo boundary enforcement
-          type: 'd3-force',
-          preventOverlap: true,
-          nodeSize: 30,
-          linkDistance: 150,
-          nodeStrength: -300,
-          edgeStrength: 0.2,
-        },
+        // layout: {
+        //   // D3-FORCE with custom combo boundary enforcement
+        //   type: 'd3-force',
+        //   preventOverlap: true,
+        //   nodeSize: 30,
+        //   linkDistance: 150,
+        //   nodeStrength: -300,
+        //   edgeStrength: 0.2,
+        // },
         // layout: {
         //   // SIMPLE FORCE LAYOUT
         //   type: 'force-atlas2',
@@ -181,9 +274,17 @@ export default {
             fill: (d) => d.data?.fill || '#E8F4FD',
             stroke: (d) => d.data?.stroke || '#5B8FF9',
             lineWidth: 2,
-            lineDash: (d) => d.id.startsWith('app-') ? [3, 3] : [5, 5],  // Different dash for app combos
+            lineDash: (d) => {
+              if (d.id.startsWith('app-')) return [3, 3];        // Short dash for apps
+              if (d.id.startsWith('cluster-')) return [8, 4];     // Medium dash for clusters
+              return [5, 5];                                       // Default dash for private network
+            },
             labelText: (d) => d.data?.label || d.id,
-            labelFontSize: (d) => d.id === 'private-network' ? 16 : 12,
+            labelFontSize: (d) => {
+              if (d.id === 'private-network') return 16;          // Largest for private network
+              if (d.id.startsWith('cluster-')) return 14;         // Medium for clusters
+              return 12;                                           // Smallest for apps
+            },
             labelOffsetY: 20,
             opacity: 0.6,
             radius: 10,
@@ -219,7 +320,9 @@ export default {
       // Expose console helper functions to global scope
       window.expandAllApplications = this.expandAllApplications;
       window.collapseAllApplications = this.collapseAllApplications;
-      console.log('Console functions available: expandAllApplications(), collapseAllApplications()');
+      window.expandAllClusters = this.expandAllClusters;
+      window.collapseAllClusters = this.collapseAllClusters;
+      console.log('Console functions available: expandAllApplications(), collapseAllApplications(), expandAllClusters(), collapseAllClusters()');
 
       // Render the empty graph
       this.graph.render();
@@ -255,17 +358,25 @@ export default {
 
       console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
 
-      // Group private nodes by app_name
-      const appGroups = {};
+      // Group private nodes by cluster first, then by app_name
+      const clusterGroups = {};
       privateNodes.forEach(({ id, vertex }) => {
+        const cluster = vertex.cluster || 'unknown';
         const appName = vertex.app_name || 'unknown-app';
-        if (!appGroups[appName]) {
-          appGroups[appName] = [];
+        
+        if (!clusterGroups[cluster]) {
+          clusterGroups[cluster] = {};
         }
-        appGroups[appName].push({ id, vertex });
+        if (!clusterGroups[cluster][appName]) {
+          clusterGroups[cluster][appName] = [];
+        }
+        clusterGroups[cluster][appName].push({ id, vertex });
       });
 
-      console.log(`Found ${Object.keys(appGroups).length} application groups:`, Object.keys(appGroups));
+      const clusterCount = Object.keys(clusterGroups).length;
+      const totalApps = Object.values(clusterGroups).reduce((total, cluster) => total + Object.keys(cluster).length, 0);
+      console.log(`Found ${clusterCount} clusters with ${totalApps} total application groups:`, 
+        Object.entries(clusterGroups).map(([cluster, apps]) => `${cluster}: [${Object.keys(apps).join(', ')}]`));
 
       // Prepare G6 data structure
       const nodes = [];
@@ -280,25 +391,41 @@ export default {
           //   collapsed: true,
           // },
           data: {
-            label: `Private Network (${Object.keys(appGroups).length} apps)`
+            label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`
           }
         });
       }
 
-      // Create combos for each application within private network
-      Object.entries(appGroups).forEach(([appName, appNodes]) => {
-        const comboId = `app-${appName}`;
+      // Create combos for each cluster within private network
+      Object.entries(clusterGroups).forEach(([clusterName, clusterApps]) => {
+        const clusterComboId = `cluster-${clusterName}`;
+        const appCount = Object.keys(clusterApps).length;
+        
         combos.push({
-          id: comboId,
-          combo: 'private-network',  // Application combos are inside private network
-          // style: {
-          //   collapsed: true,  // Start collapsed
-          // },
+          id: clusterComboId,
+          combo: 'private-network',  // Cluster combos are inside private network
           data: {
-            label: `${appName} (${appNodes.length} nodes)`,
-            fill: '#FFE6CC',  // Different color for app combos
-            stroke: '#FF9933'
+            label: `${clusterName} (${appCount} apps)`,
+            fill: '#E8F4FD',  // Light blue for clusters
+            stroke: '#5B8FF9'
           }
+        });
+
+        // Create combos for each application within this cluster
+        Object.entries(clusterApps).forEach(([appName, appNodes]) => {
+          const appComboId = `app-${clusterName}-${appName}`;
+          combos.push({
+            id: appComboId,
+            combo: clusterComboId,  // Application combos are inside cluster combos
+            // style: {
+            //   collapsed: true,  // Start collapsed
+            // },
+            data: {
+              label: `${appName} (${appNodes.length} nodes)`,
+              fill: '#FFE6CC',  // Orange for app combos
+              stroke: '#FF9933'
+            }
+          });
         });
       });
 
@@ -318,20 +445,22 @@ export default {
       });
 
       // Add private nodes to their respective app combos
-      Object.entries(appGroups).forEach(([appName, appNodes]) => {
-        const comboId = `app-${appName}`;
-        appNodes.forEach(({ id, vertex }) => {
-          nodes.push({
-            id: id,
-            combo: comboId,  // Node belongs to app combo, not directly to private-network
-            data: {
-              label: this.getNodeLabel(vertex),
-              fill: this.getNodeColor(vertex.type),
-              stroke: '#fff',
-              lineWidth: 2,
-              size: 20,
-              originalData: { ...vertex, id }  // Include ID in originalData
-            }
+      Object.entries(clusterGroups).forEach(([clusterName, clusterApps]) => {
+        Object.entries(clusterApps).forEach(([appName, appNodes]) => {
+          const appComboId = `app-${clusterName}-${appName}`;
+          appNodes.forEach(({ id, vertex }) => {
+            nodes.push({
+              id: id,
+              combo: appComboId,  // Node belongs to app combo within cluster
+              data: {
+                label: this.getNodeLabel(vertex),
+                fill: this.getNodeColor(vertex.type),
+                stroke: '#fff',
+                lineWidth: 2,
+                size: 20,
+                originalData: { ...vertex, id }  // Include ID in originalData
+              }
+            });
           });
         });
       });
@@ -362,33 +491,37 @@ export default {
       this.graph.setData(graphData);
       this.graph.render();
       
-      // Second pass: collapse application combos after rendering
-      setTimeout(() => {
-        console.log('Collapsing application combos...');
-        Object.keys(appGroups).forEach(appName => {
-          const comboId = `app-${appName}`;
-          try {
-            // Update the combo data to set it as collapsed
-            const comboData = this.graph.getComboData(comboId);
-            if (comboData) {
-              this.graph.updateComboData([
-                {
-                  id: comboId,
-                  ...comboData,
-                  style: {
-                    ...comboData.style,
-                    collapsed: true
-                  }
-                }
-              ]);
-            }
-          } catch (e) {
-            console.log(`Could not collapse combo ${comboId}:`, e);
-          }
-        });
-        this.graph.render();
-        console.log('Application combos collapsed');
-      }, 100);  // Longer delay to ensure force layout has positioned nodes
+      // // Second pass: collapse application combos after rendering
+      // setTimeout(() => {
+      //   console.log('Collapsing application combos...');
+      //   let collapseCount = 0;
+      //   Object.entries(clusterGroups).forEach(([clusterName, clusterApps]) => {
+      //     Object.keys(clusterApps).forEach(appName => {
+      //       const appComboId = `app-${clusterName}-${appName}`;
+      //       try {
+      //         // Update the combo data to set it as collapsed
+      //         const comboData = this.graph.getComboData(appComboId);
+      //         if (comboData) {
+      //           this.graph.updateComboData([
+      //             {
+      //               id: appComboId,
+      //               ...comboData,
+      //               style: {
+      //                 ...comboData.style,
+      //                 collapsed: true
+      //               }
+      //             }
+      //           ]);
+      //           collapseCount++;
+      //         }
+      //       } catch (e) {
+      //         console.log(`Could not collapse combo ${appComboId}:`, e);
+      //       }
+      //     });
+      //   });
+      //   this.graph.render();
+      //   console.log(`Collapsed ${collapseCount} application combos`);
+      // }, 100);  // Longer delay to ensure force layout has positioned nodes
 
       // Emit rendering complete
       this.$emit('rendering-complete', {
@@ -510,6 +643,59 @@ export default {
       
       this.graph.render();
       console.log(`Collapsed ${appCombos.length} application combos`);
+    },
+
+    // Functions for expanding/collapsing all cluster combos
+    expandAllClusters() {
+      if (!this.graph) return;
+      
+      console.log('Expanding all cluster combos...');
+      const data = this.graph.getData();
+      const clusterCombos = data.combos?.filter(combo => combo.id.startsWith('cluster-')) || [];
+      
+      clusterCombos.forEach(combo => {
+        try {
+          const comboData = this.graph.getComboData(combo.id);
+          if (comboData) {
+            this.graph.updateComboData([{
+              id: combo.id,
+              ...comboData,
+              style: { ...comboData.style, collapsed: false }
+            }]);
+          }
+        } catch (e) {
+          console.log(`Could not expand combo ${combo.id}:`, e);
+        }
+      });
+      
+      this.graph.render();
+      console.log(`Expanded ${clusterCombos.length} cluster combos`);
+    },
+
+    collapseAllClusters() {
+      if (!this.graph) return;
+      
+      console.log('Collapsing all cluster combos...');
+      const data = this.graph.getData();
+      const clusterCombos = data.combos?.filter(combo => combo.id.startsWith('cluster-')) || [];
+      
+      clusterCombos.forEach(combo => {
+        try {
+          const comboData = this.graph.getComboData(combo.id);
+          if (comboData) {
+            this.graph.updateComboData([{
+              id: combo.id,
+              ...comboData,
+              style: { ...comboData.style, collapsed: true }
+            }]);
+          }
+        } catch (e) {
+          console.log(`Could not collapse combo ${combo.id}:`, e);
+        }
+      });
+      
+      this.graph.render();
+      console.log(`Collapsed ${clusterCombos.length} cluster combos`);
     }
   }
 };

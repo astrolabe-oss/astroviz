@@ -4,6 +4,7 @@ import { Graph as GraphCore } from '@antv/graphlib';
 export class SimpleBottomUpLayout {
   constructor(options = {}) {
     this.id = 'simple-bottom-up';
+    this.preLayout = true;  // Signal to G6 that this layout needs combo preprocessing (sets _isCombo flag, IMPORTANT!)
     this.options = {
       center: [0, 0],
       treeKey: 'combo',
@@ -56,6 +57,9 @@ export class SimpleBottomUpLayout {
     const levels = new Map(); // depth -> { depth, elements: [] }
     const allNodes = graph.getAllNodes();
 
+    console.log('DEBUG: Sample node structure:', JSON.stringify(allNodes[0], null, 2));
+    console.log('DEBUG: Does graph have getChildren?', typeof graph.getChildren);
+
     // Calculate depth for each node (combo or leaf)
     allNodes.forEach(node => {
       let depth;
@@ -63,9 +67,11 @@ export class SimpleBottomUpLayout {
       if (node.data._isCombo) {
         // For combos, calculate based on child hierarchy
         depth = this.calculateComboDepth(graph, node.id, treeKey);
+        console.log(`DEBUG: Combo ${node.id} calculated depth: ${depth}`);
       } else {
         // For leaf nodes, determine level based on parent combo
         depth = this.calculateLeafNodeDepth(graph, node, treeKey);
+        console.log(`DEBUG: Node ${node.id} (parentId: ${node.data.parentId}) calculated depth: ${depth}`);
       }
 
       if (!levels.has(depth)) {
@@ -78,38 +84,58 @@ export class SimpleBottomUpLayout {
     return Array.from(levels.values()).sort((a, b) => b.depth - a.depth);
   }
 
-  calculateComboDepth(graph, comboId, treeKey, visited = new Set()) {
-    if (visited.has(comboId)) return 0; // Avoid cycles
-    visited.add(comboId);
-
-    // Find parent combo to determine depth from root
-    const parentCombo = graph.getAllNodes().find(n => 
-      n.data._isCombo && 
-      graph.getChildren(n.id, treeKey)?.some(child => child.id === comboId)
-    );
-
-    if (!parentCombo) {
-      return 0; // Root combo = depth 0
+  calculateComboDepth(graph, comboId, treeKey, depthCache = new Map()) {
+    // Use cache to avoid recalculating
+    if (depthCache.has(comboId)) {
+      return depthCache.get(comboId);
     }
 
-    // Depth is parent depth + 1
-    return this.calculateComboDepth(graph, parentCombo.id, treeKey, visited) + 1;
+    // Get all children of this combo
+    const children = graph.getChildren(comboId, treeKey) || [];
+    const childCombos = children.filter(child => child.data._isCombo);
+    
+    console.log(`DEBUG calculateComboDepth: ${comboId} has ${children.length} children (${childCombos.length} combos)`);
+
+    if (childCombos.length === 0) {
+      // This combo has no child combos, so it's at the deepest level for combos
+      // But we need to check if it has regular nodes as children
+      const childNodes = children.filter(child => !child.data._isCombo);
+      const depth = childNodes.length > 0 ? 2 : 0; // If has nodes, depth 2; if empty, depth 0
+      console.log(`DEBUG: ${comboId} is leaf combo with ${childNodes.length} nodes -> depth ${depth}`);
+      depthCache.set(comboId, depth);
+      return depth;
+    }
+
+    // This combo has child combos, so its depth is max child depth + 1
+    let maxChildDepth = -1;
+    for (const childCombo of childCombos) {
+      const childDepth = this.calculateComboDepth(graph, childCombo.id, treeKey, depthCache);
+      maxChildDepth = Math.max(maxChildDepth, childDepth);
+    }
+    
+    const depth = maxChildDepth + 1;
+    console.log(`DEBUG: ${comboId} has max child depth ${maxChildDepth} -> depth ${depth}`);
+    depthCache.set(comboId, depth);
+    return depth;
   }
 
   calculateLeafNodeDepth(graph, node, treeKey) {
-    // If the node has no parent combo, it's a root node (depth 0)
-    if (!node.combo) {
-      return 0;
+    // Find which combo has this node as a child by checking all combos
+    const allCombos = graph.getAllNodes().filter(n => n.data._isCombo);
+    
+    for (const combo of allCombos) {
+      const children = graph.getChildren(combo.id, treeKey) || [];
+      if (children.some(child => child.id === node.id)) {
+        // Found the parent combo, leaf nodes are one level deeper than their parent combo
+        const parentDepth = this.calculateComboDepth(graph, combo.id, treeKey);
+        console.log(`DEBUG: Node ${node.id} found in combo ${combo.id} (depth ${parentDepth}) -> node depth ${parentDepth + 1}`);
+        return parentDepth + 1;
+      }
     }
 
-    // Find the parent combo and calculate its depth
-    const parentCombo = graph.getAllNodes().find(n => n.id === node.combo && n.data._isCombo);
-    if (!parentCombo) {
-      return 0; // Parent combo not found, treat as root
-    }
-
-    // Leaf nodes are one level deeper than their parent combo
-    return this.calculateComboDepth(graph, parentCombo.id, treeKey) + 1;
+    // No parent combo found, this is a root node
+    console.log(`DEBUG: Node ${node.id} has no parent combo -> root depth 0`);
+    return 0;
   }
 
   async positionElementsAtLevel(elements, spacing) {
@@ -137,17 +163,23 @@ export class SimpleBottomUpLayout {
       width: 600,
       height: 400,
       nodeSize: (node) => {
+        console.log(`nodeSize called for: ${node.id}, _isCombo: ${!!node.data._isCombo}`);
+        
         // If it's a combo, use its size data or a larger default
         if (node.data._isCombo) {
           // Check if combo already has size calculated (from child layout)
           if (node.data.size) {
             const size = node.data.size;
-            return Array.isArray(size) ? Math.max(size[0], size[1]) : size;
+            const calculatedSize = Array.isArray(size) ? Math.max(size[0], size[1]) : size;
+            console.log(`  Combo ${node.id} has existing size data:`, size, `-> using size: ${calculatedSize}`);
+            return calculatedSize;
           }
           // Default size for combos
+          console.log(`  Combo ${node.id} has no size data -> using default size: 100`);
           return 100;
         }
         // Default size for regular nodes
+        console.log(`  Node ${node.id} -> using default size: 30`);
         return 30;
       }
     });

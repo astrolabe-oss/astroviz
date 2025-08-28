@@ -72,14 +72,21 @@ describe('SimpleBottomUpLayout', () => {
   });
   
   function createTestGraph(data) {
-    // For now, just skip the tree setup and test with a mock
-    // We can fix the tree structure later once the core logic works
+    // Simulate G6's preprocessing by adding _isCombo flags to combos
+    // This mimics what G6 does in graphData2LayoutModel (utils/layout.js)
+    const processedNodes = data.nodes.map(node => ({
+      ...node,
+      data: { ...node.data, _isCombo: false }
+    }));
+    
+    const processedCombos = data.combos.map(combo => ({
+      ...combo,
+      data: { ...combo.data, _isCombo: true }
+    }));
+    
     const allNodes = [
-      ...data.nodes,
-      ...data.combos.map(combo => ({ 
-        ...combo, 
-        data: { ...combo.data, _isCombo: true } 
-      }))
+      ...processedNodes,
+      ...processedCombos
     ];
     
     const graphData = {
@@ -285,6 +292,70 @@ describe('SimpleBottomUpLayout', () => {
       allNodes.forEach(node => {
         expect(typeof node.data.x).toBe('number');
         expect(typeof node.data.y).toBe('number');
+      });
+    });
+
+    it('prevents overlap at each hierarchy level', async () => {
+      const graph = createTestGraph(testData);
+      const layout = new SimpleBottomUpLayout();
+      
+      const result = await layout.execute(graph);
+      
+      // Helper function to get node size based on layout logic
+      const getNodeSize = (node) => {
+        if (node.data._isCombo) {
+          return node.data.size ? 
+            (Array.isArray(node.data.size) ? Math.max(node.data.size[0], node.data.size[1]) : node.data.size) : 
+            100; // Default combo size
+        }
+        return 30; // Default node size
+      };
+      
+      // Helper function to check if two nodes overlap
+      const checkOverlap = (node1, node2) => {
+        const size1 = getNodeSize(node1);
+        const size2 = getNodeSize(node2);
+        const radius1 = size1 / 2;
+        const radius2 = size2 / 2;
+        
+        const dx = node1.data.x - node2.data.x;
+        const dy = node1.data.y - node2.data.y;
+        const distance = Math.sqrt(dx * dx + dy * dy);
+        const minDistance = radius1 + radius2;
+        
+        return distance < minDistance;
+      };
+      
+      // Build levels to test each level separately
+      const levels = layout.buildLevelsBottomUp(graph, 'combo');
+      
+      levels.forEach(level => {
+        const elementsAtLevel = level.elements;
+        
+        // Check all pairs of elements at this level for overlap
+        for (let i = 0; i < elementsAtLevel.length; i++) {
+          for (let j = i + 1; j < elementsAtLevel.length; j++) {
+            const node1 = elementsAtLevel[i];
+            const node2 = elementsAtLevel[j];
+            
+            const hasOverlap = checkOverlap(node1, node2);
+            
+            if (hasOverlap) {
+              const size1 = getNodeSize(node1);
+              const size2 = getNodeSize(node2);
+              const dx = node1.data.x - node2.data.x;
+              const dy = node1.data.y - node2.data.y;
+              const distance = Math.sqrt(dx * dx + dy * dy);
+              
+              console.log(`OVERLAP DETECTED at level ${level.depth}:`);
+              console.log(`  ${node1.id} at (${node1.data.x}, ${node1.data.y}) size=${size1}`);
+              console.log(`  ${node2.id} at (${node2.data.x}, ${node2.data.y}) size=${size2}`);
+              console.log(`  Distance: ${distance}, Required: ${(size1 + size2) / 2}`);
+            }
+            
+            expect(hasOverlap).toBe(false);
+          }
+        }
       });
     });
   });

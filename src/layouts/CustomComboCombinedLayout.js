@@ -141,6 +141,13 @@ export class CustomComboCombinedLayout {
                         edges: outerLayoutEdges,
                     });
                     const outerLayout = propsOuterLayout || new ForceLayout();
+                    
+                    // Debug: Log what we're passing to outerLayout
+                    console.log('=== Outer Layout Nodes ===');
+                    outerLayoutNodes.forEach(node => {
+                        console.log(`Node ${node.id}: size=${JSON.stringify(node.data.size)}`);
+                    });
+                    
                     // preset the nodes if the outerLayout is a force family layout
                     if (allHaveNoPosition && FORCE_LAYOUT_TYPE_MAP[outerLayout.id]) {
                         const outerLayoutPreset = outerLayoutNodes.length < 100
@@ -291,11 +298,6 @@ export class CustomComboCombinedLayout {
     getInnerGraphs(graph, treeKey, nodeMap, comboMap, edges, options, comboNodes) {
         const { nodeSize, comboPadding, spacing, innerLayout } = options;
         const innerGraphLayout = innerLayout || new ConcentricLayout({});
-        const innerLayoutOptions = {
-            center: [0, 0],
-            preventOverlap: true,
-            nodeSpacing: spacing,
-        };
         const innerLayoutPromises = [];
         const getSize = (node) => {
             // @ts-ignore
@@ -382,6 +384,49 @@ export class CustomComboCombinedLayout {
                     });
                     // innerGraphLayout.assign(innerGraphCore, innerLayoutOptions);
                     start = start.then(() => __awaiter(this, void 0, void 0, function* () {
+                        // Debug: Log what nodes are being positioned within this treeNode
+                        console.log(`=== Inner Layout for ${treeNode.id} ===`);
+                        innerLayoutNodes.forEach(node => {
+                            console.log(`  Node ${node.id}: _isCombo=${node.data?._isCombo}, hasSize=${!!node.data?.size}`);
+                        });
+                        
+                        // Create dynamic innerLayoutOptions for this specific layout execution
+                        const innerLayoutOptions = {
+                            center: [0, 0],
+                            preventOverlap: true,
+                            nodeSpacing: spacing,
+                            // Add nodeSize function that understands combos vs regular nodes
+                            nodeSize: (node) => {
+                                console.log(`Inner Layout nodeSize called for: ${node.id}, isCombo: ${node.data?._isCombo}, treeNode: ${treeNode.id}`);
+                                
+                                // If it's a combo, estimate size based on child count
+                                if (node.data?._isCombo) {
+                                    const children = graph.getChildren(node.id, treeKey);
+                                    const childCount = children ? children.length : 0;
+                                    
+                                    // Estimate combo size based on number of children
+                                    // More children = larger combo
+                                    const baseSize = 80; // Base combo size
+                                    const sizePerChild = 40; // Additional size per child
+                                    const estimatedSize = baseSize + (childCount * sizePerChild);
+                                    
+                                    console.log(`Combo ${node.id} estimated size: ${estimatedSize} (${childCount} children)`);
+                                    return estimatedSize;
+                                }
+                                
+                                // Regular nodes - check if nodeSize function was passed from options  
+                                if (nodeSize && typeof nodeSize === 'function') {
+                                    const size = nodeSize(node);
+                                    console.log(`Regular node ${node.id} calculated size: ${size}`);
+                                    return size;
+                                }
+                                
+                                // Default size for regular nodes
+                                console.log(`Regular node ${node.id} default size: 30`);
+                                return 30;
+                            }
+                        };
+                        
                         const innerGraphCore = new GraphCore(innerGraphData);
                         yield executeLayout(innerGraphLayout, innerGraphCore, innerLayoutOptions, true);
                         const { minX, minY, maxX, maxY } = getLayoutBBox(innerLayoutNodes);
