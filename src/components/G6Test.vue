@@ -201,8 +201,8 @@ export default {
         // Use our custom combo-combined layout
         layout: {
           type: 'simple-bottom-up',
-          spacing: 50,
-          comboPadding: 20
+          spacing: 0,
+          comboPadding: 0
         },
         // layout: {
         //   // ForceAtlas2 with dynamic combo size calculation
@@ -326,7 +326,7 @@ export default {
             labelOffsetY: 20,
             opacity: 0.6,
             radius: 10,
-            padding: [20, 20, 20, 20]
+            padding: 0,
           }
         },
         
