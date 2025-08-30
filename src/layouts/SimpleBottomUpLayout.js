@@ -163,7 +163,17 @@ export class SimpleBottomUpLayout extends BaseLayout {
 
   async positionElementsAtLevel(elements, spacing) {
     if (elements.length === 0) return;
+    
+    // SPECIAL HANDLING: Check if this is root level with orphan nodes
+    const isRootLevel = elements.some(el => el.id === 'private-network') && 
+                       elements.some(el => el.id.startsWith('public'));
+    
+    if (isRootLevel) {
+      console.log('📍 Using custom tight circle packing for root level');
+      return this.positionRootLevelTight(elements);
+    }
 
+    // Normal ConcentricLayout for non-root levels
     // Create a simple graph with all elements at this level
     const layoutNodes = elements.map(element => ({
       id: element.id,
@@ -206,7 +216,7 @@ export class SimpleBottomUpLayout extends BaseLayout {
       nodeSpacing: spacing,
       nodeSize: (node) => {
         const isCombo = !!node.data._isCombo;
-        console.log(`🎯 nodeSize called for: ${node.id}, _isCombo: ${isCombo}, spacing param: ${spacing}`);
+        console.log(`🎯 nodeSize called for: ${node.id}, _isCombo: ${isCombo}, data.size: ${JSON.stringify(node.data.size)}`);
         
         // If it's a combo, use its calculated size from positioned children
         if (isCombo) {
@@ -219,8 +229,16 @@ export class SimpleBottomUpLayout extends BaseLayout {
           console.log(`  📦 Combo ${node.id} -> no size data, using default: 80`);
           return 80;  // Fallback for combos without calculated size
         }
-        console.log(`  🔵 Node ${node.id} -> using default: 30`);
-        return 30;
+        
+        // Check if the node has a size property
+        if (node.data.size) {
+          const nodeSize = Array.isArray(node.data.size) ? node.data.size[0] : node.data.size;
+          console.log(`  🔵 Node ${node.id} has data.size: ${nodeSize} -> using radius: ${nodeSize / 2}`);
+          return nodeSize / 2;
+        }
+        
+        console.log(`  🔵 Node ${node.id} -> using actual node radius: 25`);
+        return 25;
       }
     });
     
@@ -241,6 +259,42 @@ export class SimpleBottomUpLayout extends BaseLayout {
       element.data.x = layoutNode.data.x;
       element.data.y = layoutNode.data.y;
       console.log(`  ${element.id}: positioned at (${element.data.x}, ${element.data.y})`);
+    });
+  }
+  
+  positionRootLevelTight(elements) {
+    // Custom tight circle packing for root level
+    // Separate combo from orphan nodes
+    const privateNetwork = elements.find(el => el.id === 'private-network');
+    const orphanNodes = elements.filter(el => el.id.startsWith('public'));
+    
+    if (!privateNetwork) {
+      console.warn('No private-network combo found at root level');
+      return;
+    }
+    
+    // Position private-network at center
+    privateNetwork.data.x = 0;
+    privateNetwork.data.y = 0;
+    console.log(`  private-network: positioned at center (0, 0)`);
+    
+    // Calculate tight positions for orphan nodes around the combo
+    const comboRadius = privateNetwork.data.size ? 
+      (Array.isArray(privateNetwork.data.size) ? Math.max(...privateNetwork.data.size) / 2 : privateNetwork.data.size / 2) : 
+      80; // Default combo radius
+    const nodeRadius = 25; // Node radius from config
+    const gap = 20; // Small gap between combo and nodes
+    
+    // Minimum distance from combo center to node center
+    const distance = comboRadius + nodeRadius + gap;
+    
+    // Position orphan nodes in a tight circle
+    const angleStep = (2 * Math.PI) / orphanNodes.length;
+    orphanNodes.forEach((node, index) => {
+      const angle = index * angleStep - Math.PI / 2; // Start from top (-90 degrees)
+      node.data.x = distance * Math.cos(angle);
+      node.data.y = distance * Math.sin(angle);
+      console.log(`  ${node.id}: positioned at (${node.data.x.toFixed(2)}, ${node.data.y.toFixed(2)}) - distance: ${distance}, angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
     });
   }
 
