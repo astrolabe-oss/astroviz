@@ -181,110 +181,57 @@ export class SimpleBottomUpLayout extends BaseLayout {
    */
   async positionRootElements(elements, spacing, comboIds) {
     if (elements.length === 0) return;
-    
-    const rootCombos = elements.filter(el => comboIds.has(el.id));
-    const rootNodes = elements.filter(el => !comboIds.has(el.id));
-    
-    // If we have both combos and orphan nodes, use tight circle packing
-    if (rootCombos.length > 0 && rootNodes.length > 0) {
-      console.log('📍 Using tight circle packing for root with orphan nodes');
-      return this.positionRootLevelTight(elements, comboIds);
-    }
-    
-    // Otherwise use standard ConcentricLayout
-    console.log('📍 Using ConcentricLayout for root elements');
-    const layoutNodes = elements.map(element => ({
-      id: element.id,
-      data: { 
-        ...element.data,
-        // Include size for combos
-        size: comboIds.has(element.id) ? element.data.size : undefined
+      const rootCombos = elements.filter(el => comboIds.has(el.id));
+      const orphanNodes = elements.filter(el => !comboIds.has(el.id));
+
+      if (rootCombos.length === 0) return;
+
+      // Find the largest combo as central element
+      const centralCombo = rootCombos.reduce((largest, combo) => {
+          const comboSize = combo.data.size ?
+              (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
+          const largestSize = largest.data.size ?
+              (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
+          return comboSize > largestSize ? combo : largest;
+      }, rootCombos[0]);
+
+      // Position central combo at center
+      centralCombo.data.x = 0;
+      centralCombo.data.y = 0;
+      console.log(`  Central combo ${centralCombo.id} at (0, 0)`);
+
+      // Position other root combos in circle
+      const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
+      if (otherCombos.length > 0) {
+          const comboAngleStep = (2 * Math.PI) / otherCombos.length;
+          const comboDistance = 200;
+
+          otherCombos.forEach((combo, index) => {
+              const angle = index * comboAngleStep;
+              combo.data.x = comboDistance * Math.cos(angle);
+              combo.data.y = comboDistance * Math.sin(angle);
+              console.log(`  Combo ${combo.id} at (${combo.data.x.toFixed(1)}, ${combo.data.y.toFixed(1)})`);
+          });
       }
-    }));
-    
-    const layoutGraph = new GraphCore({ nodes: layoutNodes, edges: [] });
-    
-    const layout = new ConcentricLayout({
-      preventOverlap: true,
-      center: [0, 0],
-      width: 800,
-      height: 600,
-      nodeSpacing: spacing,
-      nodeSize: (node) => {
-        const isCombo = comboIds.has(node.id);
-        if (isCombo && node.data.size) {
-          const size = Array.isArray(node.data.size) ? Math.max(...node.data.size) : node.data.size;
-          return size / 2;
-        }
-        return isCombo ? 80 : 25;
+
+      // Position orphan nodes tightly around central combo
+      if (orphanNodes.length > 0) {
+          const comboRadius = centralCombo.data.size ?
+              (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 80;
+          const nodeRadius = 25;
+          const gap = 20;
+          const distance = comboRadius + nodeRadius + gap;
+
+          const angleStep = (2 * Math.PI) / orphanNodes.length;
+          orphanNodes.forEach((node, index) => {
+              const angle = index * angleStep - Math.PI / 2;
+              node.data.x = distance * Math.cos(angle);
+              node.data.y = distance * Math.sin(angle);
+              console.log(`  Orphan ${node.id} at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
+          });
       }
-    });
-    
-    await layout.assign(layoutGraph, {});
-    
-    // Copy positions back
-    elements.forEach(element => {
-      const layoutNode = layoutGraph.getNode(element.id);
-      element.data.x = layoutNode.data.x;
-      element.data.y = layoutNode.data.y;
-      console.log(`  Root ${element.id} positioned at (${element.data.x.toFixed(1)}, ${element.data.y.toFixed(1)})`);
-    });
   }
-  
-  /**
-   * Special positioning for root level with orphan nodes
-   */
-  positionRootLevelTight(elements, comboIds) {
-    const rootCombos = elements.filter(el => comboIds.has(el.id));
-    const orphanNodes = elements.filter(el => !comboIds.has(el.id));
-    
-    if (rootCombos.length === 0) return;
-    
-    // Find the largest combo as central element
-    const centralCombo = rootCombos.reduce((largest, combo) => {
-      const comboSize = combo.data.size ? 
-        (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
-      const largestSize = largest.data.size ? 
-        (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
-      return comboSize > largestSize ? combo : largest;
-    }, rootCombos[0]);
-    
-    // Position central combo at center
-    centralCombo.data.x = 0;
-    centralCombo.data.y = 0;
-    console.log(`  Central combo ${centralCombo.id} at (0, 0)`);
-    
-    // Position other root combos in circle
-    const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
-    if (otherCombos.length > 0) {
-      const comboAngleStep = (2 * Math.PI) / otherCombos.length;
-      const comboDistance = 200;
-      
-      otherCombos.forEach((combo, index) => {
-        const angle = index * comboAngleStep;
-        combo.data.x = comboDistance * Math.cos(angle);
-        combo.data.y = comboDistance * Math.sin(angle);
-        console.log(`  Combo ${combo.id} at (${combo.data.x.toFixed(1)}, ${combo.data.y.toFixed(1)})`);
-      });
-    }
-    
-    // Position orphan nodes tightly around central combo
-    if (orphanNodes.length > 0) {
-      const comboRadius = centralCombo.data.size ? 
-        (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 80;
-      const nodeRadius = 25;
-      const gap = 20;
-      const distance = comboRadius + nodeRadius + gap;
-      
-      const angleStep = (2 * Math.PI) / orphanNodes.length;
-      orphanNodes.forEach((node, index) => {
-        const angle = index * angleStep - Math.PI / 2;
-        node.data.x = distance * Math.cos(angle);
-        node.data.y = distance * Math.sin(angle);
-        console.log(`  Orphan ${node.id} at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
-      });
-    }
-  }
+
 
   /**
    * Calculate combo size based on its children's positions
