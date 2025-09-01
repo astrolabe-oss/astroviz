@@ -32,13 +32,6 @@ export class SimpleBottomUpLayout extends BaseLayout {
     
     if (realGraph.hasTreeStructure(treeKey)) {
       console.log('Real hierarchy roots:', realGraph.getRoots(treeKey).map(r => r.id));
-      
-      // Verify the hierarchy is correct in the real model
-      const cluster1Children = realGraph.getChildren('cluster1', treeKey);
-      console.log('cluster1 children in real model:', cluster1Children ? cluster1Children.map(c => c.id) : 'none');
-      
-      const app1Parent = realGraph.getParent('app1', treeKey);
-      console.log('app1 parent in real model:', app1Parent ? app1Parent.id : 'none');
     }
     
     // Create a working graph from the model data with hierarchy
@@ -165,11 +158,13 @@ export class SimpleBottomUpLayout extends BaseLayout {
     if (elements.length === 0) return;
     
     // SPECIAL HANDLING: Check if this is root level with orphan nodes
-    const isRootLevel = elements.some(el => el.id === 'private-network') && 
-                       elements.some(el => el.id.startsWith('public'));
+    // Look for patterns: large parent combo + smaller orphan nodes at root level
+    const rootCombos = elements.filter(el => el.data._isCombo);
+    const rootNodes = elements.filter(el => !el.data._isCombo);
+    const hasOrphanNodes = rootCombos.length > 0 && rootNodes.length > 0;
     
-    if (isRootLevel) {
-      console.log('📍 Using custom tight circle packing for root level');
+    if (hasOrphanNodes) {
+      console.log('📍 Using custom tight circle packing for root level with orphan nodes');
       return this.positionRootLevelTight(elements);
     }
 
@@ -264,38 +259,63 @@ export class SimpleBottomUpLayout extends BaseLayout {
   
   positionRootLevelTight(elements) {
     // Custom tight circle packing for root level
-    // Separate combo from orphan nodes
-    const privateNetwork = elements.find(el => el.id === 'private-network');
-    const orphanNodes = elements.filter(el => el.id.startsWith('public'));
+    // Separate combos from orphan nodes dynamically
+    const rootCombos = elements.filter(el => el.data._isCombo);
+    const orphanNodes = elements.filter(el => !el.data._isCombo);
     
-    if (!privateNetwork) {
-      console.warn('No private-network combo found at root level');
+    if (rootCombos.length === 0) {
+      console.warn('No root combos found at root level');
       return;
     }
     
-    // Position private-network at center
-    privateNetwork.data.x = 0;
-    privateNetwork.data.y = 0;
-    console.log(`  private-network: positioned at center (0, 0)`);
+    // Find the largest combo to use as the central element
+    const centralCombo = rootCombos.reduce((largest, combo) => {
+      const comboSize = combo.data.size ? 
+        (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
+      const largestSize = largest.data.size ? 
+        (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
+      return comboSize > largestSize ? combo : largest;
+    }, rootCombos[0]);
     
-    // Calculate tight positions for orphan nodes around the combo
-    const comboRadius = privateNetwork.data.size ? 
-      (Array.isArray(privateNetwork.data.size) ? Math.max(...privateNetwork.data.size) / 2 : privateNetwork.data.size / 2) : 
-      80; // Default combo radius
-    const nodeRadius = 25; // Node radius from config
-    const gap = 20; // Small gap between combo and nodes
+    // Position central combo at center
+    centralCombo.data.x = 0;
+    centralCombo.data.y = 0;
+    console.log(`  ${centralCombo.id}: positioned at center (0, 0)`);
     
-    // Minimum distance from combo center to node center
-    const distance = comboRadius + nodeRadius + gap;
+    // Position other combos if any
+    const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
+    if (otherCombos.length > 0) {
+      const comboAngleStep = (2 * Math.PI) / otherCombos.length;
+      const comboDistance = 200; // Distance for other root combos
+      
+      otherCombos.forEach((combo, index) => {
+        const angle = index * comboAngleStep;
+        combo.data.x = comboDistance * Math.cos(angle);
+        combo.data.y = comboDistance * Math.sin(angle);
+        console.log(`  ${combo.id}: positioned at (${combo.data.x.toFixed(2)}, ${combo.data.y.toFixed(2)})`);
+      });
+    }
     
-    // Position orphan nodes in a tight circle
-    const angleStep = (2 * Math.PI) / orphanNodes.length;
-    orphanNodes.forEach((node, index) => {
-      const angle = index * angleStep - Math.PI / 2; // Start from top (-90 degrees)
-      node.data.x = distance * Math.cos(angle);
-      node.data.y = distance * Math.sin(angle);
-      console.log(`  ${node.id}: positioned at (${node.data.x.toFixed(2)}, ${node.data.y.toFixed(2)}) - distance: ${distance}, angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
-    });
+    // Calculate tight positions for orphan nodes around the central combo
+    if (orphanNodes.length > 0) {
+      const comboRadius = centralCombo.data.size ? 
+        (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 
+        80; // Default combo radius
+      const nodeRadius = 25; // Node radius from config
+      const gap = 20; // Small gap between combo and nodes
+      
+      // Minimum distance from combo center to node center
+      const distance = comboRadius + nodeRadius + gap;
+      
+      // Position orphan nodes in a tight circle
+      const angleStep = (2 * Math.PI) / orphanNodes.length;
+      orphanNodes.forEach((node, index) => {
+        const angle = index * angleStep - Math.PI / 2; // Start from top (-90 degrees)
+        node.data.x = distance * Math.cos(angle);
+        node.data.y = distance * Math.sin(angle);
+        console.log(`  ${node.id}: positioned at (${node.data.x.toFixed(2)}, ${node.data.y.toFixed(2)}) - distance: ${distance}, angle: ${(angle * 180 / Math.PI).toFixed(1)}°`);
+      });
+    }
   }
 
 
@@ -354,7 +374,7 @@ export class SimpleBottomUpLayout extends BaseLayout {
       // Child combo without size - use default
       width = height = 80;
     } else {
-      // Regular node - use G6Test.vue configured size (radius 25 -> diameter 50)
+      // Regular node - use standard node size (radius 25 -> diameter 50)
       width = height = 50;
     }
     
