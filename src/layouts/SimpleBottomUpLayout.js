@@ -21,6 +21,7 @@ export class SimpleBottomUpLayout extends BaseLayout {
 
   async execute(model, options) {
     const mergedOptions = { ...this.options, ...options };
+    // TODO: un-hard-code this
     const { treeKey, spacing, comboPadding } = mergedOptions;
 
     console.log('=== Starting Simple Bottom-Up Layout ===');
@@ -31,7 +32,6 @@ export class SimpleBottomUpLayout extends BaseLayout {
     
     // Create sets for quick combo/node lookups from the model data
     const comboIds = new Set((model.combos || []).map(c => c.id));
-    const nodeIds = new Set((model.nodes || []).map(n => n.id));
     
     if (graph.hasTreeStructure(treeKey)) {
       console.log('Real hierarchy roots:', graph.getRoots(treeKey).map(r => r.id));
@@ -46,11 +46,11 @@ export class SimpleBottomUpLayout extends BaseLayout {
     
     // 1. Recursively layout each root combo's subtree FIRST (bottom-up)
     for (const rootCombo of rootCombos) {
-      await this.layoutSubtree(graph, rootCombo, treeKey, spacing, comboIds);
+      await this.layoutSubtree(graph, rootCombo, treeKey, comboIds);
     }
     
     // 2. Now position root level elements (they have sizes now)
-    await this.positionRootElements(roots, spacing, comboIds);
+    await this.positionRootElements(roots, comboIds);
     
     // 3. Update all descendant positions based on root positions
     for (const rootCombo of rootCombos) {
@@ -67,12 +67,10 @@ export class SimpleBottomUpLayout extends BaseLayout {
   /**
    * Recursively layout a subtree starting from a combo (bottom-up)
    */
-  async layoutSubtree(graph, combo, treeKey, spacing, comboIds) {
+  async layoutSubtree(graph, combo, treeKey, comboIds) {
     const children = graph.getChildren(combo.id, treeKey) || [];
     
     if (children.length === 0) {
-      // Empty combo - set default size
-      combo.data.size = [80, 80];
       return;
     }
     
@@ -83,11 +81,11 @@ export class SimpleBottomUpLayout extends BaseLayout {
     
     // 1. First, recursively layout all child combos (bottom-up)
     for (const childCombo of childCombos) {
-      await this.layoutSubtree(graph, childCombo, treeKey, spacing, comboIds);
+      await this.layoutSubtree(graph, childCombo, treeKey, comboIds);
     }
     
     // 2. Position all children within this combo (relative to 0,0)
-    await this.positionChildrenInCombo(combo, children, spacing, comboIds);
+    await this._actualComboLayout(children);
     
     // 3. Calculate this combo's size based on positioned children
     const newSize = this.calculateComboSize(children, comboIds);
@@ -119,55 +117,21 @@ export class SimpleBottomUpLayout extends BaseLayout {
   /**
    * Position children within a parent combo
    */
-  async positionChildrenInCombo(parentCombo, children, spacing, comboIds) {
+  async _actualComboLayout(children) {
     if (children.length === 0) return;
     
-    if (children.length === 1) {
-      // Single child: place at origin
-      children[0].data.x = 0;
-      children[0].data.y = 0;
-      console.log(`  Single child ${children[0].id} at center`);
-      return;
-    }
-    
     // Multiple children: use ConcentricLayout centered at origin
-    const layoutNodes = children.map(child => ({
-      id: child.id,
-      data: { 
-        ...child.data,
-        // Pass size if it's a combo that has been sized
-        size: comboIds.has(child.id) ? child.data.size : undefined
-      }
-    }));
-    
-    const layoutGraph = new GraphCore({ nodes: layoutNodes, edges: [] });
-    
-    // Estimate layout area
-    const baseSize = 80;
-    const nodeSpacing = 60;
-    const minSize = 120;
-    const estimatedSize = Math.max(minSize, 
-      (children.length * baseSize) + ((children.length - 1) * nodeSpacing));
-    
-    const layout = new ConcentricLayout({
+    const layoutGraph = new GraphCore({ nodes: children, edges: [] });
+
+    // TODO  pass in custom options (node size, node spacing, etc)
+    const tempLayout = new ConcentricLayout({
       preventOverlap: true,
       center: [0, 0],  // Layout at origin
-      width: estimatedSize,
-      height: estimatedSize,
-      nodeSpacing: 20,
-      nodeSize: (node) => {
-        const isCombo = comboIds.has(node.id);
-        if (isCombo && node.data.size) {
-          const size = Array.isArray(node.data.size) ? Math.max(...node.data.size) : node.data.size;
-          return size / 2;
-        }
-        return isCombo ? 40 : 15;
-      }
     });
     
-    await layout.assign(layoutGraph, {});
+    await tempLayout.assign(layoutGraph, {});
     
-    // Copy positions back to original elements
+    // Copy positions from temporary layout back to actual graph node
     children.forEach(child => {
       const layoutNode = layoutGraph.getNode(child.id);
       child.data.x = layoutNode.data.x;
@@ -179,57 +143,58 @@ export class SimpleBottomUpLayout extends BaseLayout {
   /**
    * Position root level elements (combos and orphan nodes)
    */
-  async positionRootElements(elements, spacing, comboIds) {
+  async positionRootElements(elements, comboIds) {
     if (elements.length === 0) return;
-      const rootCombos = elements.filter(el => comboIds.has(el.id));
-      const orphanNodes = elements.filter(el => !comboIds.has(el.id));
 
-      if (rootCombos.length === 0) return;
+    const rootCombos = elements.filter(el => comboIds.has(el.id));
+    const orphanNodes = elements.filter(el => !comboIds.has(el.id));
 
-      // Find the largest combo as central element
-      const centralCombo = rootCombos.reduce((largest, combo) => {
-          const comboSize = combo.data.size ?
-              (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
-          const largestSize = largest.data.size ?
-              (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
-          return comboSize > largestSize ? combo : largest;
-      }, rootCombos[0]);
+    if (rootCombos.length === 0) return;
 
-      // Position central combo at center
-      centralCombo.data.x = 0;
-      centralCombo.data.y = 0;
-      console.log(`  Central combo ${centralCombo.id} at (0, 0)`);
+    // Find the largest combo as central element
+    const centralCombo = rootCombos.reduce((largest, combo) => {
+      const comboSize = combo.data.size ?
+          (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
+      const largestSize = largest.data.size ?
+          (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
+      return comboSize > largestSize ? combo : largest;
+    }, rootCombos[0]);
 
-      // Position other root combos in circle
-      const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
-      if (otherCombos.length > 0) {
-          const comboAngleStep = (2 * Math.PI) / otherCombos.length;
-          const comboDistance = 200;
+    // Position central combo at center
+    centralCombo.data.x = 0;
+    centralCombo.data.y = 0;
+    console.log(`  Central combo ${centralCombo.id} at (0, 0)`);
 
-          otherCombos.forEach((combo, index) => {
-              const angle = index * comboAngleStep;
-              combo.data.x = comboDistance * Math.cos(angle);
-              combo.data.y = comboDistance * Math.sin(angle);
-              console.log(`  Combo ${combo.id} at (${combo.data.x.toFixed(1)}, ${combo.data.y.toFixed(1)})`);
-          });
-      }
+    // Position other root combos in circle
+    const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
+    if (otherCombos.length > 0) {
+      const comboAngleStep = (2 * Math.PI) / otherCombos.length;
+      const comboDistance = 200;
 
-      // Position orphan nodes tightly around central combo
-      if (orphanNodes.length > 0) {
-          const comboRadius = centralCombo.data.size ?
-              (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 80;
-          const nodeRadius = 25;
-          const gap = 20;
-          const distance = comboRadius + nodeRadius + gap;
+      otherCombos.forEach((combo, index) => {
+          const angle = index * comboAngleStep;
+          combo.data.x = comboDistance * Math.cos(angle);
+          combo.data.y = comboDistance * Math.sin(angle);
+          console.log(`  Combo ${combo.id} at (${combo.data.x.toFixed(1)}, ${combo.data.y.toFixed(1)})`);
+      });
+    }
 
-          const angleStep = (2 * Math.PI) / orphanNodes.length;
-          orphanNodes.forEach((node, index) => {
-              const angle = index * angleStep - Math.PI / 2;
-              node.data.x = distance * Math.cos(angle);
-              node.data.y = distance * Math.sin(angle);
-              console.log(`  Orphan ${node.id} at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
-          });
-      }
+    // Position orphan nodes tightly around central combo
+    if (orphanNodes.length > 0) {
+      const comboRadius = centralCombo.data.size ?
+          (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 80;
+      const nodeRadius = 25;
+      const gap = 20;
+      const distance = comboRadius + nodeRadius + gap;
+
+      const angleStep = (2 * Math.PI) / orphanNodes.length;
+      orphanNodes.forEach((node, index) => {
+          const angle = index * angleStep - Math.PI / 2;
+          node.data.x = distance * Math.cos(angle);
+          node.data.y = distance * Math.sin(angle);
+          console.log(`  Orphan ${node.id} at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
+      });
+    }
   }
 
 
