@@ -1,4 +1,4 @@
-import { RandomLayout, ConcentricLayout, ForceAtlas2Layout } from '@antv/layout';
+import { ConcentricLayout } from '@antv/layout';
 import { Graph as GraphCore } from '@antv/graphlib';
 import { BaseLayout } from '@antv/g6';
 import { getCombinedBBox, getExpandedBBox, getBBoxWidth, getBBoxHeight } from '@antv/g6/lib/utils/bbox';
@@ -146,58 +146,58 @@ export class SimpleBottomUpLayout extends BaseLayout {
   async positionRootElements(elements, comboIds) {
     if (elements.length === 0) return;
 
-    console.log('📍 Using D3ForceLayout for root elements');
+    console.log('📍 Using custom concentric positioning for root elements');
     
-    // Create layout nodes with proper sizing
-    const layoutNodes = elements.map(element => ({
-      id: element.id,
-      data: { 
-        ...element.data,
-        size: comboIds.has(element.id) ? element.data.size : undefined
-      }
-    }));
+    // Separate combos and non-combo nodes
+    const combos = elements.filter(e => comboIds.has(e.id));
+    const publicNodes = elements.filter(e => !comboIds.has(e.id));
     
-    
-    const layoutGraph = new GraphCore({ nodes: layoutNodes, edges: [] });
-
-    const layout = new ForceAtlas2Layout({
-      center: [0, 0],
-      preventOverlap: true,
-      maxIteration: 100, // Ensure it actually runs iterations
-      kr: 50, // Repulsive force constant - higher = stronger repulsion
-      kg: 0,  // Gravity force constant - lower = less attraction to center
-      ks: 0.1, // Speed constant
-      dissuadeHubs: false, // Don't give hubs extra space
-      barnesHut: true // Use Barnes-Hut optimization for better performance
+    // Position combos at center
+    combos.forEach(combo => {
+      combo.data.x = 0;
+      combo.data.y = 0;
+      console.log(`  Combo ${combo.id} positioned at center (0, 0)`);
     });
-
-    const nodeSize = (node) => {
-      const isCombo = comboIds.has(node.id);
-      if (isCombo && node.data.size) {
-        const size = Array.isArray(node.data.size) ? Math.max(...node.data.size) : node.data.size;
-        const radius = size / 2;
-        console.log(`  nodeSize for combo ${node.id}: diameter=${size}, radius=${radius}`);
-        return radius; // ForceAtlas2 expects radius, not diameter
-      }
-      // For non-combos, use default node size
-      console.log(`  nodeSize for node ${node.id}: radius=25 (default)`);
-      return 25; // Default node radius
-    };
-
-    const result = await layout.execute(layoutGraph, { nodeSize });
-
-
-    // Copy positions back to original elements from the result
-    elements.forEach(element => {
-      const resultNode = result.nodes.find(n => n.id === element.id);
-      if (resultNode) {
-        element.data.x = resultNode.data.x;
-        element.data.y = resultNode.data.y;
-        console.log(`  Root ${element.id} positioned at (${element.data.x.toFixed(1)}, ${element.data.y.toFixed(1)})`);
-      } else {
-        console.log(`  WARNING: No result node found for ${element.id}`);
-      }
-    });
+    
+    // Position public nodes in a tight ring around the combo
+    if (publicNodes.length > 0 && combos.length > 0) {
+      // Get the radius of the largest combo
+      const maxComboRadius = Math.max(...combos.map(c => {
+        const size = c.data.size;
+        return (Array.isArray(size) ? Math.max(...size) : size) / 2;
+      }));
+      
+      // Add minimal spacing for the ring
+      const ringRadius = maxComboRadius + 50; // Just 50 units padding from combo edge
+      
+      // Calculate angle step for even distribution
+      const angleStep = (2 * Math.PI) / publicNodes.length;
+      
+      // Position each public node
+      publicNodes.forEach((node, index) => {
+        const angle = index * angleStep;
+        node.data.x = ringRadius * Math.cos(angle);
+        node.data.y = ringRadius * Math.sin(angle);
+        console.log(`  Public node ${node.id} positioned at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
+      });
+    } else if (publicNodes.length > 0) {
+      // No combos, just distribute public nodes
+      const layout = new ConcentricLayout({
+        center: [0, 0],
+        preventOverlap: true
+      });
+      
+      const layoutGraph = new GraphCore({ nodes: publicNodes, edges: [] });
+      const result = await layout.execute(layoutGraph);
+      
+      publicNodes.forEach(node => {
+        const resultNode = result.nodes.find(n => n.id === node.id);
+        if (resultNode) {
+          node.data.x = resultNode.data.x;
+          node.data.y = resultNode.data.y;
+        }
+      });
+    }
   }
 
 

@@ -30,10 +30,17 @@ export default {
       // Dummy data with 3-level hierarchy
       const data = {
         nodes: [
-          // Public IP nodes (no combo)
+          // Public IP nodes (no combo) - 10 total
           { id: 'public1', data: { label: 'Public IP 1', type: 'public', fill: '#FF6B6B' }},
           { id: 'public2', data: { label: 'Public IP 2', type: 'public', fill: '#FF6B6B' }},
           { id: 'public3', data: { label: 'Public IP 3', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public4', data: { label: 'Public IP 4', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public5', data: { label: 'Public IP 5', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public6', data: { label: 'Public IP 6', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public7', data: { label: 'Public IP 7', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public8', data: { label: 'Public IP 8', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public9', data: { label: 'Public IP 9', type: 'public', fill: '#FF6B6B' }},
+          { id: 'public10', data: { label: 'Public IP 10', type: 'public', fill: '#FF6B6B' }},
           
           // Cluster 1 - App 1 nodes
           { id: 'node1-1', combo: 'app1', data: { label: 'Node 1-1', type: 'compute', fill: '#4ECDC4' }},
@@ -75,7 +82,16 @@ export default {
           { id: 'e7', source: 'public3', target: 'node3-1' },
           { id: 'e8', source: 'public1', target: 'node1-3' },
           { id: 'e12', source: 'public2', target: 'node4-1' },
-          { id: 'e13', source: 'public3', target: 'node5-2' }
+          { id: 'e13', source: 'public3', target: 'node5-2' },
+          { id: 'e14', source: 'public4', target: 'node1-2' },
+          { id: 'e15', source: 'public5', target: 'node2-2' },
+          { id: 'e16', source: 'public6', target: 'node4-2' },
+          { id: 'e17', source: 'public7', target: 'node5-1' },
+          { id: 'e18', source: 'public8', target: 'node5-3' },
+          { id: 'e19', source: 'public9', target: 'node1-1' },
+          { id: 'e20', source: 'public10', target: 'node3-1' },
+          { id: 'e21', source: 'public4', target: 'node5-2' },
+          { id: 'e22', source: 'public7', target: 'node1-3' }
         ],
         
         combos: [
