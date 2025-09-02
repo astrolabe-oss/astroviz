@@ -1,4 +1,4 @@
-import { RandomLayout, ConcentricLayout } from '@antv/layout';
+import { RandomLayout, ConcentricLayout, ForceAtlas2Layout } from '@antv/layout';
 import { Graph as GraphCore } from '@antv/graphlib';
 import { BaseLayout } from '@antv/g6';
 import { getCombinedBBox, getExpandedBBox, getBBoxWidth, getBBoxHeight } from '@antv/g6/lib/utils/bbox';
@@ -146,55 +146,58 @@ export class SimpleBottomUpLayout extends BaseLayout {
   async positionRootElements(elements, comboIds) {
     if (elements.length === 0) return;
 
-    const rootCombos = elements.filter(el => comboIds.has(el.id));
-    const orphanNodes = elements.filter(el => !comboIds.has(el.id));
+    console.log('📍 Using D3ForceLayout for root elements');
+    
+    // Create layout nodes with proper sizing
+    const layoutNodes = elements.map(element => ({
+      id: element.id,
+      data: { 
+        ...element.data,
+        size: comboIds.has(element.id) ? element.data.size : undefined
+      }
+    }));
+    
+    
+    const layoutGraph = new GraphCore({ nodes: layoutNodes, edges: [] });
 
-    if (rootCombos.length === 0) return;
+    const layout = new ForceAtlas2Layout({
+      center: [0, 0],
+      preventOverlap: true,
+      maxIteration: 100, // Ensure it actually runs iterations
+      kr: 50, // Repulsive force constant - higher = stronger repulsion
+      kg: 0,  // Gravity force constant - lower = less attraction to center
+      ks: 0.1, // Speed constant
+      dissuadeHubs: false, // Don't give hubs extra space
+      barnesHut: true // Use Barnes-Hut optimization for better performance
+    });
 
-    // Find the largest combo as central element
-    const centralCombo = rootCombos.reduce((largest, combo) => {
-      const comboSize = combo.data.size ?
-          (Array.isArray(combo.data.size) ? Math.max(...combo.data.size) : combo.data.size) : 80;
-      const largestSize = largest.data.size ?
-          (Array.isArray(largest.data.size) ? Math.max(...largest.data.size) : largest.data.size) : 80;
-      return comboSize > largestSize ? combo : largest;
-    }, rootCombos[0]);
+    const nodeSize = (node) => {
+      const isCombo = comboIds.has(node.id);
+      if (isCombo && node.data.size) {
+        const size = Array.isArray(node.data.size) ? Math.max(...node.data.size) : node.data.size;
+        const radius = size / 2;
+        console.log(`  nodeSize for combo ${node.id}: diameter=${size}, radius=${radius}`);
+        return radius; // ForceAtlas2 expects radius, not diameter
+      }
+      // For non-combos, use default node size
+      console.log(`  nodeSize for node ${node.id}: radius=25 (default)`);
+      return 25; // Default node radius
+    };
 
-    // Position central combo at center
-    centralCombo.data.x = 0;
-    centralCombo.data.y = 0;
-    console.log(`  Central combo ${centralCombo.id} at (0, 0)`);
+    const result = await layout.execute(layoutGraph, { nodeSize });
 
-    // Position other root combos in circle
-    const otherCombos = rootCombos.filter(combo => combo.id !== centralCombo.id);
-    if (otherCombos.length > 0) {
-      const comboAngleStep = (2 * Math.PI) / otherCombos.length;
-      const comboDistance = 200;
 
-      otherCombos.forEach((combo, index) => {
-          const angle = index * comboAngleStep;
-          combo.data.x = comboDistance * Math.cos(angle);
-          combo.data.y = comboDistance * Math.sin(angle);
-          console.log(`  Combo ${combo.id} at (${combo.data.x.toFixed(1)}, ${combo.data.y.toFixed(1)})`);
-      });
-    }
-
-    // Position orphan nodes tightly around central combo
-    if (orphanNodes.length > 0) {
-      const comboRadius = centralCombo.data.size ?
-          (Array.isArray(centralCombo.data.size) ? Math.max(...centralCombo.data.size) / 2 : centralCombo.data.size / 2) : 80;
-      const nodeRadius = 25;
-      const gap = 20;
-      const distance = comboRadius + nodeRadius + gap;
-
-      const angleStep = (2 * Math.PI) / orphanNodes.length;
-      orphanNodes.forEach((node, index) => {
-          const angle = index * angleStep - Math.PI / 2;
-          node.data.x = distance * Math.cos(angle);
-          node.data.y = distance * Math.sin(angle);
-          console.log(`  Orphan ${node.id} at (${node.data.x.toFixed(1)}, ${node.data.y.toFixed(1)})`);
-      });
-    }
+    // Copy positions back to original elements from the result
+    elements.forEach(element => {
+      const resultNode = result.nodes.find(n => n.id === element.id);
+      if (resultNode) {
+        element.data.x = resultNode.data.x;
+        element.data.y = resultNode.data.y;
+        console.log(`  Root ${element.id} positioned at (${element.data.x.toFixed(1)}, ${element.data.y.toFixed(1)})`);
+      } else {
+        console.log(`  WARNING: No result node found for ${element.id}`);
+      }
+    });
   }
 
 
