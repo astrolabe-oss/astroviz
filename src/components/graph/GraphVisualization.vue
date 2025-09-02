@@ -10,6 +10,7 @@
 <script>
 import { Graph } from '@antv/g6';
 import { ConcentricLayout, RadialLayout, ForceLayout, D3ForceLayout, FruchtermanLayout, ForceAtlas2Layout, CircularLayout, RandomLayout } from '@antv/layout';
+import { SimpleBottomUpLayout } from '@/layouts/SimpleBottomUpLayout.js';
 
 export default {
   name: 'GraphVisualization',
@@ -139,10 +140,16 @@ export default {
         //   })
         // },
         layout: {
-          preventOverlap: true,
-          type: 'custom-combo-combined',
-          spacing: 50,  // Increased spacing between all nodes
-          comboPadding: 20,  // Increased padding inside combos
+          type: 'simple-bottom-up',
+          spacing: 0,
+          comboPadding: 0
+        },
+        // layout: {
+        //   preventOverlap: true,
+        //   type: 'custom-combo-combined',
+        //   spacing: 50,  // Increased spacing between all nodes
+        //   comboPadding: 20,  // Increased padding inside combos
+        // }
           // Force layout for outer (combos and public nodes)
           // outerLayout: new ForceLayout({
           //   preventOverlap: true,
@@ -159,7 +166,7 @@ export default {
           //   preventOverlap: true,
           //   sortBy: 'degree'
           // })
-        },
+        // },
         // layout: {
         //   // COMBO-COMBINED: Concentric outside, D3Force inside
         //   type: 'combo-combined',
