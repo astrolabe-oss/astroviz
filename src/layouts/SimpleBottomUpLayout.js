@@ -1,8 +1,7 @@
 import { ForceAtlas2Layout } from '@antv/layout';
 import { Graph as GraphCore } from '@antv/graphlib';
 import { BaseLayout } from '@antv/g6';
-import { getCombinedBBox, getExpandedBBox, getBBoxWidth, getBBoxHeight } from '@antv/g6/lib/utils/bbox';
-import { AABB } from '@antv/g';
+import { packSiblings, packEnclose } from 'd3';
 
 export class SimpleBottomUpLayout extends BaseLayout {
   constructor(context, options = {}) {
@@ -25,33 +24,33 @@ export class SimpleBottomUpLayout extends BaseLayout {
     const { treeKey, spacing, comboPadding } = mergedOptions;
 
     console.log('=== Starting Simple Bottom-Up Layout ===');
-    
+
     // Use the real G6 graph model directly - it already has the tree structure!
     const graph = this.context.model.model;
     console.log('Using real G6 graph model with hierarchy');
-    
+
     // Create sets for quick combo/node lookups from the model data
     const comboIds = new Set((model.combos || []).map(c => c.id));
-    
+
     if (graph.hasTreeStructure(treeKey)) {
       console.log('Real hierarchy roots:', graph.getRoots(treeKey).map(r => r.id));
     }
-    
+
     // Get root elements
     const roots = graph.getRoots(treeKey);
     const rootCombos = roots.filter(r => comboIds.has(r.id));
     const rootNodes = roots.filter(r => !comboIds.has(r.id));
-    
+
     console.log(`Found ${rootCombos.length} root combos and ${rootNodes.length} root nodes`);
-    
+
     // 1. Recursively layout each root combo's subtree FIRST (bottom-up)
     for (const rootCombo of rootCombos) {
       await this._layoutCombo(graph, rootCombo, treeKey, comboIds);
     }
-    
+
     // 2. Now position root level elements (they have sizes now)
     await this.positionRootElements(roots, comboIds, graph, treeKey);
-    
+
     // 3. Update all descendant positions based on root positions
     for (const rootCombo of rootCombos) {
       this.updateDescendantPositions(graph, rootCombo, treeKey, comboIds);
@@ -69,16 +68,16 @@ export class SimpleBottomUpLayout extends BaseLayout {
    */
   async _layoutCombo(graph, combo, treeKey, comboIds) {
     const children = graph.getChildren(combo.id, treeKey) || [];
-    
+
     if (children.length === 0) {
       return;
     }
-    
+
     console.log(`📦 Layout combo ${combo.id} with ${children.length} children`);
-    
+
     // Separate child combos from child nodes
     const childCombos = children.filter(c => comboIds.has(c.id));
-    
+
     // 1. First, recursively layout all child combos (bottom-up)
     for (const childCombo of childCombos) {
       await this._layoutCombo(graph, childCombo, treeKey, comboIds);
@@ -87,16 +86,17 @@ export class SimpleBottomUpLayout extends BaseLayout {
     // Check if all children are combos
     const allCombos = children.every(child => comboIds.has(child.id));
     if (allCombos) {
-        this._customCirclePackingComboLayout(children);
+        this._circlePackingForCombos(children);
     } else {
         await this._forceLayoutForLeafNodes(children);
     }
 
-    
+
     // 3. Calculate this combo's size based on positioned children
+    console.log(`  📏 About to calculate size for combo ${combo.id}`);
     const newSize = this.calculateComboSize(children, comboIds);
     combo.data.size = newSize;
-    console.log(`  Combo ${combo.id} sized to [${newSize[0].toFixed(1)}, ${newSize[1].toFixed(1)}]`);
+    console.log(`  Combo ${combo.id} sized to ${newSize.toFixed(1)}`);
   }
 
   /**
@@ -106,12 +106,12 @@ export class SimpleBottomUpLayout extends BaseLayout {
     const children = graph.getChildren(combo.id, treeKey) || [];
     const comboX = combo.data.x || 0;
     const comboY = combo.data.y || 0;
-    
+
     children.forEach(child => {
       // Update child position relative to parent
       child.data.x = (child.data.x || 0) + comboX;
       child.data.y = (child.data.y || 0) + comboY;
-      
+
       // Recursively update descendants if it's a combo
       if (comboIds.has(child.id)) {
         this.updateDescendantPositions(graph, child, treeKey, comboIds);
@@ -130,11 +130,9 @@ export class SimpleBottomUpLayout extends BaseLayout {
         center: [0, 0],  // Layout at origin
         preventOverlap: true,
         nodeSize: 20,  // Smaller node size for tighter packing
-        nodeSpacing: 5,  // Minimal spacing between nodes
         kr: 5,  // Much lower repulsion for tighter clustering
         kg: 10,  // Higher gravity to pull nodes together
-        ks: 0.1,  // Lower speed
-        maxIterations: 500,  // More iterations for better convergence
+        ks: 0.1  // Lower speed
     });
 
     const result = await tempLayout.execute(layoutGraph);
@@ -151,90 +149,46 @@ export class SimpleBottomUpLayout extends BaseLayout {
   }
 
   /**
-   * Pack circles tightly using a simple circle packing algorithm
+   * Pack circles using D3's mathematically correct circle packing
    */
-  _customCirclePackingComboLayout(children) {
+  _circlePackingForCombos(children) {
     if (children.length === 0) return;
-    
-    // Sort circles by size (largest first for better packing)
-    children.sort((a, b) => {
-      const sizeA = a.data.size ? (Array.isArray(a.data.size) ? Math.max(...a.data.size) : a.data.size) : 100;
-      const sizeB = b.data.size ? (Array.isArray(b.data.size) ? Math.max(...b.data.size) : b.data.size) : 100;
-      return sizeB - sizeA;
+
+    console.log(`🎯 D3 Packing ${children.length} circles. Sizes:`, children.map(c => `${c.id}: ${c.data.size}`));
+
+    // Prepare circles with radius for D3's packSiblings
+    const circles = children.map(child => {
+      const diameter = child.data.size;
+      const radius = diameter / 2;
+
+      console.log(`    Child ${child.id}: diameter=${diameter.toFixed(1)}, radius=${radius.toFixed(1)}`);
+
+      return {
+        id: child.id,
+        r: radius // packSiblings expects 'r' property
+      };
     });
-    
-    // Place first circle at center
-    children[0].data.x = 0;
-    children[0].data.y = 0;
-    console.log(`    Combo ${children[0].id} positioned at center (0.0, 0.0)`);
-    
-    if (children.length === 1) return;
-    
-    // Track placed circles
-    const placed = [children[0]];
-    
-    // Place remaining circles
-    for (let i = 1; i < children.length; i++) {
-      const radius = (children[i].data.size ?
-        (Array.isArray(children[i].data.size) ? Math.max(...children[i].data.size) : children[i].data.size) : 100) / 2;
-      
-      let bestPosition = null;
-      let minDistance = Infinity;
-      
-      // Try to place next to each already placed circle
-      for (const placedCircle of placed) {
-        const placedRadius = (placedCircle.data.size ? 
-          (Array.isArray(placedCircle.data.size) ? Math.max(...placedCircle.data.size) : placedCircle.data.size) : 100) / 2;
-        
-        // Calculate positions at various angles around the placed circle
-        const numAngles = 8; // Try 8 positions around each circle
-        for (let j = 0; j < numAngles; j++) {
-          const angle = (j * 2 * Math.PI) / numAngles;
-          const distance = placedRadius + radius + 2; // Just 2 pixels padding between circles
-          const x = placedCircle.data.x + distance * Math.cos(angle);
-          const y = placedCircle.data.y + distance * Math.sin(angle);
-          
-          // Check if this position overlaps with any placed circle
-          let valid = true;
-          for (const other of placed) {
-            if (other === placedCircle) continue;
-            const otherRadius = (other.data.size ? 
-              (Array.isArray(other.data.size) ? Math.max(...other.data.size) : other.data.size) : 100) / 2;
-            const dx = x - other.data.x;
-            const dy = y - other.data.y;
-            const centerDistance = Math.sqrt(dx * dx + dy * dy);
-            if (centerDistance < radius + otherRadius + 2) { // Just 2 pixels padding for overlap check
-              valid = false;
-              break;
-            }
-          }
-          
-          // If valid, check if it's closer to center than current best
-          if (valid) {
-            const distFromCenter = Math.sqrt(x * x + y * y);
-            if (distFromCenter < minDistance) {
-              minDistance = distFromCenter;
-              bestPosition = { x, y };
-            }
-          }
-        }
+
+    // Use D3's packSiblings to get optimal packing
+    // This returns the circles with x,y positions centered at (0,0)
+    const packedCircles = packSiblings(circles);
+
+    console.log(`    Packed circles:`, packedCircles.map(c => 
+      `${c.id}: x=${c.x.toFixed(1)}, y=${c.y.toFixed(1)}, r=${c.r.toFixed(1)}`
+    ));
+
+    // Optional: Get the enclosing circle to understand the packed size
+    const enclosingCircle = packEnclose(packedCircles);
+    console.log(`    Enclosing circle: x=${enclosingCircle.x.toFixed(1)}, y=${enclosingCircle.y.toFixed(1)}, r=${enclosingCircle.r.toFixed(1)}`);
+
+    // Apply positions back to children (already centered at 0,0)
+    packedCircles.forEach((circle, i) => {
+      if (i < children.length) {
+        children[i].data.x = circle.x;
+        children[i].data.y = circle.y;
+        console.log(`    Combo ${children[i].id} positioned at (${children[i].data.x.toFixed(1)}, ${children[i].data.y.toFixed(1)})`);
       }
-      
-      // Place the circle at the best position found
-      if (bestPosition) {
-        children[i].data.x = bestPosition.x;
-        children[i].data.y = bestPosition.y;
-      } else {
-        // Fallback: place in a ring if no valid position found
-        const angle = (i * 2 * Math.PI) / children.length;
-        const ringRadius = 200 + radius;
-        children[i].data.x = ringRadius * Math.cos(angle);
-        children[i].data.y = ringRadius * Math.sin(angle);
-      }
-      
-      console.log(`    Combo ${children[i].id} positioned at (${children[i].data.x.toFixed(1)}, ${children[i].data.y.toFixed(1)})`);
-      placed.push(children[i]);
-    }
+    });
   }
 
   /**
@@ -244,27 +198,27 @@ export class SimpleBottomUpLayout extends BaseLayout {
     if (elements.length === 0) return;
 
     console.log('📍 Using custom concentric positioning for root elements');
-    
+
     // Separate combos and non-combo nodes (public IPs)
     const combos = elements.filter(e => comboIds.has(e.id));
     const publicNodes = elements.filter(e => !comboIds.has(e.id));
-    
+
     // Position combos at center initially
     combos.forEach(combo => {
       combo.data.x = 0;
       combo.data.y = 0;
       console.log(`  Combo ${combo.id} positioned at center (0, 0)`);
     });
-    
+
     // Position public nodes in a tight ring around the combo
     if (publicNodes.length > 0 && combos.length > 0) {
       const mainCombo = combos[0];
-      
+
       // Calculate the actual center of the combo based on its children
       const children = graph.getChildren(mainCombo.id, treeKey) || [];
       let centerX = 0;
       let centerY = 0;
-      
+
       if (children.length > 0) {
         // Calculate the center of mass of all children
         children.forEach(child => {
@@ -275,18 +229,18 @@ export class SimpleBottomUpLayout extends BaseLayout {
         centerY /= children.length;
         console.log(`  Combo ${mainCombo.id} actual center: (${centerX.toFixed(1)}, ${centerY.toFixed(1)})`);
       }
-      
+
       const maxComboRadius = Math.max(...combos.map(c => {
-        const size = c.data.size;
-        return (Array.isArray(size) ? Math.max(...size) : size) / 2;
+        const size = c.data.size || 100;
+        return size / 2;
       }));
-      
+
       // Add minimal spacing for the ring
       const ringRadius = maxComboRadius + 50; // Just 50 units padding from combo edge
-      
+
       // Calculate angle step for even distribution
       const angleStep = (2 * Math.PI) / publicNodes.length;
-      
+
       // Position each public node around the combo's actual center
       publicNodes.forEach((node, index) => {
         const angle = index * angleStep;
@@ -301,9 +255,9 @@ export class SimpleBottomUpLayout extends BaseLayout {
         center: [0, 0],
         preventOverlap: true
       });
-      
+
       const result = await layout.execute(layoutGraph);
-      
+
       publicNodes.forEach(node => {
         const resultNode = result.nodes.find(n => n.id === node.id);
         if (resultNode) {
@@ -320,61 +274,61 @@ export class SimpleBottomUpLayout extends BaseLayout {
    */
   calculateComboSize(children, comboIds) {
     if (children.length === 0) {
-      return [80, 80]; // Default size for empty combos
+      return 80; // Default diameter for empty combos
     }
 
+    console.log(`🔍 === CALCULATING COMBO SIZE ===`);
+    console.log(`    Calculating size for combo with ${children.length} children`);
+    console.log(`    Children positions:`, children.map(c => `${c.id}: (${(c.data.x || 0).toFixed(1)}, ${(c.data.y || 0).toFixed(1)})`));
+    
     // Check if all children are combos or all are leaf nodes
     const allCombos = children.every(child => comboIds.has(child.id));
     const allLeaves = children.every(child => !comboIds.has(child.id));
+    
+    console.log(`    Children types: allCombos=${allCombos}, allLeaves=${allLeaves}`);
 
-    // Create bounding boxes for all children (they're positioned relative to 0,0)
-    const childrenBBoxes = children.map(child => {
+    // Convert children to circles for D3's packEnclose
+    const circles = children.map(child => {
       const x = child.data.x || 0;
       const y = child.data.y || 0;
       
-      let width, height;
+      let radius;
       if (comboIds.has(child.id) && child.data.size) {
-        const size = child.data.size;
-        width = Array.isArray(size) ? size[0] : size;
-        height = Array.isArray(size) ? size[1] : size;
+        const diameter = child.data.size;
+        radius = diameter / 2;
       } else if (comboIds.has(child.id)) {
-        width = height = 40; // Default combo size
+        radius = 20; // Default combo radius
       } else {
-        // Leaf nodes - use smaller size for tighter bounds
-        width = height = 30; // Smaller than default to fit tighter
+        // Leaf nodes - use smaller radius for tighter bounds
+        radius = 15; // 30 diameter = 15 radius
       }
       
-      const bbox = new AABB();
-      bbox.setMinMax(
-        [x - width / 2, y - height / 2, 0],
-        [x + width / 2, y + height / 2, 0]
-      );
-      return bbox;
+      console.log(`    Child ${child.id} at (${x.toFixed(1)}, ${y.toFixed(1)}) with radius ${radius.toFixed(1)} (isCombo: ${comboIds.has(child.id)})`);
+      
+      return { x, y, r: radius };
     });
 
-    const combinedBBox = getCombinedBBox(childrenBBoxes);
-    const padding = [1, 1, 1, 1]; // Just 5 pixels padding on all sides
-    const expandedBBox = getExpandedBBox(combinedBBox, padding);
+    // Use D3's packEnclose to get the exact minimum enclosing circle
+    const enclosingCircle = packEnclose(circles);
     
-    const width = getBBoxWidth(expandedBBox);
-    const height = getBBoxHeight(expandedBBox);
+    console.log(`    D3 packEnclose result: x=${enclosingCircle.x.toFixed(1)}, y=${enclosingCircle.y.toFixed(1)}, r=${enclosingCircle.r.toFixed(1)}`);
     
-    // Different sizing strategies based on content
-    let circleRadius;
+    // Add small buffer based on content type
+    let bufferMultiplier;
     if (allLeaves) {
-      // For leaf nodes, use tighter fit with minimal buffer
-      circleRadius = Math.sqrt(width * width + height * height) / 2 * 1.02; // Just 2% buffer
+      bufferMultiplier = 1.02; // Just 2% buffer for leaf nodes
     } else if (allCombos) {
-      // For combo children, use standard buffer
-      circleRadius = Math.sqrt(width * width + height * height) / 2 * 1.1;
+      bufferMultiplier = 1.1; // 10% buffer for combo children
     } else {
-      // Mixed content, use moderate buffer
-      circleRadius = Math.sqrt(width * width + height * height) / 2 * 1.05;
+      bufferMultiplier = 1.05; // 5% buffer for mixed content
     }
     
-    const circleDiameter = circleRadius * 2;
+    const finalRadius = enclosingCircle.r * bufferMultiplier;
+    const circleDiameter = finalRadius * 2;
     
-    return [circleDiameter, circleDiameter];
+    console.log(`    Final radius=${finalRadius.toFixed(1)}, diameter=${circleDiameter.toFixed(1)} (buffer: ${(bufferMultiplier * 100 - 100).toFixed(0)}%)`);
+    
+    return circleDiameter; // Return just the diameter, not an array
   }
 
   /**
@@ -398,7 +352,7 @@ export class SimpleBottomUpLayout extends BaseLayout {
         style: {
           x: n.data.x,
           y: n.data.y,
-          z: n.data.z || 0
+          size: n.data.size
         }
       }))
     };
