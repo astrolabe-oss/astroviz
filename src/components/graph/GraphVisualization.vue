@@ -8,9 +8,13 @@
 </template>
 
 <script>
-import { Graph } from '@antv/g6';
+import {ExtensionCategory, Graph, register} from '@antv/g6';
 import { ConcentricLayout, RadialLayout, ForceLayout, D3ForceLayout, FruchtermanLayout, ForceAtlas2Layout, CircularLayout, RandomLayout } from '@antv/layout';
 import { SimpleBottomUpLayout } from '@/layouts/SimpleBottomUpLayout.js';
+import {TightCircleCombo} from "@/elements/TightCircleCombo";
+
+// Register our custom combo as the default circle combo
+register(ExtensionCategory.COMBO, 'circle', TightCircleCombo);
 
 export default {
   name: 'GraphVisualization',
@@ -259,7 +263,7 @@ export default {
         // },
         node: {
           style: {
-            size: 20,
+            // size: 20,
             fill: (d) => d.data?.fill || '#C6E5FF',
             stroke: (d) => d.data?.stroke || '#fff',
             lineWidth: 2,
@@ -286,16 +290,16 @@ export default {
               if (d.id.startsWith('cluster-')) return [8, 4];     // Medium dash for clusters
               return [5, 5];                                       // Default dash for private network
             },
-            labelText: (d) => d.data?.label || d.id,
-            labelFontSize: (d) => {
-              if (d.id === 'private-network') return 16;          // Largest for private network
-              if (d.id.startsWith('cluster-')) return 14;         // Medium for clusters
-              return 12;                                           // Smallest for apps
-            },
-            labelOffsetY: 20,
+            // labelText: (d) => d.data?.label || d.id,
+            // labelFontSize: (d) => {
+            //   if (d.id === 'private-network') return 16;          // Largest for private network
+            //   if (d.id.startsWith('cluster-')) return 14;         // Medium for clusters
+            //   return 12;                                           // Smallest for apps
+            // },
+            // labelOffsetY: 20,
             opacity: 0.6,
-            radius: 10,
-            padding: [20, 20, 20, 20]
+            // radius: 10,
+            // padding: [-5, -5, -5, -5]  // Minimal padding for tight combo fit
           }
         },
         behaviors: ['collapse-expand', 'drag-element', 'drag-canvas', 'zoom-canvas'],

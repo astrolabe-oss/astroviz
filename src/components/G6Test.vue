@@ -7,10 +7,14 @@ import { Graph, register, ExtensionCategory } from '@antv/g6';
 import { AntVDagreLayout, D3ForceLayout, MDSLayout, DagreLayout ,ForceAtlas2Layout, ForceLayout, ConcentricLayout, GridLayout, RandomLayout, RadialLayout} from '@antv/layout';
 import { CustomComboCombinedLayout } from '@/layouts/CustomComboCombinedLayout.js';
 import { SimpleBottomUpLayout } from '@/layouts/SimpleBottomUpLayout.js';
+import { TightCircleCombo } from '@/elements/TightCircleCombo.js';
 
 // Register our custom layouts
 register(ExtensionCategory.LAYOUT, 'custom-combo-combined', CustomComboCombinedLayout);
 register(ExtensionCategory.LAYOUT, 'simple-bottom-up', SimpleBottomUpLayout);
+
+// Register our custom combo as the default circle combo
+register(ExtensionCategory.COMBO, 'circle', TightCircleCombo);
 
 export default {
   name: 'G6Test',
@@ -98,6 +102,7 @@ export default {
           // Top level - Private Network
           {
             id: 'private-network',
+            type: 'tight-circle',  // Use our custom tight circle combo
             data: {
               label: 'Private Network',
               fill: '#f0f0f0',
@@ -312,16 +317,15 @@ export default {
         // Node configuration
         node: {
           style: {
-            size: 25,
+            // size: 25,
             fill: (d) => d.data?.fill || '#C6E5FF',
             stroke: '#fff',
             lineWidth: 2,
-            labelText: (d) => d.data?.label || d.id,
-            labelFontSize: 12,
-            labelOffsetY: 25
+            // labelText: (d) => d.data?.label || d.id,
+            // labelFontSize: 12,
+            // labelOffsetY: 25
           }
         },
-        
         // Edge configuration
         edge: {
           style: {
@@ -330,22 +334,29 @@ export default {
             endArrow: true
           }
         },
-        
         // Combo configuration
         combo: {
           style: {
             fill: (d) => d.data?.fill || '#E8F4FD',
             stroke: (d) => d.data?.stroke || '#5B8FF9',
             lineWidth: 2,
-            labelText: (d) => d.data?.label || d.id,
-            labelFontSize: 14,
-            labelOffsetY: 20,
+            lineDash: (d) => {
+              if (d.id.startsWith('app-')) return [3, 3];        // Short dash for apps
+              if (d.id.startsWith('cluster-')) return [8, 4];     // Medium dash for clusters
+              return [5, 5];                                       // Default dash for private network
+            },
+            // labelText: (d) => d.data?.label || d.id,
+            // labelFontSize: (d) => {
+            //   if (d.id === 'private-network') return 16;          // Largest for private network
+            //   if (d.id.startsWith('cluster-')) return 14;         // Medium for clusters
+            //   return 12;                                           // Smallest for apps
+            // },
+            // labelOffsetY: 20,
             opacity: 0.6,
-            radius: 10,
-            padding: 0,
+            // radius: 10,
+            padding: [-10, -10, -10, -10]  // Minimal padding for tight combo fit
           }
         },
-        
         // Behaviors
         behaviors: ['drag-canvas', 'zoom-canvas', 'drag-element', 'collapse-expand'],
         autoFit: 'view'
