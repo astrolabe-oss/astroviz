@@ -434,11 +434,71 @@ export class SimpleD3Graph {
   renderEdges(packedRoot) {
     if (!this.data.edges) return;
     
-    // Create position map
+    // Create position map for nodes
     const positionMap = new Map();
     packedRoot.descendants().forEach(d => {
       if (!d.data.isVirtual) {
         positionMap.set(d.data.id, { x: d.x + 25, y: d.y + 25 });
+      }
+    });
+    
+    // Create group circles map for intersection detection
+    // Separate application and cluster groups
+    const applicationGroups = [];
+    const clusterGroups = [];
+    const allGroupCircles = [];
+    
+    // Build maps of which nodes belong to which groups
+    const nodeToAppMap = new Map();
+    const nodeToClusterMap = new Map();
+    
+    packedRoot.descendants().forEach(d => {
+      if (d.data.isGroup && !d.data.isVirtual) {
+        const circle = {
+          id: d.data.id,
+          x: d.x + 25,
+          y: d.y + 25,
+          r: d.r,
+          isApp: d.data.id.startsWith('app-'),
+          isCluster: d.data.id.startsWith('cluster')
+        };
+        allGroupCircles.push(circle);
+        
+        // Track application groups
+        if (circle.isApp) {
+          applicationGroups.push(circle);
+          
+          // Map all child nodes to this application
+          if (d.children) {
+            const mapChildNodes = (node) => {
+              if (!node.data.isGroup) {
+                nodeToAppMap.set(node.data.id, d.data.id);
+              }
+              if (node.children) {
+                node.children.forEach(mapChildNodes);
+              }
+            };
+            d.children.forEach(mapChildNodes);
+          }
+        }
+        
+        // Track cluster groups
+        if (circle.isCluster) {
+          clusterGroups.push(circle);
+          
+          // Map all child nodes to this cluster
+          if (d.children) {
+            const mapChildNodes = (node) => {
+              if (!node.data.isGroup) {
+                nodeToClusterMap.set(node.data.id, d.data.id);
+              }
+              if (node.children) {
+                node.children.forEach(mapChildNodes);
+              }
+            };
+            d.children.forEach(mapChildNodes);
+          }
+        }
       }
     });
     
@@ -447,40 +507,91 @@ export class SimpleD3Graph {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
     
-    const edgeElements = this.edgeLayer
-      .selectAll('line.edge')
-      .data(visibleEdges)
-      .join('line')
-      .attr('class', 'edge')
-      .attr('x1', d => positionMap.get(d.source).x)
-      .attr('y1', d => positionMap.get(d.source).y)
-      .attr('x2', d => positionMap.get(d.target).x)
-      .attr('y2', d => positionMap.get(d.target).y)
-      .attr('stroke', '#888')  // Medium gray edges
-      .attr('stroke-width', 1.5)  // Slightly thicker than original but not too thick
-      .attr('opacity', 0.4);  // More transparent so they don't dominate over groups
+    // Clear existing edges
+    this.edgeLayer.selectAll('line.edge').remove();
+    
+    // Create segmented edges (style differently for unrelated apps and clusters)
+    visibleEdges.forEach(edge => {
+      // Find home applications and clusters for this edge
+      const homeApps = new Set();
+      const homeClusters = new Set();
       
-    // Add arrowheads (simple triangles) to match G6 style
-    const arrowElements = this.edgeLayer
-      .selectAll('polygon.arrow')
-      .data(visibleEdges)
-      .join('polygon')
-      .attr('class', 'arrow')
-      .attr('points', '0,-3 8,0 0,3')
-      .attr('fill', '#888')
-      .attr('opacity', 0.4)  // More transparent to match edge lines
-      .attr('transform', d => {
-        const source = positionMap.get(d.source);
-        const target = positionMap.get(d.target);
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        // Position arrow at target end, offset by node radius
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = target.x - (dx / length) * (this.options.nodeRadius + 2);
-        const offsetY = target.y - (dy / length) * (this.options.nodeRadius + 2);
-        return `translate(${offsetX}, ${offsetY}) rotate(${angle})`;
+      const sourceApp = nodeToAppMap.get(edge.source);
+      const targetApp = nodeToAppMap.get(edge.target);
+      if (sourceApp) homeApps.add(sourceApp);
+      if (targetApp) homeApps.add(targetApp);
+      
+      const sourceCluster = nodeToClusterMap.get(edge.source);
+      const targetCluster = nodeToClusterMap.get(edge.target);
+      if (sourceCluster) homeClusters.add(sourceCluster);
+      if (targetCluster) homeClusters.add(targetCluster);
+      
+      const segments = this.calculateEdgeSegmentsWithGroups(
+        edge, 
+        positionMap, 
+        applicationGroups,
+        clusterGroups, 
+        homeApps,
+        homeClusters
+      );
+      
+      segments.forEach((segment, index) => {
+        this.edgeLayer
+          .append('line')
+          .attr('class', 'edge')
+          .attr('data-source', edge.source)  // Store source for updates
+          .attr('data-target', edge.target)  // Store target for updates
+          .attr('x1', segment.x1)
+          .attr('y1', segment.y1)
+          .attr('x2', segment.x2)
+          .attr('y2', segment.y2)
+          .attr('stroke', segment.insideUnrelatedGroup ? '#ccc' : '#888')
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', segment.insideUnrelatedGroup ? '2,2' : 'none')
+          .attr('opacity', segment.insideUnrelatedGroup ? 0.2 : 0.4);
       });
+    });
+      
+    // Add arrowheads (simple triangles) - one per edge
+    this.edgeLayer.selectAll('polygon.arrow').remove();
+    
+    visibleEdges.forEach(edge => {
+      const source = positionMap.get(edge.source);
+      const target = positionMap.get(edge.target);
+      
+      if (!source || !target) return;
+      
+      const dx = target.x - source.x;
+      const dy = target.y - source.y;
+      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
+      
+      // Position arrow at target end, offset by node radius
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const offsetX = target.x - (dx / length) * (this.options.nodeRadius + 2);
+      const offsetY = target.y - (dy / length) * (this.options.nodeRadius + 2);
+      
+      // Check if arrow position is inside any unrelated application
+      let arrowInsideUnrelatedApp = false;
+      for (const app of applicationGroups) {
+        if (this.pointInCircle({ x: offsetX, y: offsetY }, app)) {
+          // Check if this app is NOT a home app
+          const sourceApp = nodeToAppMap.get(edge.source);
+          const targetApp = nodeToAppMap.get(edge.target);
+          if (app.id !== sourceApp && app.id !== targetApp) {
+            arrowInsideUnrelatedApp = true;
+            break;
+          }
+        }
+      }
+      
+      this.edgeLayer
+        .append('polygon')
+        .attr('class', 'arrow')
+        .attr('points', '0,-3 8,0 0,3')
+        .attr('fill', arrowInsideUnrelatedApp ? '#ccc' : '#888')
+        .attr('opacity', arrowInsideUnrelatedApp ? 0.2 : 0.4)
+        .attr('transform', `translate(${offsetX}, ${offsetY}) rotate(${angle})`);
+    });
   }
   
   /**
@@ -597,6 +708,351 @@ export class SimpleD3Graph {
   }
   
   /**
+   * Calculate edge segments based on application and cluster intersections
+   */
+  calculateEdgeSegmentsWithGroups(edge, positionMap, applicationGroups, clusterGroups, homeApps, homeClusters) {
+    const sourcePos = positionMap.get(edge.source);
+    const targetPos = positionMap.get(edge.target);
+    
+    if (!sourcePos || !targetPos) return [];
+    
+    // Combine all groups we need to check for intersections
+    const allGroups = [...applicationGroups, ...clusterGroups];
+    
+    // Start with the full edge as one segment
+    const points = [
+      { t: 0, x: sourcePos.x, y: sourcePos.y, insideUnrelatedGroup: false },
+      { t: 1, x: targetPos.x, y: targetPos.y, insideUnrelatedGroup: false }
+    ];
+    
+    // Find all intersection points with groups
+    for (const group of allGroups) {
+      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, group);
+      
+      for (const intersection of intersections) {
+        // Add intersection points
+        points.push({
+          t: intersection.t,
+          x: intersection.x,
+          y: intersection.y,
+          insideUnrelatedGroup: false // Will be determined later
+        });
+      }
+    }
+    
+    // Sort points by parameter t (position along line)
+    points.sort((a, b) => a.t - b.t);
+    
+    // Remove duplicates (very close points)
+    const uniquePoints = [];
+    for (const point of points) {
+      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
+        uniquePoints.push(point);
+      }
+    }
+    
+    // Determine which segments are inside unrelated groups
+    const segments = [];
+    for (let i = 0; i < uniquePoints.length - 1; i++) {
+      const start = uniquePoints[i];
+      const end = uniquePoints[i + 1];
+      
+      // Check midpoint to determine if segment is inside any group
+      const midT = (start.t + end.t) / 2;
+      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
+      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
+      
+      let insideUnrelatedGroup = false;
+      
+      // Check if inside any unrelated application
+      for (const appGroup of applicationGroups) {
+        if (this.pointInCircle({ x: midX, y: midY }, appGroup)) {
+          // Check if this app is NOT a home app
+          if (!homeApps.has(appGroup.id)) {
+            insideUnrelatedGroup = true;
+            break;
+          }
+        }
+      }
+      
+      // Check if inside any unrelated cluster (only if not already marked)
+      if (!insideUnrelatedGroup) {
+        for (const clusterGroup of clusterGroups) {
+          if (this.pointInCircle({ x: midX, y: midY }, clusterGroup)) {
+            // Check if this cluster is NOT a home cluster
+            if (!homeClusters.has(clusterGroup.id)) {
+              insideUnrelatedGroup = true;
+              break;
+            }
+          }
+        }
+      }
+      
+      segments.push({
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+        insideUnrelatedGroup: insideUnrelatedGroup
+      });
+    }
+    
+    return segments;
+  }
+
+  /**
+   * Calculate edge segments based on application intersections
+   */
+  calculateEdgeSegmentsWithApps(edge, positionMap, applicationGroups, homeApps) {
+    const sourcePos = positionMap.get(edge.source);
+    const targetPos = positionMap.get(edge.target);
+    
+    if (!sourcePos || !targetPos) return [];
+    
+    // Start with the full edge as one segment
+    const points = [
+      { t: 0, x: sourcePos.x, y: sourcePos.y, insideUnrelatedApp: false },
+      { t: 1, x: targetPos.x, y: targetPos.y, insideUnrelatedApp: false }
+    ];
+    
+    // Find all intersection points with application groups
+    for (const appCircle of applicationGroups) {
+      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, appCircle);
+      
+      for (const intersection of intersections) {
+        // Add intersection points
+        points.push({
+          t: intersection.t,
+          x: intersection.x,
+          y: intersection.y,
+          insideUnrelatedApp: false // Will be determined later
+        });
+      }
+    }
+    
+    // Sort points by parameter t (position along line)
+    points.sort((a, b) => a.t - b.t);
+    
+    // Remove duplicates (very close points)
+    const uniquePoints = [];
+    for (const point of points) {
+      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
+        uniquePoints.push(point);
+      }
+    }
+    
+    // Determine which segments are inside unrelated applications
+    const segments = [];
+    for (let i = 0; i < uniquePoints.length - 1; i++) {
+      const start = uniquePoints[i];
+      const end = uniquePoints[i + 1];
+      
+      // Check midpoint to determine if segment is inside any application
+      const midT = (start.t + end.t) / 2;
+      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
+      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
+      
+      // Check if inside any unrelated application
+      let insideUnrelatedApp = false;
+      for (const appCircle of applicationGroups) {
+        if (this.pointInCircle({ x: midX, y: midY }, appCircle)) {
+          // Check if this app is NOT a home app
+          if (!homeApps.has(appCircle.id)) {
+            insideUnrelatedApp = true;
+            break;
+          }
+        }
+      }
+      
+      segments.push({
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+        insideUnrelatedApp: insideUnrelatedApp
+      });
+    }
+    
+    return segments;
+  }
+
+  /**
+   * Calculate edge segments based on group intersections
+   */
+  calculateEdgeSegments(edge, positionMap, groupCircles) {
+    const sourcePos = positionMap.get(edge.source);
+    const targetPos = positionMap.get(edge.target);
+    
+    if (!sourcePos || !targetPos) return [];
+    
+    // Start with the full edge as one segment
+    const points = [
+      { t: 0, x: sourcePos.x, y: sourcePos.y, insideGroup: false },
+      { t: 1, x: targetPos.x, y: targetPos.y, insideGroup: false }
+    ];
+    
+    // Find all intersection points with group circles
+    for (const circle of groupCircles) {
+      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, circle);
+      
+      for (const intersection of intersections) {
+        // Add intersection points
+        points.push({
+          t: intersection.t,
+          x: intersection.x,
+          y: intersection.y,
+          insideGroup: false // Will be determined later
+        });
+      }
+    }
+    
+    // Sort points by parameter t (position along line)
+    points.sort((a, b) => a.t - b.t);
+    
+    // Remove duplicates (very close points)
+    const uniquePoints = [];
+    for (const point of points) {
+      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
+        uniquePoints.push(point);
+      }
+    }
+    
+    // Determine which segments are inside groups
+    const segments = [];
+    for (let i = 0; i < uniquePoints.length - 1; i++) {
+      const start = uniquePoints[i];
+      const end = uniquePoints[i + 1];
+      
+      // Check midpoint to determine if segment is inside any group
+      const midT = (start.t + end.t) / 2;
+      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
+      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
+      
+      const insideGroup = groupCircles.some(circle => 
+        this.pointInCircle({ x: midX, y: midY }, circle)
+      );
+      
+      segments.push({
+        x1: start.x,
+        y1: start.y,
+        x2: end.x,
+        y2: end.y,
+        insideGroup: insideGroup
+      });
+    }
+    
+    return segments;
+  }
+
+  /**
+   * Get all intersection points between a line segment and a circle
+   */
+  getLineCircleIntersections(p1, p2, circle) {
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    const fx = p1.x - circle.x;
+    const fy = p1.y - circle.y;
+    
+    const a = dx * dx + dy * dy;
+    const b = 2 * (fx * dx + fy * dy);
+    const c = (fx * fx + fy * fy) - circle.r * circle.r;
+    
+    const discriminant = b * b - 4 * a * c;
+    
+    if (discriminant < 0) return []; // No intersection
+    
+    const intersections = [];
+    const sqrt_discriminant = Math.sqrt(discriminant);
+    
+    // Check both intersection points
+    const t1 = (-b - sqrt_discriminant) / (2 * a);
+    const t2 = (-b + sqrt_discriminant) / (2 * a);
+    
+    if (t1 >= 0 && t1 <= 1) {
+      intersections.push({
+        t: t1,
+        x: p1.x + t1 * dx,
+        y: p1.y + t1 * dy
+      });
+    }
+    
+    if (t2 >= 0 && t2 <= 1 && Math.abs(t2 - t1) > 0.001) {
+      intersections.push({
+        t: t2,
+        x: p1.x + t2 * dx,
+        y: p1.y + t2 * dy
+      });
+    }
+    
+    return intersections;
+  }
+
+  /**
+   * Check if an edge intersects with any group circles
+   */
+  edgeIntersectsGroups(edge, positionMap, groupCircles) {
+    const sourcePos = positionMap.get(edge.source);
+    const targetPos = positionMap.get(edge.target);
+    
+    if (!sourcePos || !targetPos) return false;
+    
+    // Check intersection with each group circle
+    for (const circle of groupCircles) {
+      // Skip if either endpoint is inside this circle (edge originates/terminates within group)
+      const sourceInside = this.pointInCircle(sourcePos, circle);
+      const targetInside = this.pointInCircle(targetPos, circle);
+      
+      if (sourceInside || targetInside) continue;
+      
+      // Check if line segment intersects the circle
+      if (this.lineIntersectsCircle(sourcePos, targetPos, circle)) {
+        return true;
+      }
+    }
+    
+    return false;
+  }
+
+  /**
+   * Check if a point is inside a circle
+   */
+  pointInCircle(point, circle) {
+    const dx = point.x - circle.x;
+    const dy = point.y - circle.y;
+    return (dx * dx + dy * dy) <= (circle.r * circle.r);
+  }
+
+  /**
+   * Check if a line segment intersects with a circle
+   */
+  lineIntersectsCircle(p1, p2, circle) {
+    // Vector from p1 to p2
+    const dx = p2.x - p1.x;
+    const dy = p2.y - p1.y;
+    
+    // Vector from p1 to circle center
+    const fx = p1.x - circle.x;
+    const fy = p1.y - circle.y;
+    
+    // Quadratic equation coefficients for line-circle intersection
+    const a = dx * dx + dy * dy;
+    const b = 2 * (fx * dx + fy * dy);
+    const c = (fx * fx + fy * fy) - circle.r * circle.r;
+    
+    const discriminant = b * b - 4 * a * c;
+    
+    if (discriminant < 0) return false; // No intersection
+    
+    // Check if intersection points are within the line segment
+    const sqrt_discriminant = Math.sqrt(discriminant);
+    const t1 = (-b - sqrt_discriminant) / (2 * a);
+    const t2 = (-b + sqrt_discriminant) / (2 * a);
+    
+    // Intersection occurs if either t value is between 0 and 1 (within segment)
+    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+  }
+
+  /**
    * Update edges connected to a node
    */
   updateConnectedEdges(nodeId) {
@@ -605,49 +1061,163 @@ export class SimpleD3Graph {
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
     
-    // Update edges where this node is source
-    this.edgeLayer.selectAll('line.edge')
-      .filter(d => d.source === nodeId)
-      .attr('x1', nodePos.x)
-      .attr('y1', nodePos.y);
+    // Get all affected edges
+    const affectedEdges = this.data.edges.filter(edge => 
+      edge.source === nodeId || edge.target === nodeId
+    );
     
-    // Update edges where this node is target
+    // Remove old segments for affected edges
     this.edgeLayer.selectAll('line.edge')
-      .filter(d => d.target === nodeId)
-      .attr('x2', nodePos.x)
-      .attr('y2', nodePos.y);
+      .filter(function() {
+        const source = d3.select(this).attr('data-source');
+        const target = d3.select(this).attr('data-target');
+        return source === nodeId || target === nodeId;
+      })
+      .remove();
     
-    // Update arrows pointing to this node
+    // Remove old arrows for affected edges
     this.edgeLayer.selectAll('polygon.arrow')
-      .filter(d => d.target === nodeId)
-      .attr('transform', d => {
-        const sourcePos = this.nodePositions.get(d.source);
-        if (!sourcePos) return '';
-        
-        const dx = nodePos.x - sourcePos.x;
-        const dy = nodePos.y - sourcePos.y;
+      .filter(function() {
+        const source = d3.select(this).attr('data-source');
+        const target = d3.select(this).attr('data-target');
+        return source === nodeId || target === nodeId;
+      })
+      .remove();
+    
+    // Create position map with updated position
+    const positionMap = new Map();
+    this.nodePositions.forEach((pos, id) => {
+      positionMap.set(id, { x: pos.x, y: pos.y });
+    });
+    this.groupPositions.forEach((pos, id) => {
+      positionMap.set(id, { x: pos.x, y: pos.y });
+    });
+    
+    // Get application and cluster groups for intersection detection
+    const applicationGroups = [];
+    const clusterGroups = [];
+    const nodeToAppMap = new Map();
+    const nodeToClusterMap = new Map();
+    
+    // Build app and cluster groups
+    this.groupPositions.forEach((pos, id) => {
+      if (id.startsWith('app-')) {
+        applicationGroups.push({
+          id: id,
+          x: pos.x,
+          y: pos.y,
+          r: pos.r
+        });
+      } else if (id.startsWith('cluster')) {
+        clusterGroups.push({
+          id: id,
+          x: pos.x,
+          y: pos.y,
+          r: pos.r
+        });
+      }
+    });
+    
+    // Map nodes to their parent apps and clusters (simplified for updates)
+    this.nodePositions.forEach((pos, nodeId) => {
+      // Find which app contains this node
+      for (const app of applicationGroups) {
+        const dx = pos.x - app.x;
+        const dy = pos.y - app.y;
+        if (dx * dx + dy * dy <= app.r * app.r) {
+          nodeToAppMap.set(nodeId, app.id);
+          break;
+        }
+      }
+      
+      // Find which cluster contains this node
+      for (const cluster of clusterGroups) {
+        const dx = pos.x - cluster.x;
+        const dy = pos.y - cluster.y;
+        if (dx * dx + dy * dy <= cluster.r * cluster.r) {
+          nodeToClusterMap.set(nodeId, cluster.id);
+          break;
+        }
+      }
+    });
+    
+    // Re-render affected edges with segments
+    affectedEdges.forEach(edge => {
+      if (!positionMap.has(edge.source) || !positionMap.has(edge.target)) return;
+      
+      // Find home applications and clusters for this edge
+      const homeApps = new Set();
+      const homeClusters = new Set();
+      
+      const sourceApp = nodeToAppMap.get(edge.source);
+      const targetApp = nodeToAppMap.get(edge.target);
+      if (sourceApp) homeApps.add(sourceApp);
+      if (targetApp) homeApps.add(targetApp);
+      
+      const sourceCluster = nodeToClusterMap.get(edge.source);
+      const targetCluster = nodeToClusterMap.get(edge.target);
+      if (sourceCluster) homeClusters.add(sourceCluster);
+      if (targetCluster) homeClusters.add(targetCluster);
+      
+      const segments = this.calculateEdgeSegmentsWithGroups(
+        edge, 
+        positionMap, 
+        applicationGroups,
+        clusterGroups, 
+        homeApps,
+        homeClusters
+      );
+      
+      segments.forEach((segment) => {
+        this.edgeLayer
+          .append('line')
+          .attr('class', 'edge')
+          .attr('data-source', edge.source)
+          .attr('data-target', edge.target)
+          .attr('x1', segment.x1)
+          .attr('y1', segment.y1)
+          .attr('x2', segment.x2)
+          .attr('y2', segment.y2)
+          .attr('stroke', segment.insideUnrelatedGroup ? '#ccc' : '#888')
+          .attr('stroke-width', 1.5)
+          .attr('stroke-dasharray', segment.insideUnrelatedGroup ? '2,2' : 'none')
+          .attr('opacity', segment.insideUnrelatedGroup ? 0.2 : 0.4);
+      });
+      
+      // Re-render arrow
+      const source = positionMap.get(edge.source);
+      const target = positionMap.get(edge.target);
+      
+      if (source && target) {
+        const dx = target.x - source.x;
+        const dy = target.y - source.y;
         const angle = Math.atan2(dy, dx) * 180 / Math.PI;
         const length = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = nodePos.x - (dx / length) * (this.options.nodeRadius + 2);
-        const offsetY = nodePos.y - (dy / length) * (this.options.nodeRadius + 2);
-        return `translate(${offsetX}, ${offsetY}) rotate(${angle})`;
-      });
-    
-    // Update arrows originating from this node
-    this.edgeLayer.selectAll('polygon.arrow')
-      .filter(d => d.source === nodeId)
-      .attr('transform', d => {
-        const targetPos = this.nodePositions.get(d.target);
-        if (!targetPos) return '';
+        const offsetX = target.x - (dx / length) * (this.options.nodeRadius + 2);
+        const offsetY = target.y - (dy / length) * (this.options.nodeRadius + 2);
         
-        const dx = targetPos.x - nodePos.x;
-        const dy = targetPos.y - nodePos.y;
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = targetPos.x - (dx / length) * (this.options.nodeRadius + 2);
-        const offsetY = targetPos.y - (dy / length) * (this.options.nodeRadius + 2);
-        return `translate(${offsetX}, ${offsetY}) rotate(${angle})`;
-      });
+        // Check if arrow is in unrelated app
+        let arrowInsideUnrelatedApp = false;
+        for (const app of applicationGroups) {
+          if (this.pointInCircle({ x: offsetX, y: offsetY }, app)) {
+            if (!homeApps.has(app.id)) {
+              arrowInsideUnrelatedApp = true;
+              break;
+            }
+          }
+        }
+        
+        this.edgeLayer
+          .append('polygon')
+          .attr('class', 'arrow')
+          .attr('data-source', edge.source)
+          .attr('data-target', edge.target)
+          .attr('points', '0,-3 8,0 0,3')
+          .attr('fill', arrowInsideUnrelatedApp ? '#ccc' : '#888')
+          .attr('opacity', arrowInsideUnrelatedApp ? 0.2 : 0.4)
+          .attr('transform', `translate(${offsetX}, ${offsetY}) rotate(${angle})`);
+      }
+    });
   }
   
   /**
