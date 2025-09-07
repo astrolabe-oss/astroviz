@@ -159,7 +159,7 @@ export default {
         const appCount = Object.keys(clusterApps).length;
         
         vertices[clusterGroupId] = {
-          label: `${clusterName} (${appCount} apps)`,
+          label: `Cluster: ${clusterName} (${appCount} apps)`,
           type: 'group',
           parentId: 'private-network',
           fill: '#E8F4FD',
@@ -171,7 +171,7 @@ export default {
           const appGroupId = `app-${clusterName}-${appName}`;
           
           vertices[appGroupId] = {
-            label: `${appName} (${appNodes.length} nodes)`,
+            label: `App: ${appName} (${appNodes.length} nodes)`,
             type: 'group',
             parentId: clusterGroupId,
             fill: '#FFE6CC',

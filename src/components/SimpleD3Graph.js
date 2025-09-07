@@ -262,7 +262,7 @@ export class SimpleD3Graph {
     const groups = packedRoot.descendants()
       .filter(d => d.data.isGroup && !d.data.isVirtual);
     
-    const groupCircles = this.groupLayer
+    const groupElements = this.groupLayer
       .selectAll('circle.group')
       .data(groups, d => d.data.id)
       .join('circle')
@@ -284,7 +284,7 @@ export class SimpleD3Graph {
       .style('cursor', 'grab');
     
     // Group labels with backgrounds (like old D3 force styling) - moved to label layer
-    const groupLabelGroups = this.labelLayer
+    const groupLabelElements = this.labelLayer
       .selectAll('g.group-label-container')
       .data(groups, d => d.data.id)
       .join('g')
@@ -293,7 +293,7 @@ export class SimpleD3Graph {
       .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25 - d.r - 5})`);
 
     // Add label backgrounds
-    groupLabelGroups.each(function(d) {
+    groupLabelElements.each(function(d) {
       const group = d3.select(this);
       const labelText = d.data.data?.label || d.data.id;
       
@@ -343,7 +343,7 @@ export class SimpleD3Graph {
       .on('drag', (event, d) => this.onGroupDrag(event, d))
       .on('end', (event, d) => this.onGroupDragEnd(event, d));
     
-    groupCircles.call(groupDragBehavior);
+    groupElements.call(groupDragBehavior);
   }
   
   /**
@@ -353,8 +353,8 @@ export class SimpleD3Graph {
     const nodes = packedRoot.descendants()
       .filter(d => !d.data.isGroup && !d.data.isVirtual);
     
-    // Create node groups to hold icons
-    const nodeGroups = this.nodeLayer
+    // Create node elements to hold icons
+    const nodeElements = this.nodeLayer
       .selectAll('g.node')
       .data(nodes, d => d.data.id)
       .join('g')
@@ -363,9 +363,9 @@ export class SimpleD3Graph {
       .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25})`)
       .style('cursor', 'grab');
 
-    // Add icons to node groups (like the old GraphVisualization.vue)
+    // Add icons to node elements (like the old GraphVisualization.vue)
     const self = this;
-    nodeGroups.each(function(d) {
+    nodeElements.each(function(d) {
       const group = d3.select(this);
       
       // Since we spread all vertex data at root level in GraphVisualization.vue, 
@@ -398,8 +398,8 @@ export class SimpleD3Graph {
       }
     });
     
-    // Node labels (dark text, no background like old D3 force styling) - moved to label layer
-    const nodeLabels = this.labelLayer
+    // Node labels (dark text, no background)
+    const labelElements = this.labelLayer
       .selectAll('text.node-label')
       .data(nodes, d => d.data.id)
       .join('text')
@@ -409,7 +409,7 @@ export class SimpleD3Graph {
       .attr('y', d => d.y + 25 + this.options.nodeRadius + 8) // Position below the icon
       .attr('text-anchor', 'middle')
       .style('font-size', '10px')
-      .style('fill', '#333')  // Dark text like old D3 force styling
+      .style('fill', '#333')
       .style('font-weight', 'normal')
       .style('pointer-events', 'none')
       .text(d => this.getNodeLabel(d.data.data) || d.data.id);
@@ -425,7 +425,7 @@ export class SimpleD3Graph {
       .on('drag', (event, d) => this.onDrag(event, d))
       .on('end', (event, d) => this.onDragEnd(event, d));
     
-    nodeGroups.call(dragBehavior);
+    nodeElements.call(dragBehavior);
   }
   
   /**
@@ -447,7 +447,7 @@ export class SimpleD3Graph {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
     
-    this.edgeLayer
+    const edgeElements = this.edgeLayer
       .selectAll('line.edge')
       .data(visibleEdges)
       .join('line')
@@ -461,7 +461,7 @@ export class SimpleD3Graph {
       .attr('opacity', 0.4);  // More transparent so they don't dominate over groups
       
     // Add arrowheads (simple triangles) to match G6 style
-    this.edgeLayer
+    const arrowElements = this.edgeLayer
       .selectAll('polygon.arrow')
       .data(visibleEdges)
       .join('polygon')
@@ -799,12 +799,9 @@ export class SimpleD3Graph {
     if (!vertex) return '';
     
     const type = vertex.type;
-    if (type === 'Application') return vertex.name || `App: ${vertex.app_name || 'Unknown'}`;
-    if (type === 'Deployment') return vertex.name || `Deploy: ${vertex.app_name || 'Unknown'}`;
-    if (type === 'Compute') return `${vertex.name || 'Compute'}${vertex.address ? ` (${vertex.address})` : ''}`;
-    if (type === 'Resource') return `${vertex.name || 'Resource'}${vertex.address ? ` (${vertex.address})` : ''}`;
-    if (type === 'TrafficController') return `${vertex.name || 'Traffic'}${vertex.address ? ` (${vertex.address})` : ''}`;
-    if (type === 'InternetIP') return `${vertex.address || 'IP'}`;
+    if (type in ['Application', 'Deployment', 'TrafficController']) return vertex.name;
+    if (type in ['Compute', 'Resource']) return vertex.address;
+    if (type === 'InternetIP') return `${vertex.address} (${vertex.name})`;
     return vertex.name || vertex.type;
   }
 
