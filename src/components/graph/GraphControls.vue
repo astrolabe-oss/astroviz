@@ -10,7 +10,6 @@
     <button @click="$emit('zoom-out')" class="control-btn" title="Zoom Out">−</button>
     <div class="zoom-level" v-if="currentZoomLevel">{{ Math.round(currentZoomLevel * 100) }}%</div>
     <button @click="$emit('reset-view')" class="control-btn" title="Reset View">⟳</button>
-    <button @click="$emit('reset-positions')" class="control-btn" title="Unpin Nodes">📍</button>
     <button @click="$emit('expand-all-apps')" class="control-btn" title="Expand All Applications">📂</button>
     <button @click="$emit('collapse-all-apps')" class="control-btn" title="Collapse All Applications">📁</button>
   </div>
