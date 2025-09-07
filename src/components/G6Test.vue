@@ -159,7 +159,7 @@ export default {
       this.graph = new SimpleD3Graph(container, {
         width: window.innerWidth,
         height: window.innerHeight,
-        padding: 10,
+        padding: 0,
         nodeRadius: 15
       });
       
