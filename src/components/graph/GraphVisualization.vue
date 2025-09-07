@@ -238,20 +238,23 @@ export default {
       return this.nodeColors[type] || '#999';
     },
 
-    // Public methods for parent component (simplified for D3)
+    // Public methods for parent component
     zoomIn() {
-      // D3 zoom functionality would go here
-      console.log('Zoom in - not implemented yet');
+      if (this.graph) {
+        this.graph.zoomIn();
+      }
     },
 
     zoomOut() {
-      // D3 zoom functionality would go here
-      console.log('Zoom out - not implemented yet');
+      if (this.graph) {
+        this.graph.zoomOut();
+      }
     },
 
     resetView() {
-      // D3 fit view functionality would go here
-      console.log('Reset view - not implemented yet');
+      if (this.graph) {
+        this.graph.resetView();
+      }
     },
 
     resetNodePositions() {
