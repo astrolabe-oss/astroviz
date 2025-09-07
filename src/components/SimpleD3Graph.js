@@ -98,7 +98,9 @@ export class SimpleD3Graph {
       if (!d.data.isVirtual && !d.data.isGroup) {
         this.nodePositions.set(d.data.id, {
           x: d.x + 25,
-          y: d.y + 25
+          y: d.y + 25,
+          originalX: d.x + 25,  // Store original position for reset
+          originalY: d.y + 25
         });
       }
     });
@@ -435,10 +437,52 @@ export class SimpleD3Graph {
   
   resetView() {
     if (!this.svg || !this.zoom) return;
+    
+    // Reset zoom and pan
     this.svg.transition().duration(500).call(
       this.zoom.transform,
       d3.zoomIdentity
     );
+    
+    // Reset all node positions to original
+    this.resetNodePositions();
+  }
+  
+  /**
+   * Reset all nodes to their original pack layout positions
+   */
+  resetNodePositions() {
+    if (!this.nodePositions.size) return;
+    
+    // Animate nodes back to original positions
+    this.nodePositions.forEach((pos, nodeId) => {
+      if (pos.originalX !== undefined && pos.originalY !== undefined) {
+        // Update tracking position
+        pos.x = pos.originalX;
+        pos.y = pos.originalY;
+        
+        // Animate node back to original position
+        d3.select(`#node-${nodeId}`)
+          .transition()
+          .duration(500)
+          .attr('cx', pos.originalX)
+          .attr('cy', pos.originalY);
+        
+        // Animate label back to original position
+        d3.select(`#node-label-${nodeId}`)
+          .transition()
+          .duration(500)
+          .attr('x', pos.originalX)
+          .attr('y', pos.originalY + 4);
+      }
+    });
+    
+    // Update all edges after a brief delay to let nodes animate
+    setTimeout(() => {
+      this.nodePositions.forEach((pos, nodeId) => {
+        this.updateConnectedEdges(nodeId);
+      });
+    }, 100);
   }
   
   /**
