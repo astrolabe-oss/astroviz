@@ -54,10 +54,11 @@ export class SimpleD3Graph {
     
     this.svg.call(this.zoom);
     
-    // Create layers (order determines z-index: groups behind edges behind nodes)
+    // Create layers (order determines z-index: groups behind edges behind nodes behind labels)
     this.groupLayer = this.g.append('g').attr('class', 'groups');
     this.edgeLayer = this.g.append('g').attr('class', 'edges');
     this.nodeLayer = this.g.append('g').attr('class', 'nodes');
+    this.labelLayer = this.g.append('g').attr('class', 'labels');
   }
   
   /**
@@ -217,24 +218,54 @@ export class SimpleD3Graph {
       .attr('opacity', 0.6)
       .style('cursor', 'grab');
     
-    // Group labels
-    this.groupLayer
-      .selectAll('text.group-label')
+    // Group labels with backgrounds (like old D3 force styling) - moved to label layer
+    const groupLabelGroups = this.labelLayer
+      .selectAll('g.group-label-container')
       .data(groups, d => d.data.id)
-      .join('text')
-      .attr('class', 'group-label')
-      .attr('id', d => `group-label-${d.data.id}`)
-      .attr('x', d => d.x + 25)
-      .attr('y', d => d.y + 25 - d.r - 5)
-      .attr('text-anchor', 'middle')
-      .style('font-size', d => {
-        if (d.data.id === 'private-network') return '16px';    // Largest for private network
-        if (d.data.id.startsWith('cluster')) return '14px';   // Medium for clusters
-        return '12px';                                         // Smallest for apps
-      })
-      .style('fill', '#666')
-      .style('pointer-events', 'none')  // Let clicks pass through to circle
-      .text(d => d.data.data?.label || d.data.id);
+      .join('g')
+      .attr('class', 'group-label-container')
+      .attr('id', d => `group-label-container-${d.data.id}`)
+      .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25 - d.r - 5})`);
+
+    // Add label backgrounds
+    groupLabelGroups.each(function(d) {
+      const group = d3.select(this);
+      const labelText = d.data.data?.label || d.data.id;
+      
+      // Create temporary text to measure width
+      const tempText = group.append('text')
+        .attr('font-size', d.data.id === 'private-network' ? '16px' : 
+                          d.data.id.startsWith('cluster') ? '14px' : '12px')
+        .attr('font-weight', 'bold')
+        .text(labelText)
+        .style('visibility', 'hidden');
+      
+      const bbox = tempText.node().getBBox();
+      tempText.remove();
+      
+      // Add background rectangle
+      group.append('rect')
+        .attr('x', -bbox.width/2 - 4)
+        .attr('y', -bbox.height/2 - 2)
+        .attr('width', bbox.width + 8)
+        .attr('height', bbox.height + 4)
+        .attr('rx', 3)
+        .attr('fill', 'rgba(240, 240, 245, 0.85)')
+        .attr('stroke', '#999')
+        .attr('stroke-width', 1);
+      
+      // Add label text
+      group.append('text')
+        .attr('class', 'group-label')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', d.data.id === 'private-network' ? '16px' : 
+                           d.data.id.startsWith('cluster') ? '14px' : '12px')
+        .style('font-weight', 'bold')
+        .style('fill', d.data.id === 'private-network' ? '#333' : '#555')
+        .style('pointer-events', 'none')
+        .text(labelText);
+    });
     
     // Add drag behavior to groups
     const groupDragBehavior = d3.drag()
@@ -271,8 +302,8 @@ export class SimpleD3Graph {
       .attr('stroke-width', 2)
       .style('cursor', 'grab');
     
-    // Node labels (optional, can be commented out for cleaner look)
-    this.nodeLayer
+    // Node labels (dark text, no background like old D3 force styling) - moved to label layer
+    const nodeLabels = this.labelLayer
       .selectAll('text.node-label')
       .data(nodes, d => d.data.id)
       .join('text')
@@ -282,7 +313,8 @@ export class SimpleD3Graph {
       .attr('y', d => d.y + 25 + 4)
       .attr('text-anchor', 'middle')
       .style('font-size', '10px')
-      .style('fill', '#fff')
+      .style('fill', '#333')  // Dark text like old D3 force styling
+      .style('font-weight', 'normal')
       .style('pointer-events', 'none')
       .text(d => d.data.data?.label || d.data.id);
     
@@ -437,10 +469,9 @@ export class SimpleD3Graph {
       .attr('cx', groupPos.x)
       .attr('cy', groupPos.y);
     
-    // Update group label
-    d3.select(`#group-label-${groupId}`)
-      .attr('x', groupPos.x)
-      .attr('y', groupPos.y - groupPos.r - 5);
+    // Update group label container
+    d3.select(`#group-label-container-${groupId}`)
+      .attr('transform', `translate(${groupPos.x}, ${groupPos.y - groupPos.r - 5})`);
     
     // Move all child nodes and subgroups recursively
     groupPos.children.forEach(childId => {
@@ -575,12 +606,11 @@ export class SimpleD3Graph {
           .attr('cx', pos.originalX)
           .attr('cy', pos.originalY);
         
-        // Animate group label back to original position
-        d3.select(`#group-label-${groupId}`)
+        // Animate group label container back to original position
+        d3.select(`#group-label-container-${groupId}`)
           .transition()
           .duration(500)
-          .attr('x', pos.originalX)
-          .attr('y', pos.originalY - pos.r - 5);
+          .attr('transform', `translate(${pos.originalX}, ${pos.originalY - pos.r - 5})`);
       }
     });
     
