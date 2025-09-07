@@ -22,6 +22,9 @@ export class SimpleD3Graph {
     // Track node positions for drag updates
     this.nodePositions = new Map(); // nodeId -> {x, y}
     
+    // Track group positions and their children
+    this.groupPositions = new Map(); // groupId -> {x, y, r, children: []}
+    
     this.init();
   }
   
@@ -93,15 +96,26 @@ export class SimpleD3Graph {
    */
   storeNodePositions(packedRoot) {
     this.nodePositions.clear();
+    this.groupPositions.clear();
     
+    // Store group positions and track their children
     packedRoot.descendants().forEach(d => {
-      if (!d.data.isVirtual && !d.data.isGroup) {
-        this.nodePositions.set(d.data.id, {
+      if (!d.data.isVirtual) {
+        const position = {
           x: d.x + 25,
           y: d.y + 25,
-          originalX: d.x + 25,  // Store original position for reset
+          originalX: d.x + 25,
           originalY: d.y + 25
-        });
+        };
+        
+        if (d.data.isGroup) {
+          position.r = d.r;
+          position.originalR = d.r;
+          position.children = d.children ? d.children.map(c => c.data.id) : [];
+          this.groupPositions.set(d.data.id, position);
+        } else {
+          this.nodePositions.set(d.data.id, position);
+        }
       }
     });
   }
@@ -182,11 +196,12 @@ export class SimpleD3Graph {
     const groups = packedRoot.descendants()
       .filter(d => d.data.isGroup && !d.data.isVirtual);
     
-    this.groupLayer
+    const groupCircles = this.groupLayer
       .selectAll('circle.group')
-      .data(groups)
+      .data(groups, d => d.data.id)
       .join('circle')
       .attr('class', 'group')
+      .attr('id', d => `group-${d.data.id}`)
       .attr('cx', d => d.x + 25) // Offset for margin
       .attr('cy', d => d.y + 25)
       .attr('r', d => d.r)
@@ -199,14 +214,16 @@ export class SimpleD3Graph {
         if (d.data.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
         return '5,5';                                          // Default dash for private network
       })
-      .attr('opacity', 0.6);
+      .attr('opacity', 0.6)
+      .style('cursor', 'grab');
     
     // Group labels
     this.groupLayer
       .selectAll('text.group-label')
-      .data(groups)
+      .data(groups, d => d.data.id)
       .join('text')
       .attr('class', 'group-label')
+      .attr('id', d => `group-label-${d.data.id}`)
       .attr('x', d => d.x + 25)
       .attr('y', d => d.y + 25 - d.r - 5)
       .attr('text-anchor', 'middle')
@@ -216,7 +233,21 @@ export class SimpleD3Graph {
         return '12px';                                         // Smallest for apps
       })
       .style('fill', '#666')
+      .style('pointer-events', 'none')  // Let clicks pass through to circle
       .text(d => d.data.data?.label || d.data.id);
+    
+    // Add drag behavior to groups
+    const groupDragBehavior = d3.drag()
+      .subject((event, d) => {
+        // Initialize drag subject with current group position
+        const pos = this.groupPositions.get(d.data.id);
+        return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
+      })
+      .on('start', (event, d) => this.onGroupDragStart(event, d))
+      .on('drag', (event, d) => this.onGroupDrag(event, d))
+      .on('end', (event, d) => this.onGroupDragEnd(event, d));
+    
+    groupCircles.call(groupDragBehavior);
   }
   
   /**
@@ -365,6 +396,82 @@ export class SimpleD3Graph {
   }
   
   /**
+   * Group drag handlers
+   */
+  onGroupDragStart(event, d) {
+    // Change cursor
+    d3.select(event.sourceEvent.target).style('cursor', 'grabbing');
+  }
+  
+  onGroupDrag(event, d) {
+    const groupId = d.data.id;
+    const groupPos = this.groupPositions.get(groupId);
+    if (!groupPos) return;
+    
+    // Calculate movement delta
+    const deltaX = event.x - groupPos.x;
+    const deltaY = event.y - groupPos.y;
+    
+    // Update the group position and move all children
+    this.moveGroupAndChildren(groupId, deltaX, deltaY);
+  }
+  
+  onGroupDragEnd(event, d) {
+    // Reset cursor
+    d3.select(event.sourceEvent.target).style('cursor', 'grab');
+  }
+  
+  /**
+   * Move a group and all its children by the given offset
+   */
+  moveGroupAndChildren(groupId, deltaX, deltaY) {
+    const groupPos = this.groupPositions.get(groupId);
+    if (!groupPos) return;
+    
+    // Move the group itself
+    groupPos.x += deltaX;
+    groupPos.y += deltaY;
+    
+    // Update group visual position
+    d3.select(`#group-${groupId}`)
+      .attr('cx', groupPos.x)
+      .attr('cy', groupPos.y);
+    
+    // Update group label
+    d3.select(`#group-label-${groupId}`)
+      .attr('x', groupPos.x)
+      .attr('y', groupPos.y - groupPos.r - 5);
+    
+    // Move all child nodes and subgroups recursively
+    groupPos.children.forEach(childId => {
+      const childNodePos = this.nodePositions.get(childId);
+      const childGroupPos = this.groupPositions.get(childId);
+      
+      if (childNodePos) {
+        // Move child node
+        childNodePos.x += deltaX;
+        childNodePos.y += deltaY;
+        
+        // Update visual position
+        d3.select(`#node-${childId}`)
+          .attr('cx', childNodePos.x)
+          .attr('cy', childNodePos.y);
+        
+        d3.select(`#node-label-${childId}`)
+          .attr('x', childNodePos.x)
+          .attr('y', childNodePos.y + 4);
+        
+        // Update edges connected to this node
+        this.updateConnectedEdges(childId);
+        
+      } else if (childGroupPos) {
+        // Recursively move child group
+        this.moveGroupAndChildren(childId, deltaX, deltaY);
+      }
+    });
+  }
+  
+  /**
    * Update edges connected to a node
    */
   updateConnectedEdges(nodeId) {
@@ -449,10 +556,33 @@ export class SimpleD3Graph {
   }
   
   /**
-   * Reset all nodes to their original pack layout positions
+   * Reset all nodes and groups to their original pack layout positions
    */
   resetNodePositions() {
-    if (!this.nodePositions.size) return;
+    if (!this.nodePositions.size && !this.groupPositions.size) return;
+    
+    // Animate groups back to original positions
+    this.groupPositions.forEach((pos, groupId) => {
+      if (pos.originalX !== undefined && pos.originalY !== undefined) {
+        // Update tracking position
+        pos.x = pos.originalX;
+        pos.y = pos.originalY;
+        
+        // Animate group back to original position
+        d3.select(`#group-${groupId}`)
+          .transition()
+          .duration(500)
+          .attr('cx', pos.originalX)
+          .attr('cy', pos.originalY);
+        
+        // Animate group label back to original position
+        d3.select(`#group-label-${groupId}`)
+          .transition()
+          .duration(500)
+          .attr('x', pos.originalX)
+          .attr('y', pos.originalY - pos.r - 5);
+      }
+    });
     
     // Animate nodes back to original positions
     this.nodePositions.forEach((pos, nodeId) => {
@@ -499,5 +629,6 @@ export class SimpleD3Graph {
   destroy() {
     d3.select(this.container).selectAll('*').remove();
     this.nodePositions.clear();
+    this.groupPositions.clear();
   }
 }
