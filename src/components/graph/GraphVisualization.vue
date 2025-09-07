@@ -181,11 +181,9 @@ export default {
           // Add nodes to their application groups
           appNodes.forEach(({ id, vertex }) => {
             vertices[id] = {
-              label: this.getNodeLabel(vertex),
-              type: 'node',
+              ...vertex,  // Include all original vertex data at root level
               parentId: appGroupId,
-              fill: this.getNodeColor(vertex.type),
-              originalData: { ...vertex, id }
+              fill: this.getNodeColor(vertex.type)
             };
           });
         });
@@ -194,10 +192,9 @@ export default {
       // Add public nodes (no parent)
       publicNodes.forEach(({ id, vertex }) => {
         vertices[id] = {
-          label: this.getNodeLabel(vertex),
-          type: 'node',
-          fill: this.getNodeColor(vertex.type),
-          originalData: { ...vertex, id }
+          ...vertex,  // Include all original vertex data at root level
+          parentId: null,
+          fill: this.getNodeColor(vertex.type)
         };
       });
 
@@ -221,17 +218,6 @@ export default {
         nodeCount: Object.keys(vertices).filter(id => vertices[id].type === 'node').length,
         linkCount: edges.length
       });
-    },
-
-    getNodeLabel(vertex) {
-      const type = vertex.type;
-      if (type === 'Application') return vertex.name || `App: ${vertex.app_name || 'Unknown'}`;
-      if (type === 'Deployment') return vertex.name || `Deploy: ${vertex.app_name || 'Unknown'}`;
-      if (type === 'Compute') return `${vertex.name || 'Compute'}${vertex.address ? ` (${vertex.address})` : ''}`;
-      if (type === 'Resource') return `${vertex.name || 'Resource'}${vertex.address ? ` (${vertex.address})` : ''}`;
-      if (type === 'TrafficController') return `${vertex.name || 'Traffic'}${vertex.address ? ` (${vertex.address})` : ''}`;
-      if (type === 'InternetIP') return `${vertex.address || 'IP'}`;
-      return vertex.name || vertex.type;
     },
 
     getNodeColor(type) {

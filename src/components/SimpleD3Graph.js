@@ -1,4 +1,5 @@
 import * as d3 from 'd3';
+import networkIcons from './networkIcons';
 
 /**
  * SimpleD3Graph - Basic D3 hierarchical graph renderer
@@ -131,15 +132,21 @@ export class SimpleD3Graph {
     const vertices = this.data.vertices;
     if (!vertices) return null;
     
+    console.log('Raw vertices data:', vertices);
+    
     // Create vertex map
     const vertexMap = new Map();
     
     Object.entries(vertices).forEach(([id, vertex]) => {
+      // Determine if this is a group based on whether it has child elements
+      // Groups are marked with type === 'group' from GraphVisualization.vue
+      const isGroup = vertex.type === 'group';
+      
       vertexMap.set(id, {
         id,
-        data: vertex,
+        data: vertex,        // Preserve original vertex data
         children: [],
-        isGroup: vertex.type === 'group'
+        isGroup: isGroup
       });
     });
     
@@ -340,25 +347,56 @@ export class SimpleD3Graph {
   }
   
   /**
-   * Render node circles
+   * Render node icons
    */
   renderNodes(packedRoot) {
     const nodes = packedRoot.descendants()
       .filter(d => !d.data.isGroup && !d.data.isVirtual);
     
-    const nodeCircles = this.nodeLayer
-      .selectAll('circle.node')
+    // Create node groups to hold icons
+    const nodeGroups = this.nodeLayer
+      .selectAll('g.node')
       .data(nodes, d => d.data.id)
-      .join('circle')
+      .join('g')
       .attr('class', 'node')
       .attr('id', d => `node-${d.data.id}`)
-      .attr('cx', d => d.x + 25)
-      .attr('cy', d => d.y + 25)
-      .attr('r', this.options.nodeRadius)
-      .attr('fill', d => d.data.data?.fill || '#C6E5FF')  // G6 default node color
-      .attr('stroke', '#fff')
-      .attr('stroke-width', 2)
+      .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25})`)
       .style('cursor', 'grab');
+
+    // Add icons to node groups (like the old GraphVisualization.vue)
+    const self = this;
+    nodeGroups.each(function(d) {
+      const group = d3.select(this);
+      
+      // Since we spread all vertex data at root level in GraphVisualization.vue, 
+      // the type is now directly accessible on d.data.data
+      const nodeType = d.data.data?.type || 'Unknown';
+      console.log('Rendering node:', d.data.id, 'with type:', nodeType, 'data:', d.data.data);
+      
+      // Get the appropriate icon SVG (matching the old code exactly)
+      const iconSvg = networkIcons[nodeType] || networkIcons.default;
+      
+      // Create temporary div to parse the SVG (same approach as old code)
+      const tempDiv = document.createElement('div');
+      tempDiv.innerHTML = iconSvg;
+      const svgElement = tempDiv.querySelector('svg');
+      
+      if (svgElement) {
+        // Create SVG icon with appropriate size and color
+        const iconSize = self.options.nodeRadius * 1.6; // Make icons bigger for visibility
+        
+        const iconSvg = group.append('svg')
+          .attr('class', 'node-icon')
+          .attr('width', iconSize)
+          .attr('height', iconSize)
+          .attr('x', -iconSize / 2)
+          .attr('y', -iconSize / 2)
+          .style('color', d.data.data?.fill || '#5B8FF9'); // Use node color
+        
+        // Insert the icon content
+        iconSvg.html(svgElement.innerHTML);
+      }
+    });
     
     // Node labels (dark text, no background like old D3 force styling) - moved to label layer
     const nodeLabels = this.labelLayer
@@ -368,13 +406,13 @@ export class SimpleD3Graph {
       .attr('class', 'node-label')
       .attr('id', d => `node-label-${d.data.id}`)
       .attr('x', d => d.x + 25)
-      .attr('y', d => d.y + 25 + 4)
+      .attr('y', d => d.y + 25 + this.options.nodeRadius + 8) // Position below the icon
       .attr('text-anchor', 'middle')
       .style('font-size', '10px')
       .style('fill', '#333')  // Dark text like old D3 force styling
       .style('font-weight', 'normal')
       .style('pointer-events', 'none')
-      .text(d => d.data.data?.label || d.data.id);
+      .text(d => this.getNodeLabel(d.data.data) || d.data.id);
     
     // Add drag behavior
     const dragBehavior = d3.drag()
@@ -387,7 +425,7 @@ export class SimpleD3Graph {
       .on('drag', (event, d) => this.onDrag(event, d))
       .on('end', (event, d) => this.onDragEnd(event, d));
     
-    nodeCircles.call(dragBehavior);
+    nodeGroups.call(dragBehavior);
   }
   
   /**
@@ -466,15 +504,14 @@ export class SimpleD3Graph {
     nodePos.x = event.x;
     nodePos.y = event.y;
     
-    // Move the node visually
+    // Move the node group visually
     d3.select(`#node-${nodeId}`)
-      .attr('cx', event.x)
-      .attr('cy', event.y);
+      .attr('transform', `translate(${event.x}, ${event.y})`);
     
     // Move the node label
     d3.select(`#node-label-${nodeId}`)
       .attr('x', event.x)
-      .attr('y', event.y + 4);
+      .attr('y', event.y + this.options.nodeRadius + 8);
     
     // Update connected edges
     this.updateConnectedEdges(nodeId);
@@ -543,12 +580,11 @@ export class SimpleD3Graph {
         
         // Update visual position
         d3.select(`#node-${childId}`)
-          .attr('cx', childNodePos.x)
-          .attr('cy', childNodePos.y);
+          .attr('transform', `translate(${childNodePos.x}, ${childNodePos.y})`);
         
         d3.select(`#node-label-${childId}`)
           .attr('x', childNodePos.x)
-          .attr('y', childNodePos.y + 4);
+          .attr('y', childNodePos.y + this.options.nodeRadius + 8);
         
         // Update edges connected to this node
         this.updateConnectedEdges(childId);
@@ -683,15 +719,14 @@ export class SimpleD3Graph {
         d3.select(`#node-${nodeId}`)
           .transition()
           .duration(500)
-          .attr('cx', pos.originalX)
-          .attr('cy', pos.originalY);
+          .attr('transform', `translate(${pos.originalX}, ${pos.originalY})`);
         
         // Animate label back to original position
         d3.select(`#node-label-${nodeId}`)
           .transition()
           .duration(500)
           .attr('x', pos.originalX)
-          .attr('y', pos.originalY + 4);
+          .attr('y', pos.originalY + this.options.nodeRadius + 8);
       }
     });
     
@@ -755,6 +790,22 @@ export class SimpleD3Graph {
     this.svg.call(this.zoom.transform, transform);
     
     console.log(`Fit to view: scale=${scale.toFixed(2)}, translate=(${translateX.toFixed(0)}, ${translateY.toFixed(0)})`);
+  }
+
+  /**
+   * Get node label based on vertex type (matching old GraphVisualization.vue)
+   */
+  getNodeLabel(vertex) {
+    if (!vertex) return '';
+    
+    const type = vertex.type;
+    if (type === 'Application') return vertex.name || `App: ${vertex.app_name || 'Unknown'}`;
+    if (type === 'Deployment') return vertex.name || `Deploy: ${vertex.app_name || 'Unknown'}`;
+    if (type === 'Compute') return `${vertex.name || 'Compute'}${vertex.address ? ` (${vertex.address})` : ''}`;
+    if (type === 'Resource') return `${vertex.name || 'Resource'}${vertex.address ? ` (${vertex.address})` : ''}`;
+    if (type === 'TrafficController') return `${vertex.name || 'Traffic'}${vertex.address ? ` (${vertex.address})` : ''}`;
+    if (type === 'InternetIP') return `${vertex.address || 'IP'}`;
+    return vertex.name || vertex.type;
   }
 
   /**
