@@ -17,7 +17,6 @@
         @zoom-in="onZoomIn"
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
-        @reset-positions="onResetPositions"
         @expand-all-apps="onExpandAllApps"
         @collapse-all-apps="onCollapseAllApps"
     />
@@ -203,14 +202,6 @@ export default {
       }
     },
 
-    /**
-     * Handle reset positions button click
-     */
-    onResetPositions() {
-      if (this.$refs.visualization) {
-        this.$refs.visualization.resetNodePositions();
-      }
-    },
 
     /**
      * Handle expand all applications button click
