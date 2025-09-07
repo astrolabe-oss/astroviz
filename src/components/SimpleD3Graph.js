@@ -54,9 +54,9 @@ export class SimpleD3Graph {
     
     this.svg.call(this.zoom);
     
-    // Create layers
-    this.edgeLayer = this.g.append('g').attr('class', 'edges');
+    // Create layers (order determines z-index: groups behind edges behind nodes)
     this.groupLayer = this.g.append('g').attr('class', 'groups');
+    this.edgeLayer = this.g.append('g').attr('class', 'edges');
     this.nodeLayer = this.g.append('g').attr('class', 'nodes');
   }
   
@@ -328,9 +328,9 @@ export class SimpleD3Graph {
       .attr('y1', d => positionMap.get(d.source).y)
       .attr('x2', d => positionMap.get(d.target).x)
       .attr('y2', d => positionMap.get(d.target).y)
-      .attr('stroke', '#999')  // G6 default edge color
-      .attr('stroke-width', 1)
-      .attr('opacity', 0.6);
+      .attr('stroke', '#888')  // Medium gray edges
+      .attr('stroke-width', 1.5)  // Slightly thicker than original but not too thick
+      .attr('opacity', 0.4);  // More transparent so they don't dominate over groups
       
     // Add arrowheads (simple triangles) to match G6 style
     this.edgeLayer
@@ -339,8 +339,8 @@ export class SimpleD3Graph {
       .join('polygon')
       .attr('class', 'arrow')
       .attr('points', '0,-3 8,0 0,3')
-      .attr('fill', '#999')
-      .attr('opacity', 0.6)
+      .attr('fill', '#888')
+      .attr('opacity', 0.4)  // More transparent to match edge lines
       .attr('transform', d => {
         const source = positionMap.get(d.source);
         const target = positionMap.get(d.target);
