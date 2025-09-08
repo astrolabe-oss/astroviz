@@ -638,22 +638,7 @@ export class SimpleD3Graph {
       if (sourceCluster) homeClusters.add(sourceCluster);
       if (targetCluster) homeClusters.add(targetCluster);
       
-      const segments = this.calculateEdgeSegmentsWithGroups(
-        edge, 
-        positionMap, 
-        applicationGroups,
-        clusterGroups, 
-        homeApps,
-        homeClusters
-      );
-      
-      // Convert segments to gradient stops
-      const gradientStops = this.segmentsToGradientStops(segments);
-      
-      // Create unique edge ID
-      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
-      
-      // Get source and target positions
+      // Get source and target positions FIRST
       const sourcePos = positionMap.get(edge.source);
       const targetPos = positionMap.get(edge.target);
       
@@ -665,6 +650,25 @@ export class SimpleD3Graph {
       const ratio = (length - shortenBy) / length;
       const adjustedTargetX = sourcePos.x + dx * ratio;
       const adjustedTargetY = sourcePos.y + dy * ratio;
+      
+      // Create adjusted position map for segment calculation
+      const adjustedPositionMap = new Map(positionMap);
+      adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+      
+      const segments = this.calculateEdgeSegmentsWithGroups(
+        edge, 
+        adjustedPositionMap,  // Use adjusted coordinates
+        applicationGroups,
+        clusterGroups, 
+        homeApps,
+        homeClusters
+      );
+      
+      // Convert segments to gradient stops
+      const gradientStops = this.segmentsToGradientStops(segments);
+      
+      // Create unique edge ID
+      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
       
       // Create gradient for this edge (use adjusted coordinates)
       const gradientUrl = this.createEdgeGradient(
