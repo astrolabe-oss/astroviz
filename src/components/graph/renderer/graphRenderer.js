@@ -700,8 +700,8 @@ export class GraphRenderer {
       .attr('x', event.x)
       .attr('y', event.y + this.options.nodeRadius + 8);
     
-    // Update connected edges
-    this.updateConnectedEdges(nodeId);
+    // Update all edges
+    this.updateAllEdgesAsync();
   }
   
   onDragEnd(event, d) {
@@ -767,7 +767,7 @@ export class GraphRenderer {
     }
     
     // Do a final edge update to ensure everything is accurate
-    this.updateAllEdges();
+    this.updateAllEdgesAsync();
     
     // Sync hierarchyRoot with current group positions before re-rendering
     if (this.hierarchyRoot) {
@@ -834,8 +834,8 @@ export class GraphRenderer {
           .attr('x', childNodePos.x)
           .attr('y', childNodePos.y + this.options.nodeRadius + 8);
         
-        // Update edges connected to this node (FAST - no segment recalculation)
-        this.updateConnectedEdges(childId);
+        // Update all edges
+        this.updateAllEdgesAsync();
         
       } else if (childGroupPos) {
         // Recursively move child group
@@ -865,8 +865,8 @@ export class GraphRenderer {
     // Check if cancelled
     if (controller.cancelled) return;
     
-    // Now do the actual update
-    this.updateAllEdges();
+    // Now do the actual update - call self to handle the async work
+    await this.doAllEdgesUpdate();
     
     // Clear controller if this update completed
     if (this.edgeUpdateController === controller) {
@@ -875,10 +875,9 @@ export class GraphRenderer {
   }
   
   /**
-   * Update all edges with full segment recalculation
-   * Used when groups move since any edge might now intersect differently
+   * Internal method to do the actual edge updates (extracted from sync method)
    */
-  updateAllEdges() {
+  doAllEdgesUpdate() {
     if (!this.data.edges) return;
     
     // Build current group positions for segment calculation
@@ -915,7 +914,7 @@ export class GraphRenderer {
             
             for (const app of applicationGroups) {
               const sourceDist = Math.sqrt((sourcePos.x - app.x) ** 2 + (sourcePos.y - app.y) ** 2);
-              const targetDist = Math.sqrt((targetPos.x - app.x) ** 2 + (targetPos.y - app.y) ** 2);
+              const targetDist = Math.sqrt((coords.x2 - app.x) ** 2 + (coords.y2 - app.y) ** 2);
               if (sourceDist <= app.r || targetDist <= app.r) {
                 homeApps.add(app.id);
               }
@@ -923,7 +922,7 @@ export class GraphRenderer {
             
             for (const cluster of clusterGroups) {
               const sourceDist = Math.sqrt((sourcePos.x - cluster.x) ** 2 + (sourcePos.y - cluster.y) ** 2);
-              const targetDist = Math.sqrt((targetPos.x - cluster.x) ** 2 + (targetPos.y - cluster.y) ** 2);
+              const targetDist = Math.sqrt((coords.x2 - cluster.x) ** 2 + (coords.y2 - cluster.y) ** 2);
               if (sourceDist <= cluster.r || targetDist <= cluster.r) {
                 homeClusters.add(cluster.id);
               }
@@ -949,7 +948,7 @@ export class GraphRenderer {
               return false;
             };
             
-            // Recalculate segments
+            // Calculate segments
             const edge = { source, target };
             const segments = EdgeUtils.calculateEdgeSegments(
               edge,
@@ -1020,54 +1019,6 @@ export class GraphRenderer {
     return { applicationGroups, clusterGroups };
   }
 
-  /**
-   * Update edges connected to a node - with full segment recalculation
-   */
-  updateConnectedEdges(nodeId) {
-      if (!this.data.edges) return;
-
-      const nodePos = this.nodePositions.get(nodeId);
-      if (!nodePos) return;
-
-      // Update line coordinates for edges connected to this node
-      this.edgeLayer.selectAll('line.edge')
-          .filter(function() {
-              const source = d3.select(this).attr('data-source');
-              const target = d3.select(this).attr('data-target');
-              return source === nodeId || target === nodeId;
-          })
-          .each((d, i, nodes) => {
-              const element = d3.select(nodes[i]);
-              const source = element.attr('data-source');
-              const target = element.attr('data-target');
-
-              // Get updated positions
-              const sourcePos = this.nodePositions.get(source);
-              const targetPos = this.nodePositions.get(target);
-
-              if (sourcePos && targetPos) {
-                  // Calculate adjusted coordinates using helper
-                  const coords = this.calculateAdjustedEdgeCoordinates(sourcePos, targetPos);
-
-                  // Update line coordinates ONLY
-                  element
-                      .attr('x1', coords.x1)
-                      .attr('y1', coords.y1)
-                      .attr('x2', coords.x2)
-                      .attr('y2', coords.y2);
-
-                  // Update gradient coordinates (without regenerating stops)
-                  const edgeId = element.attr('data-edge-id');
-                  if (edgeId) {
-                      this.defs.select(`#edge-gradient-${edgeId}`)
-                          .attr('x1', coords.x1)
-                          .attr('y1', coords.y1)
-                          .attr('x2', coords.x2)
-                          .attr('y2', coords.y2);
-                  }
-              }
-          });
-  }
   
   /**
    * Zoom controls
@@ -1151,9 +1102,7 @@ export class GraphRenderer {
     
     // Update all edges after a brief delay to let nodes animate
     setTimeout(() => {
-      this.nodePositions.forEach((pos, nodeId) => {
-        this.updateConnectedEdges(nodeId);
-      });
+      this.updateAllEdgesAsync();
     }, 100);
   }
   
