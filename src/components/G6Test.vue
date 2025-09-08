@@ -5,7 +5,7 @@
 </template>
 
 <script>
-import { SimpleD3Graph } from '@/components/SimpleD3Graph.js';
+import { graphRenderer } from '@/components/graph/renderer/graphRenderer.js';
 
 export default {
   name: 'G6Test',
@@ -156,7 +156,7 @@ export default {
       
       // Create D3 Graph (no G6!)
       const container = document.getElementById('d3-graph-container');
-      this.graph = new SimpleD3Graph(container, {
+      this.graph = new graphRenderer.js(container, {
         width: window.innerWidth,
         height: window.innerHeight,
         padding: 0,

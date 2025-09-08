@@ -8,7 +8,7 @@
 </template>
 
 <script>
-import { SimpleD3Graph } from '@/components/SimpleD3Graph.js';
+import { GraphRenderer } from './renderer/graphRenderer.js';
 
 export default {
   name: 'GraphVisualization',
@@ -80,7 +80,7 @@ export default {
       console.log('Container dimensions:', width, 'x', height);
 
       // Create D3 Graph instance
-      this.graph = new SimpleD3Graph(container, {
+      this.graph = new GraphRenderer(container, {
         width: width || window.innerWidth,
         height: height || window.innerHeight,
         padding: 50,
@@ -138,7 +138,7 @@ export default {
       const totalApps = Object.values(clusterGroups).reduce((total, cluster) => total + Object.keys(cluster).length, 0);
       console.log(`Found ${clusterCount} clusters with ${totalApps} total application groups`);
 
-      // Transform into vertices/edges format for SimpleD3Graph
+      // Transform into vertices/edges format for GraphRenderer
       const vertices = {};
       const edges = [];
 

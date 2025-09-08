@@ -1,11 +1,12 @@
 import * as d3 from 'd3';
-import networkIcons from './networkIcons';
+import networkIcons from '../../networkIcons';
+import { EdgeUtils } from './edgeUtils.js';
 
 /**
- * SimpleD3Graph - Basic D3 hierarchical graph renderer
- * Just renders vertices and edges with circle packing - no interactions
+ * GraphRenderer - D3 hierarchical graph renderer with advanced edge styling
+ * Renders vertices and edges with circle packing and complex edge interactions
  */
-export class SimpleD3Graph {
+export class GraphRenderer {
   constructor(container, options = {}) {
     this.container = container;
     this.options = {
@@ -452,64 +453,6 @@ export class SimpleD3Graph {
     console.log('Drag behavior attached');
   }
   
-  /**
-   * Convert segment data to gradient stops
-   */
-  segmentsToGradientStops(segments) {
-    if (segments.length === 0) return [];
-    
-    const stops = [];
-    let currentOffset = 0;
-    
-    // Calculate total length for percentage calculation
-    let totalLength = 0;
-    segments.forEach(segment => {
-      const dx = segment.x2 - segment.x1;
-      const dy = segment.y2 - segment.y1;
-      totalLength += Math.sqrt(dx * dx + dy * dy);
-    });
-    
-    segments.forEach((segment, index) => {
-      const dx = segment.x2 - segment.x1;
-      const dy = segment.y2 - segment.y1;
-      const segmentLength = Math.sqrt(dx * dx + dy * dy);
-      const segmentPercent = (segmentLength / totalLength) * 100;
-      
-      // Add stop at start of segment
-      const startPercent = currentOffset;
-      const endPercent = currentOffset + segmentPercent;
-      
-      if (segment.insideUnrelatedGroup) {
-        // Light styling for unrelated segments
-        stops.push({
-          offset: `${startPercent}%`,
-          color: '#ccc',
-          opacity: 0.2
-        });
-        stops.push({
-          offset: `${endPercent}%`,
-          color: '#ccc', 
-          opacity: 0.2
-        });
-      } else {
-        // Solid styling for related segments
-        stops.push({
-          offset: `${startPercent}%`,
-          color: '#888',
-          opacity: 0.4
-        });
-        stops.push({
-          offset: `${endPercent}%`,
-          color: '#888',
-          opacity: 0.4
-        });
-      }
-      
-      currentOffset = endPercent;
-    });
-    
-    return stops;
-  }
 
   /**
    * Create or update gradient for an edge
@@ -659,14 +602,14 @@ export class SimpleD3Graph {
       const isUnrelatedGroupFilter = (point, allGroups) => {
         // Check if inside any unrelated application
         for (const appGroup of applicationGroups) {
-          if (this.pointInCircle(point, appGroup)) {
+          if (EdgeUtils.pointInCircle(point, appGroup)) {
             if (!homeApps.has(appGroup.id)) return true;
           }
         }
         
         // Check if inside any unrelated cluster
         for (const clusterGroup of clusterGroups) {
-          if (this.pointInCircle(point, clusterGroup)) {
+          if (EdgeUtils.pointInCircle(point, clusterGroup)) {
             if (!homeClusters.has(clusterGroup.id)) return true;
           }
         }
@@ -674,7 +617,7 @@ export class SimpleD3Graph {
         return false;
       };
       
-      const segments = this.calculateEdgeSegments(
+      const segments = EdgeUtils.calculateEdgeSegments(
         edge, 
         adjustedPositionMap,
         [...applicationGroups, ...clusterGroups],
@@ -682,7 +625,7 @@ export class SimpleD3Graph {
       );
       
       // Convert segments to gradient stops
-      const gradientStops = this.segmentsToGradientStops(segments);
+      const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
       
       // Create unique edge ID
       const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
@@ -881,180 +824,6 @@ export class SimpleD3Graph {
     });
   }
   
-  /**
-   * Calculate edge segments with flexible group filtering
-   * Consolidated function to replace the three duplicate segment calculators
-   */
-  calculateEdgeSegments(edge, positionMap, groups, filterFn = null) {
-    const sourcePos = positionMap.get(edge.source);
-    const targetPos = positionMap.get(edge.target);
-    
-    if (!sourcePos || !targetPos) return [];
-    
-    // Start with the full edge as one segment
-    const points = [
-      { t: 0, x: sourcePos.x, y: sourcePos.y },
-      { t: 1, x: targetPos.x, y: targetPos.y }
-    ];
-    
-    // Find all intersection points with groups
-    for (const group of groups) {
-      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, group);
-      
-      for (const intersection of intersections) {
-        points.push({
-          t: intersection.t,
-          x: intersection.x,
-          y: intersection.y
-        });
-      }
-    }
-    
-    // Sort points by parameter t
-    points.sort((a, b) => a.t - b.t);
-    
-    // Remove duplicates (very close points)
-    const uniquePoints = [];
-    for (const point of points) {
-      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
-        uniquePoints.push(point);
-      }
-    }
-    
-    // Create segments and determine styling
-    const segments = [];
-    for (let i = 0; i < uniquePoints.length - 1; i++) {
-      const start = uniquePoints[i];
-      const end = uniquePoints[i + 1];
-      
-      // Check midpoint to determine if segment should be styled as unrelated
-      const midT = (start.t + end.t) / 2;
-      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
-      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
-      
-      // Use filter function if provided, otherwise default to false
-      const insideUnrelatedGroup = filterFn ? filterFn({ x: midX, y: midY }, groups) : false;
-      
-      segments.push({
-        x1: start.x,
-        y1: start.y,
-        x2: end.x,
-        y2: end.y,
-        insideUnrelatedGroup: insideUnrelatedGroup
-      });
-    }
-    
-    return segments;
-  }
-
-
-  /**
-   * Get all intersection points between a line segment and a circle
-   */
-  getLineCircleIntersections(p1, p2, circle) {
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    const fx = p1.x - circle.x;
-    const fy = p1.y - circle.y;
-    
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = (fx * fx + fy * fy) - circle.r * circle.r;
-    
-    const discriminant = b * b - 4 * a * c;
-    
-    if (discriminant < 0) return []; // No intersection
-    
-    const intersections = [];
-    const sqrt_discriminant = Math.sqrt(discriminant);
-    
-    // Check both intersection points
-    const t1 = (-b - sqrt_discriminant) / (2 * a);
-    const t2 = (-b + sqrt_discriminant) / (2 * a);
-    
-    if (t1 >= 0 && t1 <= 1) {
-      intersections.push({
-        t: t1,
-        x: p1.x + t1 * dx,
-        y: p1.y + t1 * dy
-      });
-    }
-    
-    if (t2 >= 0 && t2 <= 1 && Math.abs(t2 - t1) > 0.001) {
-      intersections.push({
-        t: t2,
-        x: p1.x + t2 * dx,
-        y: p1.y + t2 * dy
-      });
-    }
-    
-    return intersections;
-  }
-
-  /**
-   * Check if an edge intersects with any group circles
-   */
-  edgeIntersectsGroups(edge, positionMap, groupCircles) {
-    const sourcePos = positionMap.get(edge.source);
-    const targetPos = positionMap.get(edge.target);
-    
-    if (!sourcePos || !targetPos) return false;
-    
-    // Check intersection with each group circle
-    for (const circle of groupCircles) {
-      // Skip if either endpoint is inside this circle (edge originates/terminates within group)
-      const sourceInside = this.pointInCircle(sourcePos, circle);
-      const targetInside = this.pointInCircle(targetPos, circle);
-      
-      if (sourceInside || targetInside) continue;
-      
-      // Check if line segment intersects the circle
-      if (this.lineIntersectsCircle(sourcePos, targetPos, circle)) {
-        return true;
-      }
-    }
-    
-    return false;
-  }
-
-  /**
-   * Check if a point is inside a circle
-   */
-  pointInCircle(point, circle) {
-    const dx = point.x - circle.x;
-    const dy = point.y - circle.y;
-    return (dx * dx + dy * dy) <= (circle.r * circle.r);
-  }
-
-  /**
-   * Check if a line segment intersects with a circle
-   */
-  lineIntersectsCircle(p1, p2, circle) {
-    // Vector from p1 to p2
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
-    
-    // Vector from p1 to circle center
-    const fx = p1.x - circle.x;
-    const fy = p1.y - circle.y;
-    
-    // Quadratic equation coefficients for line-circle intersection
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = (fx * fx + fy * fy) - circle.r * circle.r;
-    
-    const discriminant = b * b - 4 * a * c;
-    
-    if (discriminant < 0) return false; // No intersection
-    
-    // Check if intersection points are within the line segment
-    const sqrt_discriminant = Math.sqrt(discriminant);
-    const t1 = (-b - sqrt_discriminant) / (2 * a);
-    const t2 = (-b + sqrt_discriminant) / (2 * a);
-    
-    // Intersection occurs if either t value is between 0 and 1 (within segment)
-    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
-  }
 
   /**
    * Update edges connected to a node - fast version for drag operations
@@ -1172,7 +941,7 @@ export class SimpleD3Graph {
       return false;
     };
     
-    return this.calculateEdgeSegments(
+    return EdgeUtils.calculateEdgeSegments(
       edge, 
       positionMap, 
       [...applicationGroups, ...clusterGroups],
