@@ -27,10 +27,6 @@ export default {
     nodeColors: {
       type: Object,
       required: true
-    },
-    filters: {
-      type: Object,
-      default: () => ({})
     }
   },
 
@@ -251,6 +247,19 @@ export default {
       // Re-render with fresh layout
       if (this.graph && this.graphData) {
         this.updateGraph(this.graphData);
+      }
+    },
+
+    // Node highlighting methods
+    selectNodeById(nodeId, appendToSelection = false) {
+      if (this.graph && this.graph.selectNodeById) {
+        this.graph.selectNodeById(nodeId, appendToSelection);
+      }
+    },
+
+    clearHighlight() {
+      if (this.graph && this.graph.clearHighlight) {
+        this.graph.clearHighlight();
       }
     }
   }
