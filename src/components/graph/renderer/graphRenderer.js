@@ -27,6 +27,9 @@ export class GraphRenderer {
     // Track group positions and their children
     this.groupPositions = new Map(); // groupId -> {x, y, r, children: []}
     
+    // Track async edge update for cancellation
+    this.edgeUpdateController = null;
+    
     this.init();
   }
   
@@ -675,7 +678,7 @@ export class GraphRenderer {
   }
   
   onDrag(event, d) {
-    console.log('onDrag called for', d.data.id);
+    // console.log('onDrag called for', d.data.id);
     const nodeId = d.data.id;
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
@@ -713,7 +716,7 @@ export class GraphRenderer {
         if (!node.data.isVirtual) {
           const currentPos = this.nodePositions.get(node.data.id) || this.groupPositions.get(node.data.id);
           if (currentPos) {
-            console.log(`Syncing node${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
+            // console.log(`Syncing node${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
             node.x = currentPos.x - 25;  // Subtract offset used in renderEdges
             node.y = currentPos.y - 25;
           }
@@ -739,7 +742,6 @@ export class GraphRenderer {
   }
   
   onGroupDrag(event, d) {
-    console.log('onGroupDrag called for', d.data.id);
     const groupId = d.data.id;
     const groupPos = this.groupPositions.get(groupId);
     if (!groupPos) return;
@@ -748,14 +750,24 @@ export class GraphRenderer {
     const deltaX = event.x - groupPos.x;
     const deltaY = event.y - groupPos.y;
     
-    // Update the group position and move all children
+    // Update the group position and move all children (this includes basic edge following)
     this.moveGroupAndChildren(groupId, deltaX, deltaY);
+    this.updateAllEdgesAsync();
   }
   
   onGroupDragEnd(event, d) {
     console.log('=== onGroupDragEnd called ===', d.data.id);
     // Reset cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    
+    // Cancel any in-progress async update and do a final synchronous update
+    if (this.edgeUpdateController) {
+      this.edgeUpdateController.cancelled = true;
+      this.edgeUpdateController = null;
+    }
+    
+    // Do a final edge update to ensure everything is accurate
+    this.updateAllEdges();
     
     // Sync hierarchyRoot with current group positions before re-rendering
     if (this.hierarchyRoot) {
@@ -766,7 +778,7 @@ export class GraphRenderer {
         if (node.data.isGroup) {
           const groupPos = this.groupPositions.get(node.data.id);
           if (groupPos) {
-            console.log(`Syncing group ${node.data.id}: (${node.x}, ${node.y}) -> (${groupPos.x - 25}, ${groupPos.y - 25})`);
+            // console.log(`Syncing group ${node.data.id}: (${node.x}, ${node.y}) -> (${groupPos.x - 25}, ${groupPos.y - 25})`);
             node.x = groupPos.x - 25;
             node.y = groupPos.y - 25;
           }
@@ -822,7 +834,7 @@ export class GraphRenderer {
           .attr('x', childNodePos.x)
           .attr('y', childNodePos.y + this.options.nodeRadius + 8);
         
-        // Update edges connected to this node
+        // Update edges connected to this node (FAST - no segment recalculation)
         this.updateConnectedEdges(childId);
         
       } else if (childGroupPos) {
@@ -834,21 +846,55 @@ export class GraphRenderer {
   
 
   /**
-   * Update edges connected to a node - fast version for drag operations
+   * Update all edges asynchronously with cancellation support
+   * Used when groups move to avoid blocking the UI
    */
-  updateConnectedEdges(nodeId) {
+  async updateAllEdgesAsync() {
+    // Cancel any in-progress update
+    if (this.edgeUpdateController) {
+      this.edgeUpdateController.cancelled = true;
+    }
+    
+    // Create new controller for this update
+    const controller = { cancelled: false };
+    this.edgeUpdateController = controller;
+    
+    // Yield to browser to keep UI responsive
+    await new Promise(resolve => setTimeout(resolve, 0));
+    
+    // Check if cancelled
+    if (controller.cancelled) return;
+    
+    // Now do the actual update
+    this.updateAllEdges();
+    
+    // Clear controller if this update completed
+    if (this.edgeUpdateController === controller) {
+      this.edgeUpdateController = null;
+    }
+  }
+  
+  /**
+   * Update all edges with full segment recalculation
+   * Used when groups move since any edge might now intersect differently
+   */
+  updateAllEdges() {
     if (!this.data.edges) return;
     
-    const nodePos = this.nodePositions.get(nodeId);
-    if (!nodePos) return;
+    // Build current group positions for segment calculation
+    const applicationGroups = [];
+    const clusterGroups = [];
     
-    // Update line coordinates for edges connected to this node
+    this.groupPositions.forEach((pos, id) => {
+      if (id.startsWith('app-')) {
+        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
+      } else if (id.startsWith('cluster')) {
+        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
+      }
+    });
+    
+    // Update all edges
     this.edgeLayer.selectAll('line.edge')
-      .filter(function() {
-        const source = d3.select(this).attr('data-source');
-        const target = d3.select(this).attr('data-target');
-        return source === nodeId || target === nodeId;
-      })
       .each((d, i, nodes) => {
         const element = d3.select(nodes[i]);
         const source = element.attr('data-source');
@@ -859,7 +905,7 @@ export class GraphRenderer {
         const targetPos = this.nodePositions.get(target);
         
         if (sourcePos && targetPos) {
-          // Calculate adjusted endpoint (same logic as renderEdges)
+          // Calculate adjusted endpoint
           const dx = targetPos.x - sourcePos.x;
           const dy = targetPos.y - sourcePos.y;
           const length = Math.sqrt(dx * dx + dy * dy);
@@ -875,17 +921,131 @@ export class GraphRenderer {
             .attr('x2', adjustedTargetX)
             .attr('y2', adjustedTargetY);
           
-          // Update gradient coordinates (without regenerating stops)
+          // Recalculate segments
           const edgeId = element.attr('data-edge-id');
           if (edgeId) {
-            this.defs.select(`#edge-gradient-${edgeId}`)
-              .attr('x1', sourcePos.x)
-              .attr('y1', sourcePos.y)
-              .attr('x2', adjustedTargetX)
-              .attr('y2', adjustedTargetY);
+            // Find home apps and clusters for this edge
+            const homeApps = new Set();
+            const homeClusters = new Set();
+            
+            for (const app of applicationGroups) {
+              const sourceDist = Math.sqrt((sourcePos.x - app.x) ** 2 + (sourcePos.y - app.y) ** 2);
+              const targetDist = Math.sqrt((targetPos.x - app.x) ** 2 + (targetPos.y - app.y) ** 2);
+              if (sourceDist <= app.r || targetDist <= app.r) {
+                homeApps.add(app.id);
+              }
+            }
+            
+            for (const cluster of clusterGroups) {
+              const sourceDist = Math.sqrt((sourcePos.x - cluster.x) ** 2 + (sourcePos.y - cluster.y) ** 2);
+              const targetDist = Math.sqrt((targetPos.x - cluster.x) ** 2 + (targetPos.y - cluster.y) ** 2);
+              if (sourceDist <= cluster.r || targetDist <= cluster.r) {
+                homeClusters.add(cluster.id);
+              }
+            }
+            
+            // Create adjusted position map
+            const adjustedPositionMap = new Map();
+            adjustedPositionMap.set(source, sourcePos);
+            adjustedPositionMap.set(target, { x: adjustedTargetX, y: adjustedTargetY });
+            
+            // Create filter function
+            const isUnrelatedGroupFilter = (point, allGroups) => {
+              for (const appGroup of applicationGroups) {
+                if (EdgeUtils.pointInCircle(point, appGroup)) {
+                  if (!homeApps.has(appGroup.id)) return true;
+                }
+              }
+              for (const clusterGroup of clusterGroups) {
+                if (EdgeUtils.pointInCircle(point, clusterGroup)) {
+                  if (!homeClusters.has(clusterGroup.id)) return true;
+                }
+              }
+              return false;
+            };
+            
+            // Recalculate segments
+            const edge = { source, target };
+            const segments = EdgeUtils.calculateEdgeSegments(
+              edge,
+              adjustedPositionMap,
+              [...applicationGroups, ...clusterGroups],
+              isUnrelatedGroupFilter
+            );
+            
+            // Convert to gradient stops
+            const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
+            
+            // Recreate gradient
+            const gradientUrl = this.createEdgeGradient(
+              edgeId,
+              gradientStops,
+              sourcePos.x,
+              sourcePos.y,
+              adjustedTargetX,
+              adjustedTargetY
+            );
+            
+            // Update stroke
+            element.attr('stroke', gradientUrl);
           }
         }
       });
+  }
+
+  /**
+   * Update edges connected to a node - with full segment recalculation
+   */
+  updateConnectedEdges(nodeId) {
+      if (!this.data.edges) return;
+
+      const nodePos = this.nodePositions.get(nodeId);
+      if (!nodePos) return;
+
+      // Update line coordinates for edges connected to this node
+      this.edgeLayer.selectAll('line.edge')
+          .filter(function() {
+              const source = d3.select(this).attr('data-source');
+              const target = d3.select(this).attr('data-target');
+              return source === nodeId || target === nodeId;
+          })
+          .each((d, i, nodes) => {
+              const element = d3.select(nodes[i]);
+              const source = element.attr('data-source');
+              const target = element.attr('data-target');
+
+              // Get updated positions
+              const sourcePos = this.nodePositions.get(source);
+              const targetPos = this.nodePositions.get(target);
+
+              if (sourcePos && targetPos) {
+                  // Calculate adjusted endpoint (same logic as renderEdges)
+                  const dx = targetPos.x - sourcePos.x;
+                  const dy = targetPos.y - sourcePos.y;
+                  const length = Math.sqrt(dx * dx + dy * dy);
+                  const shortenBy = this.options.nodeRadius * 0.7;
+                  const ratio = (length - shortenBy) / length;
+                  const adjustedTargetX = sourcePos.x + dx * ratio;
+                  const adjustedTargetY = sourcePos.y + dy * ratio;
+
+                  // Update line coordinates ONLY
+                  element
+                      .attr('x1', sourcePos.x)
+                      .attr('y1', sourcePos.y)
+                      .attr('x2', adjustedTargetX)
+                      .attr('y2', adjustedTargetY);
+
+                  // Update gradient coordinates (without regenerating stops)
+                  const edgeId = element.attr('data-edge-id');
+                  if (edgeId) {
+                      this.defs.select(`#edge-gradient-${edgeId}`)
+                          .attr('x1', sourcePos.x)
+                          .attr('y1', sourcePos.y)
+                          .attr('x2', adjustedTargetX)
+                          .attr('y2', adjustedTargetY);
+                  }
+              }
+          });
   }
   
   
