@@ -6,16 +6,6 @@
 // src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">
-    <!-- Simple toggle button for G6 test -->
-    <button @click="showG6Test = !showG6Test" style="position: fixed; top: 10px; right: 10px; z-index: 9999; background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer;">
-      {{ showG6Test ? 'Back to App' : 'G6 Test' }}
-    </button>
-    
-    <!-- Show G6 Test component -->
-    <G6Test v-if="showG6Test" />
-    
-    <!-- Normal app content -->
-    <template v-else>
     <ConnectionError
         :error="connectionError"
         @retry="connect"
@@ -82,7 +72,6 @@
           @select-node="onSelectConnectedNode"
       />
     </main>
-    </template>
   </div>
 </template>
 
@@ -99,7 +88,6 @@ import ViewModeSelector from '@/components/filter/ViewModeSelector.vue';
 
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
-import G6Test from '@/components/G6Test.vue';
 
 // Services and utilities
 import neo4jService from '@/services/neo4jService';
@@ -117,14 +105,10 @@ export default {
     ViewModeSelector,
     D3NetworkGraph,
     NodeDetails,
-    G6Test
   },
 
   data() {
     return {
-      // Test mode toggle
-      showG6Test: false,
-      
       // Connection state
       connected: false,
       connecting: false,
@@ -177,13 +161,6 @@ export default {
   },
 
   computed: {
-    /**
-     * Check if we're in test mode
-     */
-    isTestMode() {
-      return window.location.search.includes('test=g6');
-    },
-
     /**
      * Get filtered graph data based on current filters and view mode
      */
