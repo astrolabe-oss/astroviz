@@ -1079,16 +1079,24 @@ export class GraphRenderer {
     // Add the new node to the selection
     this.selectedNodeIds.add(nodeId);
 
-    // Get connected nodes and edges for this selection
-    const { nodes: connectedNodes, edges: connectedEdges } = this.getConnectedNodes(nodeId);
+    // Get connected nodes and edges for ALL selected nodes (for multi-select traversal)
+    let allConnectedNodes = new Set();
+    let allConnectedEdges = [];
+
+    this.selectedNodeIds.forEach(selectedId => {
+      const { nodes: connectedNodes, edges: connectedEdges } = this.getConnectedNodes(selectedId);
+      connectedNodes.forEach(id => allConnectedNodes.add(id));
+      allConnectedEdges.push(...connectedEdges);
+    });
 
     // Update highlighted elements tracking
-    connectedNodes.forEach(id => this.highlightedElements.nodes.add(id));
-    connectedEdges.forEach(index => this.highlightedElements.edges.add(index));
+    allConnectedNodes.forEach(id => this.highlightedElements.nodes.add(id));
+    allConnectedEdges.forEach(index => this.highlightedElements.edges.add(index));
 
     // Apply visual highlighting to nodes
+    const selectedNodeIds = this.selectedNodeIds; // Capture context for use in .each()
     this.nodeLayer.selectAll('.node')
-      .filter(d => connectedNodes.has(d.data.id))
+      .filter(d => allConnectedNodes.has(d.data.id))
       .each(function(d) {
         const node = d3.select(this);
         
@@ -1101,9 +1109,9 @@ export class GraphRenderer {
           const y = parseFloat(coords[1]);
 
           // Apply scaling and styling - don't store transforms, just modify current
-          const isSelectedNode = d.data.id === nodeId;
-          const scale = isSelectedNode ? 1.5 : 1.3;
-          const color = isSelectedNode ? '#7030A0' : '#9966CC'; // Dark purple for selected, light purple for connected
+          const isDirectlySelected = selectedNodeIds.has(d.data.id);
+          const scale = isDirectlySelected ? 1.5 : 1.3;
+          const color = isDirectlySelected ? '#7030A0' : '#9966CC'; // Dark purple for selected, light purple for connected
           
           node.attr('transform', `translate(${x},${y}) scale(${scale})`)
               .style('filter', 'drop-shadow(0 0 5px ' + color + ')')
@@ -1132,7 +1140,7 @@ export class GraphRenderer {
     // Apply highlighting to connected edges
     this.edgeLayer.selectAll('.edge')
       .each(function(d, i) {
-        if (connectedEdges.includes(i)) {
+        if (allConnectedEdges.includes(i)) {
           const edge = d3.select(this);
           // Store original stroke properties if not already stored
           if (!edge.attr('data-original-stroke')) {
@@ -1146,7 +1154,7 @@ export class GraphRenderer {
         }
       });
 
-    console.log("GraphRenderer: Highlighted", connectedNodes.size, "nodes and", connectedEdges.length, "edges");
+    console.log("GraphRenderer: Highlighted", allConnectedNodes.size, "nodes and", allConnectedEdges.length, "edges for", this.selectedNodeIds.size, "selected nodes");
   }
 
   /**
