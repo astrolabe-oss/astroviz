@@ -655,13 +655,30 @@ export class SimpleD3Graph {
       const adjustedPositionMap = new Map(positionMap);
       adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
       
-      const segments = this.calculateEdgeSegmentsWithGroups(
+      // Create filter function for unrelated groups
+      const isUnrelatedGroupFilter = (point, allGroups) => {
+        // Check if inside any unrelated application
+        for (const appGroup of applicationGroups) {
+          if (this.pointInCircle(point, appGroup)) {
+            if (!homeApps.has(appGroup.id)) return true;
+          }
+        }
+        
+        // Check if inside any unrelated cluster
+        for (const clusterGroup of clusterGroups) {
+          if (this.pointInCircle(point, clusterGroup)) {
+            if (!homeClusters.has(clusterGroup.id)) return true;
+          }
+        }
+        
+        return false;
+      };
+      
+      const segments = this.calculateEdgeSegments(
         edge, 
-        adjustedPositionMap,  // Use adjusted coordinates
-        applicationGroups,
-        clusterGroups, 
-        homeApps,
-        homeClusters
+        adjustedPositionMap,
+        [...applicationGroups, ...clusterGroups],
+        isUnrelatedGroupFilter
       );
       
       // Convert segments to gradient stops
@@ -865,39 +882,35 @@ export class SimpleD3Graph {
   }
   
   /**
-   * Calculate edge segments based on application and cluster intersections
+   * Calculate edge segments with flexible group filtering
+   * Consolidated function to replace the three duplicate segment calculators
    */
-  calculateEdgeSegmentsWithGroups(edge, positionMap, applicationGroups, clusterGroups, homeApps, homeClusters) {
+  calculateEdgeSegments(edge, positionMap, groups, filterFn = null) {
     const sourcePos = positionMap.get(edge.source);
     const targetPos = positionMap.get(edge.target);
     
     if (!sourcePos || !targetPos) return [];
     
-    // Combine all groups we need to check for intersections
-    const allGroups = [...applicationGroups, ...clusterGroups];
-    
     // Start with the full edge as one segment
     const points = [
-      { t: 0, x: sourcePos.x, y: sourcePos.y, insideUnrelatedGroup: false },
-      { t: 1, x: targetPos.x, y: targetPos.y, insideUnrelatedGroup: false }
+      { t: 0, x: sourcePos.x, y: sourcePos.y },
+      { t: 1, x: targetPos.x, y: targetPos.y }
     ];
     
     // Find all intersection points with groups
-    for (const group of allGroups) {
+    for (const group of groups) {
       const intersections = this.getLineCircleIntersections(sourcePos, targetPos, group);
       
       for (const intersection of intersections) {
-        // Add intersection points
         points.push({
           t: intersection.t,
           x: intersection.x,
-          y: intersection.y,
-          insideUnrelatedGroup: false // Will be determined later
+          y: intersection.y
         });
       }
     }
     
-    // Sort points by parameter t (position along line)
+    // Sort points by parameter t
     points.sort((a, b) => a.t - b.t);
     
     // Remove duplicates (very close points)
@@ -908,42 +921,19 @@ export class SimpleD3Graph {
       }
     }
     
-    // Determine which segments are inside unrelated groups
+    // Create segments and determine styling
     const segments = [];
     for (let i = 0; i < uniquePoints.length - 1; i++) {
       const start = uniquePoints[i];
       const end = uniquePoints[i + 1];
       
-      // Check midpoint to determine if segment is inside any group
+      // Check midpoint to determine if segment should be styled as unrelated
       const midT = (start.t + end.t) / 2;
       const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
       const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
       
-      let insideUnrelatedGroup = false;
-      
-      // Check if inside any unrelated application
-      for (const appGroup of applicationGroups) {
-        if (this.pointInCircle({ x: midX, y: midY }, appGroup)) {
-          // Check if this app is NOT a home app
-          if (!homeApps.has(appGroup.id)) {
-            insideUnrelatedGroup = true;
-            break;
-          }
-        }
-      }
-      
-      // Check if inside any unrelated cluster (only if not already marked)
-      if (!insideUnrelatedGroup) {
-        for (const clusterGroup of clusterGroups) {
-          if (this.pointInCircle({ x: midX, y: midY }, clusterGroup)) {
-            // Check if this cluster is NOT a home cluster
-            if (!homeClusters.has(clusterGroup.id)) {
-              insideUnrelatedGroup = true;
-              break;
-            }
-          }
-        }
-      }
+      // Use filter function if provided, otherwise default to false
+      const insideUnrelatedGroup = filterFn ? filterFn({ x: midX, y: midY }, groups) : false;
       
       segments.push({
         x1: start.x,
@@ -957,149 +947,6 @@ export class SimpleD3Graph {
     return segments;
   }
 
-  /**
-   * Calculate edge segments based on application intersections
-   */
-  calculateEdgeSegmentsWithApps(edge, positionMap, applicationGroups, homeApps) {
-    const sourcePos = positionMap.get(edge.source);
-    const targetPos = positionMap.get(edge.target);
-    
-    if (!sourcePos || !targetPos) return [];
-    
-    // Start with the full edge as one segment
-    const points = [
-      { t: 0, x: sourcePos.x, y: sourcePos.y, insideUnrelatedApp: false },
-      { t: 1, x: targetPos.x, y: targetPos.y, insideUnrelatedApp: false }
-    ];
-    
-    // Find all intersection points with application groups
-    for (const appCircle of applicationGroups) {
-      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, appCircle);
-      
-      for (const intersection of intersections) {
-        // Add intersection points
-        points.push({
-          t: intersection.t,
-          x: intersection.x,
-          y: intersection.y,
-          insideUnrelatedApp: false // Will be determined later
-        });
-      }
-    }
-    
-    // Sort points by parameter t (position along line)
-    points.sort((a, b) => a.t - b.t);
-    
-    // Remove duplicates (very close points)
-    const uniquePoints = [];
-    for (const point of points) {
-      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
-        uniquePoints.push(point);
-      }
-    }
-    
-    // Determine which segments are inside unrelated applications
-    const segments = [];
-    for (let i = 0; i < uniquePoints.length - 1; i++) {
-      const start = uniquePoints[i];
-      const end = uniquePoints[i + 1];
-      
-      // Check midpoint to determine if segment is inside any application
-      const midT = (start.t + end.t) / 2;
-      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
-      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
-      
-      // Check if inside any unrelated application
-      let insideUnrelatedApp = false;
-      for (const appCircle of applicationGroups) {
-        if (this.pointInCircle({ x: midX, y: midY }, appCircle)) {
-          // Check if this app is NOT a home app
-          if (!homeApps.has(appCircle.id)) {
-            insideUnrelatedApp = true;
-            break;
-          }
-        }
-      }
-      
-      segments.push({
-        x1: start.x,
-        y1: start.y,
-        x2: end.x,
-        y2: end.y,
-        insideUnrelatedApp: insideUnrelatedApp
-      });
-    }
-    
-    return segments;
-  }
-
-  /**
-   * Calculate edge segments based on group intersections
-   */
-  calculateEdgeSegments(edge, positionMap, groupCircles) {
-    const sourcePos = positionMap.get(edge.source);
-    const targetPos = positionMap.get(edge.target);
-    
-    if (!sourcePos || !targetPos) return [];
-    
-    // Start with the full edge as one segment
-    const points = [
-      { t: 0, x: sourcePos.x, y: sourcePos.y, insideGroup: false },
-      { t: 1, x: targetPos.x, y: targetPos.y, insideGroup: false }
-    ];
-    
-    // Find all intersection points with group circles
-    for (const circle of groupCircles) {
-      const intersections = this.getLineCircleIntersections(sourcePos, targetPos, circle);
-      
-      for (const intersection of intersections) {
-        // Add intersection points
-        points.push({
-          t: intersection.t,
-          x: intersection.x,
-          y: intersection.y,
-          insideGroup: false // Will be determined later
-        });
-      }
-    }
-    
-    // Sort points by parameter t (position along line)
-    points.sort((a, b) => a.t - b.t);
-    
-    // Remove duplicates (very close points)
-    const uniquePoints = [];
-    for (const point of points) {
-      if (uniquePoints.length === 0 || Math.abs(point.t - uniquePoints[uniquePoints.length - 1].t) > 0.001) {
-        uniquePoints.push(point);
-      }
-    }
-    
-    // Determine which segments are inside groups
-    const segments = [];
-    for (let i = 0; i < uniquePoints.length - 1; i++) {
-      const start = uniquePoints[i];
-      const end = uniquePoints[i + 1];
-      
-      // Check midpoint to determine if segment is inside any group
-      const midT = (start.t + end.t) / 2;
-      const midX = sourcePos.x + midT * (targetPos.x - sourcePos.x);
-      const midY = sourcePos.y + midT * (targetPos.y - sourcePos.y);
-      
-      const insideGroup = groupCircles.some(circle => 
-        this.pointInCircle({ x: midX, y: midY }, circle)
-      );
-      
-      segments.push({
-        x1: start.x,
-        y1: start.y,
-        x2: end.x,
-        y2: end.y,
-        insideGroup: insideGroup
-      });
-    }
-    
-    return segments;
-  }
 
   /**
    * Get all intersection points between a line segment and a circle
@@ -1306,13 +1153,30 @@ export class SimpleD3Graph {
     positionMap.set(edge.source, sourcePos);
     positionMap.set(edge.target, targetPos);
     
-    return this.calculateEdgeSegmentsWithGroups(
+    // Create filter function for unrelated groups
+    const isUnrelatedGroupFilter = (point, allGroups) => {
+      // Check applications
+      for (const appGroup of applicationGroups) {
+        if (this.pointInCircle(point, appGroup)) {
+          if (!homeApps.has(appGroup.id)) return true;
+        }
+      }
+      
+      // Check clusters
+      for (const clusterGroup of clusterGroups) {
+        if (this.pointInCircle(point, clusterGroup)) {
+          if (!homeClusters.has(clusterGroup.id)) return true;
+        }
+      }
+      
+      return false;
+    };
+    
+    return this.calculateEdgeSegments(
       edge, 
       positionMap, 
-      applicationGroups,
-      clusterGroups, 
-      homeApps,
-      homeClusters
+      [...applicationGroups, ...clusterGroups],
+      isUnrelatedGroupFilter
     );
   }
   
