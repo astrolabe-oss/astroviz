@@ -84,7 +84,7 @@ export default {
         width: width || window.innerWidth,
         height: height || window.innerHeight,
         padding: 50,
-        nodeRadius: 15
+        nodeRadius: 25
       });
 
       console.log('D3 Graph initialized successfully');

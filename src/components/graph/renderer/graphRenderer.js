@@ -414,6 +414,8 @@ export class GraphRenderer {
           .attr('height', iconSize)
           .attr('x', -iconSize / 2)
           .attr('y', -iconSize / 2)
+          .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
+          .attr('preserveAspectRatio', 'xMidYMid meet')
           .style('color', d.data.data?.fill || '#5B8FF9'); // Use node color
         
         // Insert the icon content
