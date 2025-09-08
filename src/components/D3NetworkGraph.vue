@@ -17,8 +17,6 @@
         @zoom-in="onZoomIn"
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
-        @expand-all-apps="onExpandAllApps"
-        @collapse-all-apps="onCollapseAllApps"
     />
 
     <GraphVisualization
@@ -26,8 +24,6 @@
         :graphData="graphData"
         :viewMode="viewMode"
         :nodeColors="nodeColors"
-        :highlighted-node-ids="highlightedNodeIds"
-        :filters="$parent.filters"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
@@ -75,11 +71,6 @@ export default {
       type: String,
       required: true,
       default: 'detailed'
-    },
-    // Set of node IDs that should be highlighted
-    highlightedNodeIds: {
-      type: Set,
-      default: () => new Set()
     }
   },
 
@@ -122,14 +113,8 @@ export default {
      * @param {boolean} appendToSelection Whether to add to existing selection
      */
     selectNodeById(nodeId, appendToSelection = false) {
-      if (this.$refs.visualization) {
-        if (this.$refs.visualization.highlightNode) {
-          // Use highlightNode directly if available
-          this.$refs.visualization.highlightNode(nodeId, appendToSelection);
-        } else if (this.$refs.visualization.selectAndHighlightNode) {
-          // Fall back to selectAndHighlightNode if highlightNode isn't available
-          this.$refs.visualization.selectAndHighlightNode(nodeId, appendToSelection);
-        }
+      if (this.$refs.visualization && this.$refs.visualization.selectNodeById) {
+        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
       }
     },
 
@@ -145,6 +130,15 @@ export default {
         this.selectNodeById(nodeId);
       } else {
         console.warn('D3NetworkGraph: Node not found with properties', nodeData);
+      }
+    },
+
+    /**
+     * Clear node highlighting
+     */
+    clearHighlight() {
+      if (this.$refs.visualization && this.$refs.visualization.clearHighlight) {
+        this.$refs.visualization.clearHighlight();
       }
     },
 
@@ -199,25 +193,6 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
-      }
-    },
-
-
-    /**
-     * Handle expand all applications button click
-     */
-    onExpandAllApps() {
-      if (this.$refs.visualization) {
-        this.$refs.visualization.expandAllApplications();
-      }
-    },
-
-    /**
-     * Handle collapse all applications button click
-     */
-    onCollapseAllApps() {
-      if (this.$refs.visualization) {
-        this.$refs.visualization.collapseAllApplications();
       }
     }
   }

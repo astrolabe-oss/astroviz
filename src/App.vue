@@ -59,7 +59,6 @@
           ref="networkGraph"
           :graph-data="filteredGraphData"
           :view-mode="viewMode"
-          :highlighted-node-ids="highlightedNodeIds"
           @node-clicked="onNodeClicked"
       />
 
@@ -172,39 +171,6 @@ export default {
       return this.rawGraphData;
     },
 
-    /**
-     * Get set of node IDs that match current filters
-     */
-    highlightedNodeIds() {
-      // If no filters are applied, return empty set (no highlights)
-      if (!this.filters.appName && !this.filters.provider &&
-          !this.filters.protocolMux && !this.filters.address && 
-          !this.filters.publicIp) {
-        return new Set();
-      }
-
-      // Find vertices that match filters
-      const matchingNodeIds = new Set();
-      Object.entries(this.rawGraphData.vertices).forEach(([id, vertex]) => {
-        // Handle public IP filtering - "public" means has public_ip, "private" means no public_ip
-        const publicIpMatch = !this.filters.publicIp || 
-          (this.filters.publicIp === 'public' && vertex.public_ip) || 
-          (this.filters.publicIp === 'private' && !vertex.public_ip);
-
-        if (
-            (!this.filters.appName || vertex.app_name === this.filters.appName) &&
-            (!this.filters.provider || vertex.provider === this.filters.provider) &&
-            (!this.filters.protocolMux || vertex.protocol_multiplexor === this.filters.protocolMux) &&
-            (!this.filters.address || vertex.address === this.filters.address) &&
-            publicIpMatch
-        ) {
-          matchingNodeIds.add(id);
-        }
-      });
-
-      console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.rawGraphData.vertices).length} vertices`);
-      return matchingNodeIds;
-    },
 
     /**
      * Get formatted connection info string
