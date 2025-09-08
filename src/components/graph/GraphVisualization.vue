@@ -84,7 +84,11 @@ export default {
         width: width || window.innerWidth,
         height: height || window.innerHeight,
         padding: 50,
-        nodeRadius: 25
+        nodeRadius: 25,
+        onNodeClick: (node, event) => {
+          // Emit node click event to parent
+          this.$emit('node-clicked', node, event);
+        }
       });
 
       console.log('D3 Graph initialized successfully');

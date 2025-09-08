@@ -385,7 +385,13 @@ export class GraphRenderer {
       .attr('class', 'node')
       .attr('id', d => `node-${d.data.id}`)
       .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25})`)
-      .style('cursor', 'grab');
+      .style('cursor', 'grab')
+      .on('click', (event, d) => {
+        // Emit click event with node data
+        if (this.options.onNodeClick) {
+          this.options.onNodeClick(d.data.data, event);
+        }
+      });
 
     // Add icons to node elements (like the old GraphVisualization.vue)
     const self = this;
