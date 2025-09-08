@@ -43,6 +43,9 @@ export class SimpleD3Graph {
       .attr('height', this.options.height)
       .style('background', '#f8f9fa');
     
+    // Add definitions for gradients
+    this.defs = this.svg.append('defs');
+    
     // Main group for zooming/panning
     this.g = this.svg.append('g');
     
@@ -83,6 +86,9 @@ export class SimpleD3Graph {
     // Calculate positions using D3 pack
     const packedRoot = this.calculatePack(hierarchy);
     if (!packedRoot) return;
+    
+    // Store the packed root for later use (e.g., drag end re-rendering)
+    this.hierarchyRoot = packedRoot;
     
     // Store node positions for drag updates
     this.storeNodePositions(packedRoot);
@@ -350,8 +356,10 @@ export class SimpleD3Graph {
    * Render node icons
    */
   renderNodes(packedRoot) {
+    console.log('=== renderNodes called ===');
     const nodes = packedRoot.descendants()
       .filter(d => !d.data.isGroup && !d.data.isVirtual);
+    console.log('Found nodes:', nodes.length);
     
     // Create node elements to hold icons
     const nodeElements = this.nodeLayer
@@ -371,7 +379,6 @@ export class SimpleD3Graph {
       // Since we spread all vertex data at root level in GraphVisualization.vue, 
       // the type is now directly accessible on d.data.data
       const nodeType = d.data.data?.type || 'Unknown';
-      console.log('Rendering node:', d.data.id, 'with type:', nodeType, 'data:', d.data.data);
       
       // Get the appropriate icon SVG (matching the old code exactly)
       const iconSvg = networkIcons[nodeType] || networkIcons.default;
@@ -425,9 +432,99 @@ export class SimpleD3Graph {
       .on('drag', (event, d) => this.onDrag(event, d))
       .on('end', (event, d) => this.onDragEnd(event, d));
     
+    console.log('Attaching drag behavior to', nodeElements.size(), 'node elements');
     nodeElements.call(dragBehavior);
+    console.log('Drag behavior attached');
   }
   
+  /**
+   * Convert segment data to gradient stops
+   */
+  segmentsToGradientStops(segments) {
+    if (segments.length === 0) return [];
+    
+    const stops = [];
+    let currentOffset = 0;
+    
+    // Calculate total length for percentage calculation
+    let totalLength = 0;
+    segments.forEach(segment => {
+      const dx = segment.x2 - segment.x1;
+      const dy = segment.y2 - segment.y1;
+      totalLength += Math.sqrt(dx * dx + dy * dy);
+    });
+    
+    segments.forEach((segment, index) => {
+      const dx = segment.x2 - segment.x1;
+      const dy = segment.y2 - segment.y1;
+      const segmentLength = Math.sqrt(dx * dx + dy * dy);
+      const segmentPercent = (segmentLength / totalLength) * 100;
+      
+      // Add stop at start of segment
+      const startPercent = currentOffset;
+      const endPercent = currentOffset + segmentPercent;
+      
+      if (segment.insideUnrelatedGroup) {
+        // Light styling for unrelated segments
+        stops.push({
+          offset: `${startPercent}%`,
+          color: '#ccc',
+          opacity: 0.2
+        });
+        stops.push({
+          offset: `${endPercent}%`,
+          color: '#ccc', 
+          opacity: 0.2
+        });
+      } else {
+        // Solid styling for related segments
+        stops.push({
+          offset: `${startPercent}%`,
+          color: '#888',
+          opacity: 0.4
+        });
+        stops.push({
+          offset: `${endPercent}%`,
+          color: '#888',
+          opacity: 0.4
+        });
+      }
+      
+      currentOffset = endPercent;
+    });
+    
+    return stops;
+  }
+
+  /**
+   * Create or update gradient for an edge
+   */
+  createEdgeGradient(edgeId, stops, x1, y1, x2, y2) {
+    const gradientId = `edge-gradient-${edgeId}`;
+    
+    // Remove existing gradient
+    this.defs.select(`#${gradientId}`).remove();
+    
+    // Create new gradient aligned with the line
+    const gradient = this.defs.append('linearGradient')
+      .attr('id', gradientId)
+      .attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', x1)
+      .attr('y1', y1)
+      .attr('x2', x2)
+      .attr('y2', y2);
+    
+    // Add stops
+    stops.forEach(stop => {
+      gradient.append('stop')
+        .attr('offset', stop.offset)
+        .attr('stop-color', stop.color)
+        .attr('stop-opacity', stop.opacity);
+    });
+    
+    return `url(#${gradientId})`;
+  }
+
   /**
    * Render edges
    */
@@ -510,8 +607,8 @@ export class SimpleD3Graph {
     // Clear existing edges
     this.edgeLayer.selectAll('line.edge').remove();
     
-    // Create segmented edges (style differently for unrelated apps and clusters)
-    visibleEdges.forEach(edge => {
+    // Create single gradient edges using segment data
+    visibleEdges.forEach((edge, edgeIndex) => {
       // Find home applications and clusters for this edge
       const homeApps = new Set();
       const homeClusters = new Set();
@@ -535,21 +632,39 @@ export class SimpleD3Graph {
         homeClusters
       );
       
-      segments.forEach((segment, index) => {
-        this.edgeLayer
-          .append('line')
-          .attr('class', 'edge')
-          .attr('data-source', edge.source)  // Store source for updates
-          .attr('data-target', edge.target)  // Store target for updates
-          .attr('x1', segment.x1)
-          .attr('y1', segment.y1)
-          .attr('x2', segment.x2)
-          .attr('y2', segment.y2)
-          .attr('stroke', segment.insideUnrelatedGroup ? '#ccc' : '#888')
-          .attr('stroke-width', 1.5)
-          .attr('stroke-dasharray', segment.insideUnrelatedGroup ? '2,2' : 'none')
-          .attr('opacity', segment.insideUnrelatedGroup ? 0.2 : 0.4);
-      });
+      // Convert segments to gradient stops
+      const gradientStops = this.segmentsToGradientStops(segments);
+      
+      // Create unique edge ID
+      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
+      
+      // Get source and target positions
+      const sourcePos = positionMap.get(edge.source);
+      const targetPos = positionMap.get(edge.target);
+      
+      // Create gradient for this edge
+      const gradientUrl = this.createEdgeGradient(
+        edgeId, 
+        gradientStops, 
+        sourcePos.x, 
+        sourcePos.y, 
+        targetPos.x, 
+        targetPos.y
+      );
+      
+      // Create single line with gradient
+      this.edgeLayer
+        .append('line')
+        .attr('class', 'edge')
+        .attr('data-source', edge.source)
+        .attr('data-target', edge.target)
+        .attr('data-edge-id', edgeId)
+        .attr('x1', sourcePos.x)
+        .attr('y1', sourcePos.y)
+        .attr('x2', targetPos.x)
+        .attr('y2', targetPos.y)
+        .attr('stroke', gradientUrl)
+        .attr('stroke-width', 1.5);
     });
       
     // Add arrowheads (simple triangles) - one per edge
@@ -598,11 +713,13 @@ export class SimpleD3Graph {
    * Drag handlers
    */
   onDragStart(event, d) {
+    console.log('=== onDragStart called ===', d.data.id);
     // Change cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grabbing');
   }
   
   onDrag(event, d) {
+    console.log('onDrag called for', d.data.id);
     const nodeId = d.data.id;
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
@@ -629,19 +746,44 @@ export class SimpleD3Graph {
   }
   
   onDragEnd(event, d) {
+    console.log('=== onDragEnd called ===');
     // Reset cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    
+    // Update the packed root coordinates to match current positions
+    if (this.hierarchyRoot) {
+      console.log('Has hierarchyRoot, syncing positions...');
+      this.hierarchyRoot.descendants().forEach(node => {
+        if (!node.data.isVirtual) {
+          const currentPos = this.nodePositions.get(node.data.id) || this.groupPositions.get(node.data.id);
+          if (currentPos) {
+            console.log(`Syncing ${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
+            node.x = currentPos.x - 25;  // Subtract offset used in renderEdges
+            node.y = currentPos.y - 25;
+          }
+        }
+      });
+      
+      console.log('Calling renderEdges...');
+      // Now re-render all edges with updated positions
+      this.renderEdges(this.hierarchyRoot);
+      console.log('renderEdges complete');
+    } else {
+      console.log('NO hierarchyRoot available!');
+    }
   }
   
   /**
    * Group drag handlers
    */
   onGroupDragStart(event, d) {
+    console.log('=== onGroupDragStart called ===', d.data.id);
     // Change cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grabbing');
   }
   
   onGroupDrag(event, d) {
+    console.log('onGroupDrag called for', d.data.id);
     const groupId = d.data.id;
     const groupPos = this.groupPositions.get(groupId);
     if (!groupPos) return;
@@ -655,8 +797,35 @@ export class SimpleD3Graph {
   }
   
   onGroupDragEnd(event, d) {
+    console.log('=== onGroupDragEnd called ===', d.data.id);
     // Reset cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    
+    // Sync hierarchyRoot with current group positions before re-rendering
+    if (this.hierarchyRoot) {
+      console.log('Syncing group positions to hierarchyRoot...');
+      
+      // Update all positions in hierarchyRoot to match current drag positions
+      this.hierarchyRoot.descendants().forEach(node => {
+        if (node.data.isGroup) {
+          const groupPos = this.groupPositions.get(node.data.id);
+          if (groupPos) {
+            console.log(`Syncing group ${node.data.id}: (${node.x}, ${node.y}) -> (${groupPos.x - 25}, ${groupPos.y - 25})`);
+            node.x = groupPos.x - 25;
+            node.y = groupPos.y - 25;
+          }
+        } else if (!node.data.isVirtual) {
+          const nodePos = this.nodePositions.get(node.data.id);
+          if (nodePos) {
+            node.x = nodePos.x - 25;
+            node.y = nodePos.y - 25;
+          }
+        }
+      });
+      
+      console.log('Re-rendering edges...');
+      this.renderEdges(this.hierarchyRoot);
+    }
   }
   
   /**
@@ -1053,7 +1222,7 @@ export class SimpleD3Graph {
   }
 
   /**
-   * Update edges connected to a node
+   * Update edges connected to a node - fast version for drag operations
    */
   updateConnectedEdges(nodeId) {
     if (!this.data.edges) return;
@@ -1061,163 +1230,120 @@ export class SimpleD3Graph {
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
     
-    // Get all affected edges
-    const affectedEdges = this.data.edges.filter(edge => 
-      edge.source === nodeId || edge.target === nodeId
-    );
-    
-    // Remove old segments for affected edges
+    // Update line coordinates for edges connected to this node
     this.edgeLayer.selectAll('line.edge')
       .filter(function() {
         const source = d3.select(this).attr('data-source');
         const target = d3.select(this).attr('data-target');
         return source === nodeId || target === nodeId;
       })
-      .remove();
+      .each((d, i, nodes) => {
+        const element = d3.select(nodes[i]);
+        const source = element.attr('data-source');
+        const target = element.attr('data-target');
+        
+        // Get updated positions
+        const sourcePos = this.nodePositions.get(source);
+        const targetPos = this.nodePositions.get(target);
+        
+        if (sourcePos && targetPos) {
+          // Update line coordinates
+          element
+            .attr('x1', sourcePos.x)
+            .attr('y1', sourcePos.y)
+            .attr('x2', targetPos.x)
+            .attr('y2', targetPos.y);
+          
+          // Update gradient coordinates (without regenerating stops)
+          const edgeId = element.attr('data-edge-id');
+          if (edgeId) {
+            this.defs.select(`#edge-gradient-${edgeId}`)
+              .attr('x1', sourcePos.x)
+              .attr('y1', sourcePos.y)
+              .attr('x2', targetPos.x)
+              .attr('y2', targetPos.y);
+          }
+        }
+      });
     
-    // Remove old arrows for affected edges
+    // Update arrows
     this.edgeLayer.selectAll('polygon.arrow')
       .filter(function() {
         const source = d3.select(this).attr('data-source');
         const target = d3.select(this).attr('data-target');
         return source === nodeId || target === nodeId;
       })
-      .remove();
-    
-    // Create position map with updated position
-    const positionMap = new Map();
-    this.nodePositions.forEach((pos, id) => {
-      positionMap.set(id, { x: pos.x, y: pos.y });
-    });
-    this.groupPositions.forEach((pos, id) => {
-      positionMap.set(id, { x: pos.x, y: pos.y });
-    });
-    
-    // Get application and cluster groups for intersection detection
-    const applicationGroups = [];
-    const clusterGroups = [];
-    const nodeToAppMap = new Map();
-    const nodeToClusterMap = new Map();
-    
-    // Build app and cluster groups
-    this.groupPositions.forEach((pos, id) => {
-      if (id.startsWith('app-')) {
-        applicationGroups.push({
-          id: id,
-          x: pos.x,
-          y: pos.y,
-          r: pos.r
-        });
-      } else if (id.startsWith('cluster')) {
-        clusterGroups.push({
-          id: id,
-          x: pos.x,
-          y: pos.y,
-          r: pos.r
-        });
-      }
-    });
-    
-    // Map nodes to their parent apps and clusters (simplified for updates)
-    this.nodePositions.forEach((pos, nodeId) => {
-      // Find which app contains this node
-      for (const app of applicationGroups) {
-        const dx = pos.x - app.x;
-        const dy = pos.y - app.y;
-        if (dx * dx + dy * dy <= app.r * app.r) {
-          nodeToAppMap.set(nodeId, app.id);
-          break;
-        }
-      }
-      
-      // Find which cluster contains this node
-      for (const cluster of clusterGroups) {
-        const dx = pos.x - cluster.x;
-        const dy = pos.y - cluster.y;
-        if (dx * dx + dy * dy <= cluster.r * cluster.r) {
-          nodeToClusterMap.set(nodeId, cluster.id);
-          break;
-        }
-      }
-    });
-    
-    // Re-render affected edges with segments
-    affectedEdges.forEach(edge => {
-      if (!positionMap.has(edge.source) || !positionMap.has(edge.target)) return;
-      
-      // Find home applications and clusters for this edge
-      const homeApps = new Set();
-      const homeClusters = new Set();
-      
-      const sourceApp = nodeToAppMap.get(edge.source);
-      const targetApp = nodeToAppMap.get(edge.target);
-      if (sourceApp) homeApps.add(sourceApp);
-      if (targetApp) homeApps.add(targetApp);
-      
-      const sourceCluster = nodeToClusterMap.get(edge.source);
-      const targetCluster = nodeToClusterMap.get(edge.target);
-      if (sourceCluster) homeClusters.add(sourceCluster);
-      if (targetCluster) homeClusters.add(targetCluster);
-      
-      const segments = this.calculateEdgeSegmentsWithGroups(
-        edge, 
-        positionMap, 
-        applicationGroups,
-        clusterGroups, 
-        homeApps,
-        homeClusters
-      );
-      
-      segments.forEach((segment) => {
-        this.edgeLayer
-          .append('line')
-          .attr('class', 'edge')
-          .attr('data-source', edge.source)
-          .attr('data-target', edge.target)
-          .attr('x1', segment.x1)
-          .attr('y1', segment.y1)
-          .attr('x2', segment.x2)
-          .attr('y2', segment.y2)
-          .attr('stroke', segment.insideUnrelatedGroup ? '#ccc' : '#888')
-          .attr('stroke-width', 1.5)
-          .attr('stroke-dasharray', segment.insideUnrelatedGroup ? '2,2' : 'none')
-          .attr('opacity', segment.insideUnrelatedGroup ? 0.2 : 0.4);
-      });
-      
-      // Re-render arrow
-      const source = positionMap.get(edge.source);
-      const target = positionMap.get(edge.target);
-      
-      if (source && target) {
-        const dx = target.x - source.x;
-        const dy = target.y - source.y;
+      .attr('transform', (d, i, nodes) => {
+        const element = d3.select(nodes[i]);
+        const source = element.attr('data-source');
+        const target = element.attr('data-target');
+        
+        const sourcePos = this.nodePositions.get(source);
+        const targetPos = this.nodePositions.get(target);
+        
+        if (!sourcePos || !targetPos) return '';
+        
+        const dx = targetPos.x - sourcePos.x;
+        const dy = targetPos.y - sourcePos.y;
         const angle = Math.atan2(dy, dx) * 180 / Math.PI;
         const length = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = target.x - (dx / length) * (this.options.nodeRadius + 2);
-        const offsetY = target.y - (dy / length) * (this.options.nodeRadius + 2);
+        const offsetX = targetPos.x - (dx / length) * (this.options.nodeRadius + 2);
+        const offsetY = targetPos.y - (dy / length) * (this.options.nodeRadius + 2);
         
-        // Check if arrow is in unrelated app
-        let arrowInsideUnrelatedApp = false;
-        for (const app of applicationGroups) {
-          if (this.pointInCircle({ x: offsetX, y: offsetY }, app)) {
-            if (!homeApps.has(app.id)) {
-              arrowInsideUnrelatedApp = true;
-              break;
-            }
-          }
-        }
-        
-        this.edgeLayer
-          .append('polygon')
-          .attr('class', 'arrow')
-          .attr('data-source', edge.source)
-          .attr('data-target', edge.target)
-          .attr('points', '0,-3 8,0 0,3')
-          .attr('fill', arrowInsideUnrelatedApp ? '#ccc' : '#888')
-          .attr('opacity', arrowInsideUnrelatedApp ? 0.2 : 0.4)
-          .attr('transform', `translate(${offsetX}, ${offsetY}) rotate(${angle})`);
+        return `translate(${offsetX}, ${offsetY}) rotate(${angle})`;
+      });
+  }
+  
+  
+  /**
+   * Helper to get edge segments for updates (simplified version)
+   */
+  getEdgeSegmentsForUpdate(edge, sourcePos, targetPos) {
+    // Simplified segment calculation for drag updates
+    // For better performance during drag, we could cache group positions
+    const applicationGroups = [];
+    const clusterGroups = [];
+    const homeApps = new Set();
+    const homeClusters = new Set();
+    
+    // Build groups from current positions
+    this.groupPositions.forEach((pos, id) => {
+      if (id.startsWith('app-')) {
+        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
+      } else if (id.startsWith('cluster')) {
+        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
       }
     });
+    
+    // Quick home group detection
+    for (const app of applicationGroups) {
+      const sourceDist = Math.sqrt((sourcePos.x - app.x) ** 2 + (sourcePos.y - app.y) ** 2);
+      const targetDist = Math.sqrt((targetPos.x - app.x) ** 2 + (targetPos.y - app.y) ** 2);
+      if (sourceDist <= app.r || targetDist <= app.r) {
+        homeApps.add(app.id);
+      }
+    }
+    
+    for (const cluster of clusterGroups) {
+      const sourceDist = Math.sqrt((sourcePos.x - cluster.x) ** 2 + (sourcePos.y - cluster.y) ** 2);
+      const targetDist = Math.sqrt((targetPos.x - cluster.x) ** 2 + (targetPos.y - cluster.y) ** 2);
+      if (sourceDist <= cluster.r || targetDist <= cluster.r) {
+        homeClusters.add(cluster.id);
+      }
+    }
+    
+    const positionMap = new Map();
+    positionMap.set(edge.source, sourcePos);
+    positionMap.set(edge.target, targetPos);
+    
+    return this.calculateEdgeSegmentsWithGroups(
+      edge, 
+      positionMap, 
+      applicationGroups,
+      clusterGroups, 
+      homeApps,
+      homeClusters
+    );
   }
   
   /**
