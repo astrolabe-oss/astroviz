@@ -882,16 +882,7 @@ export class GraphRenderer {
     if (!this.data.edges) return;
     
     // Build current group positions for segment calculation
-    const applicationGroups = [];
-    const clusterGroups = [];
-    
-    this.groupPositions.forEach((pos, id) => {
-      if (id.startsWith('app-')) {
-        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      } else if (id.startsWith('cluster')) {
-        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      }
-    });
+    const { applicationGroups, clusterGroups } = this.getCurrentGroupPositions();
     
     // Update all edges
     this.edgeLayer.selectAll('line.edge')
@@ -905,21 +896,15 @@ export class GraphRenderer {
         const targetPos = this.nodePositions.get(target);
         
         if (sourcePos && targetPos) {
-          // Calculate adjusted endpoint
-          const dx = targetPos.x - sourcePos.x;
-          const dy = targetPos.y - sourcePos.y;
-          const length = Math.sqrt(dx * dx + dy * dy);
-          const shortenBy = this.options.nodeRadius * 0.7;
-          const ratio = (length - shortenBy) / length;
-          const adjustedTargetX = sourcePos.x + dx * ratio;
-          const adjustedTargetY = sourcePos.y + dy * ratio;
+          // Calculate adjusted coordinates using helper
+          const coords = this.calculateAdjustedEdgeCoordinates(sourcePos, targetPos);
           
           // Update line coordinates
           element
-            .attr('x1', sourcePos.x)
-            .attr('y1', sourcePos.y)
-            .attr('x2', adjustedTargetX)
-            .attr('y2', adjustedTargetY);
+            .attr('x1', coords.x1)
+            .attr('y1', coords.y1)
+            .attr('x2', coords.x2)
+            .attr('y2', coords.y2);
           
           // Recalculate segments
           const edgeId = element.attr('data-edge-id');
@@ -947,7 +932,7 @@ export class GraphRenderer {
             // Create adjusted position map
             const adjustedPositionMap = new Map();
             adjustedPositionMap.set(source, sourcePos);
-            adjustedPositionMap.set(target, { x: adjustedTargetX, y: adjustedTargetY });
+            adjustedPositionMap.set(target, { x: coords.x2, y: coords.y2 });
             
             // Create filter function
             const isUnrelatedGroupFilter = (point, allGroups) => {
@@ -980,10 +965,10 @@ export class GraphRenderer {
             const gradientUrl = this.createEdgeGradient(
               edgeId,
               gradientStops,
-              sourcePos.x,
-              sourcePos.y,
-              adjustedTargetX,
-              adjustedTargetY
+              coords.x1,
+              coords.y1,
+              coords.x2,
+              coords.y2
             );
             
             // Update stroke
@@ -991,6 +976,48 @@ export class GraphRenderer {
           }
         }
       });
+  }
+
+  /**
+   * Calculate adjusted edge coordinates to prevent overlap with node icons
+   * @param {Object} sourcePos - Source position {x, y}
+   * @param {Object} targetPos - Target position {x, y}
+   * @returns {Object} - Adjusted coordinates {x1, y1, x2, y2}
+   */
+  calculateAdjustedEdgeCoordinates(sourcePos, targetPos) {
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const shortenBy = this.options.nodeRadius * 0.7;
+    const ratio = (length - shortenBy) / length;
+    const adjustedTargetX = sourcePos.x + dx * ratio;
+    const adjustedTargetY = sourcePos.y + dy * ratio;
+    
+    return {
+      x1: sourcePos.x,
+      y1: sourcePos.y,
+      x2: adjustedTargetX,
+      y2: adjustedTargetY
+    };
+  }
+
+  /**
+   * Build current group positions for segment calculations
+   * @returns {Object} - {applicationGroups: Array, clusterGroups: Array}
+   */
+  getCurrentGroupPositions() {
+    const applicationGroups = [];
+    const clusterGroups = [];
+    
+    this.groupPositions.forEach((pos, id) => {
+      if (id.startsWith('app-')) {
+        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
+      } else if (id.startsWith('cluster')) {
+        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
+      }
+    });
+    
+    return { applicationGroups, clusterGroups };
   }
 
   /**
@@ -1019,102 +1046,27 @@ export class GraphRenderer {
               const targetPos = this.nodePositions.get(target);
 
               if (sourcePos && targetPos) {
-                  // Calculate adjusted endpoint (same logic as renderEdges)
-                  const dx = targetPos.x - sourcePos.x;
-                  const dy = targetPos.y - sourcePos.y;
-                  const length = Math.sqrt(dx * dx + dy * dy);
-                  const shortenBy = this.options.nodeRadius * 0.7;
-                  const ratio = (length - shortenBy) / length;
-                  const adjustedTargetX = sourcePos.x + dx * ratio;
-                  const adjustedTargetY = sourcePos.y + dy * ratio;
+                  // Calculate adjusted coordinates using helper
+                  const coords = this.calculateAdjustedEdgeCoordinates(sourcePos, targetPos);
 
                   // Update line coordinates ONLY
                   element
-                      .attr('x1', sourcePos.x)
-                      .attr('y1', sourcePos.y)
-                      .attr('x2', adjustedTargetX)
-                      .attr('y2', adjustedTargetY);
+                      .attr('x1', coords.x1)
+                      .attr('y1', coords.y1)
+                      .attr('x2', coords.x2)
+                      .attr('y2', coords.y2);
 
                   // Update gradient coordinates (without regenerating stops)
                   const edgeId = element.attr('data-edge-id');
                   if (edgeId) {
                       this.defs.select(`#edge-gradient-${edgeId}`)
-                          .attr('x1', sourcePos.x)
-                          .attr('y1', sourcePos.y)
-                          .attr('x2', adjustedTargetX)
-                          .attr('y2', adjustedTargetY);
+                          .attr('x1', coords.x1)
+                          .attr('y1', coords.y1)
+                          .attr('x2', coords.x2)
+                          .attr('y2', coords.y2);
                   }
               }
           });
-  }
-  
-  
-  /**
-   * Helper to get edge segments for updates (simplified version)
-   */
-  getEdgeSegmentsForUpdate(edge, sourcePos, targetPos) {
-    // Simplified segment calculation for drag updates
-    // For better performance during drag, we could cache group positions
-    const applicationGroups = [];
-    const clusterGroups = [];
-    const homeApps = new Set();
-    const homeClusters = new Set();
-    
-    // Build groups from current positions
-    this.groupPositions.forEach((pos, id) => {
-      if (id.startsWith('app-')) {
-        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      } else if (id.startsWith('cluster')) {
-        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      }
-    });
-    
-    // Quick home group detection
-    for (const app of applicationGroups) {
-      const sourceDist = Math.sqrt((sourcePos.x - app.x) ** 2 + (sourcePos.y - app.y) ** 2);
-      const targetDist = Math.sqrt((targetPos.x - app.x) ** 2 + (targetPos.y - app.y) ** 2);
-      if (sourceDist <= app.r || targetDist <= app.r) {
-        homeApps.add(app.id);
-      }
-    }
-    
-    for (const cluster of clusterGroups) {
-      const sourceDist = Math.sqrt((sourcePos.x - cluster.x) ** 2 + (sourcePos.y - cluster.y) ** 2);
-      const targetDist = Math.sqrt((targetPos.x - cluster.x) ** 2 + (targetPos.y - cluster.y) ** 2);
-      if (sourceDist <= cluster.r || targetDist <= cluster.r) {
-        homeClusters.add(cluster.id);
-      }
-    }
-    
-    const positionMap = new Map();
-    positionMap.set(edge.source, sourcePos);
-    positionMap.set(edge.target, targetPos);
-    
-    // Create filter function for unrelated groups
-    const isUnrelatedGroupFilter = (point, allGroups) => {
-      // Check applications
-      for (const appGroup of applicationGroups) {
-        if (this.pointInCircle(point, appGroup)) {
-          if (!homeApps.has(appGroup.id)) return true;
-        }
-      }
-      
-      // Check clusters
-      for (const clusterGroup of clusterGroups) {
-        if (this.pointInCircle(point, clusterGroup)) {
-          if (!homeClusters.has(clusterGroup.id)) return true;
-        }
-      }
-      
-      return false;
-    };
-    
-    return EdgeUtils.calculateEdgeSegments(
-      edge, 
-      positionMap, 
-      [...applicationGroups, ...clusterGroups],
-      isUnrelatedGroupFilter
-    );
   }
   
   /**
