@@ -43,8 +43,23 @@ export class SimpleD3Graph {
       .attr('height', this.options.height)
       .style('background', '#f8f9fa');
     
-    // Add definitions for gradients
+    // Add definitions for gradients and markers
     this.defs = this.svg.append('defs');
+    
+    // Create arrow marker definition (half size)
+    const marker = this.defs.append('marker')
+      .attr('id', 'arrow')
+      .attr('viewBox', '0 0 10 10')
+      .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
+      .attr('refY', 5)
+      .attr('markerWidth', 5)  // Half the original size
+      .attr('markerHeight', 5)  // Half the original size
+      .attr('orient', 'auto-start-reverse');
+    
+    marker.append('path')
+      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+      .attr('fill', '#888')  // Match the solid gradient color
+      .attr('opacity', 1.0);  // Fully opaque to avoid double-darkness where it overlaps line
     
     // Main group for zooming/panning
     this.g = this.svg.append('g');
@@ -642,17 +657,26 @@ export class SimpleD3Graph {
       const sourcePos = positionMap.get(edge.source);
       const targetPos = positionMap.get(edge.target);
       
-      // Create gradient for this edge
+      // Calculate adjusted endpoint (shorten line to make arrow visible)
+      const dx = targetPos.x - sourcePos.x;
+      const dy = targetPos.y - sourcePos.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+      const shortenBy = this.options.nodeRadius * 0.7;  // Less aggressive - stop closer to node
+      const ratio = (length - shortenBy) / length;
+      const adjustedTargetX = sourcePos.x + dx * ratio;
+      const adjustedTargetY = sourcePos.y + dy * ratio;
+      
+      // Create gradient for this edge (use adjusted coordinates)
       const gradientUrl = this.createEdgeGradient(
         edgeId, 
         gradientStops, 
         sourcePos.x, 
         sourcePos.y, 
-        targetPos.x, 
-        targetPos.y
+        adjustedTargetX, 
+        adjustedTargetY
       );
       
-      // Create single line with gradient
+      // Create single line with gradient and arrow marker
       this.edgeLayer
         .append('line')
         .attr('class', 'edge')
@@ -661,51 +685,11 @@ export class SimpleD3Graph {
         .attr('data-edge-id', edgeId)
         .attr('x1', sourcePos.x)
         .attr('y1', sourcePos.y)
-        .attr('x2', targetPos.x)
-        .attr('y2', targetPos.y)
+        .attr('x2', adjustedTargetX)
+        .attr('y2', adjustedTargetY)
         .attr('stroke', gradientUrl)
-        .attr('stroke-width', 1.5);
-    });
-      
-    // Add arrowheads (simple triangles) - one per edge
-    this.edgeLayer.selectAll('polygon.arrow').remove();
-    
-    visibleEdges.forEach(edge => {
-      const source = positionMap.get(edge.source);
-      const target = positionMap.get(edge.target);
-      
-      if (!source || !target) return;
-      
-      const dx = target.x - source.x;
-      const dy = target.y - source.y;
-      const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-      
-      // Position arrow at target end, offset by node radius
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const offsetX = target.x - (dx / length) * (this.options.nodeRadius + 2);
-      const offsetY = target.y - (dy / length) * (this.options.nodeRadius + 2);
-      
-      // Check if arrow position is inside any unrelated application
-      let arrowInsideUnrelatedApp = false;
-      for (const app of applicationGroups) {
-        if (this.pointInCircle({ x: offsetX, y: offsetY }, app)) {
-          // Check if this app is NOT a home app
-          const sourceApp = nodeToAppMap.get(edge.source);
-          const targetApp = nodeToAppMap.get(edge.target);
-          if (app.id !== sourceApp && app.id !== targetApp) {
-            arrowInsideUnrelatedApp = true;
-            break;
-          }
-        }
-      }
-      
-      this.edgeLayer
-        .append('polygon')
-        .attr('class', 'arrow')
-        .attr('points', '0,-3 8,0 0,3')
-        .attr('fill', arrowInsideUnrelatedApp ? '#ccc' : '#888')
-        .attr('opacity', arrowInsideUnrelatedApp ? 0.2 : 0.4)
-        .attr('transform', `translate(${offsetX}, ${offsetY}) rotate(${angle})`);
+        .attr('stroke-width', 1.5)
+        .attr('marker-end', 'url(#arrow)');
     });
   }
   
@@ -757,7 +741,7 @@ export class SimpleD3Graph {
         if (!node.data.isVirtual) {
           const currentPos = this.nodePositions.get(node.data.id) || this.groupPositions.get(node.data.id);
           if (currentPos) {
-            console.log(`Syncing ${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
+            console.log(`Syncing node${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
             node.x = currentPos.x - 25;  // Subtract offset used in renderEdges
             node.y = currentPos.y - 25;
           }
@@ -1247,12 +1231,21 @@ export class SimpleD3Graph {
         const targetPos = this.nodePositions.get(target);
         
         if (sourcePos && targetPos) {
+          // Calculate adjusted endpoint (same logic as renderEdges)
+          const dx = targetPos.x - sourcePos.x;
+          const dy = targetPos.y - sourcePos.y;
+          const length = Math.sqrt(dx * dx + dy * dy);
+          const shortenBy = this.options.nodeRadius * 0.7;
+          const ratio = (length - shortenBy) / length;
+          const adjustedTargetX = sourcePos.x + dx * ratio;
+          const adjustedTargetY = sourcePos.y + dy * ratio;
+          
           // Update line coordinates
           element
             .attr('x1', sourcePos.x)
             .attr('y1', sourcePos.y)
-            .attr('x2', targetPos.x)
-            .attr('y2', targetPos.y);
+            .attr('x2', adjustedTargetX)
+            .attr('y2', adjustedTargetY);
           
           // Update gradient coordinates (without regenerating stops)
           const edgeId = element.attr('data-edge-id');
@@ -1260,37 +1253,10 @@ export class SimpleD3Graph {
             this.defs.select(`#edge-gradient-${edgeId}`)
               .attr('x1', sourcePos.x)
               .attr('y1', sourcePos.y)
-              .attr('x2', targetPos.x)
-              .attr('y2', targetPos.y);
+              .attr('x2', adjustedTargetX)
+              .attr('y2', adjustedTargetY);
           }
         }
-      });
-    
-    // Update arrows
-    this.edgeLayer.selectAll('polygon.arrow')
-      .filter(function() {
-        const source = d3.select(this).attr('data-source');
-        const target = d3.select(this).attr('data-target');
-        return source === nodeId || target === nodeId;
-      })
-      .attr('transform', (d, i, nodes) => {
-        const element = d3.select(nodes[i]);
-        const source = element.attr('data-source');
-        const target = element.attr('data-target');
-        
-        const sourcePos = this.nodePositions.get(source);
-        const targetPos = this.nodePositions.get(target);
-        
-        if (!sourcePos || !targetPos) return '';
-        
-        const dx = targetPos.x - sourcePos.x;
-        const dy = targetPos.y - sourcePos.y;
-        const angle = Math.atan2(dy, dx) * 180 / Math.PI;
-        const length = Math.sqrt(dx * dx + dy * dy);
-        const offsetX = targetPos.x - (dx / length) * (this.options.nodeRadius + 2);
-        const offsetY = targetPos.y - (dy / length) * (this.options.nodeRadius + 2);
-        
-        return `translate(${offsetX}, ${offsetY}) rotate(${angle})`;
       });
   }
   
