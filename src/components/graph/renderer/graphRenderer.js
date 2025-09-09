@@ -204,14 +204,35 @@ export class GraphRenderer {
       }
     });
     
+    // Separate private-network group from root leaf nodes for hybrid layout
+    const privateNetworkGroup = roots.find(node => node.id === 'private-network');
+    const rootLeafNodes = roots.filter(node => node.id !== 'private-network' && !node.isGroup);
+    const otherRootGroups = roots.filter(node => node.id !== 'private-network' && node.isGroup);
+    
+    console.log(`Hierarchy separation: private-network=${!!privateNetworkGroup}, rootLeaves=${rootLeafNodes.length}, otherGroups=${otherRootGroups.length}`);
+    
+    // Store separation for hybrid layout calculation
+    this.hybridLayout = {
+      privateNetworkGroup,
+      rootLeafNodes,
+      otherRootGroups
+    };
+    
+    // For circle packing, exclude root leaf nodes - they'll be positioned radially
+    const packedRoots = this.hybridLayout && this.hybridLayout.rootLeafNodes.length > 0 
+      ? roots.filter(node => node.id === 'private-network' || node.isGroup)
+      : roots;
+    
+    console.log(`Hierarchy for packing: ${packedRoots.length} roots (excluded ${roots.length - packedRoots.length} root leaf nodes)`);
+    
     // Create virtual root if needed
-    if (roots.length === 1) {
-      return roots[0];
+    if (packedRoots.length === 1) {
+      return packedRoots[0];
     } else {
       return {
         id: 'virtual-root',
         type: 'group',       // Use type instead of just isGroup
-        children: roots,
+        children: packedRoots,
         isGroup: true,
         isVirtual: true
       };
@@ -271,25 +292,125 @@ export class GraphRenderer {
   }
 
   /**
-   * Calculate circle packing layout
+   * Calculate circle packing layout with optional radial positioning for root leaf nodes
    */
   calculatePack(hierarchyRoot) {
     // Calculate optimal canvas size based on graph complexity
     const { width, height } = this.calculateOptimalCanvasSize(hierarchyRoot);
+    const centerX = width / 2;
+    const centerY = height / 2;
     
-    // Create D3 hierarchy
+    // Always do circle packing for the main hierarchy
     const root = d3.hierarchy(hierarchyRoot)
       .sum(d => {
         // Only leaf nodes contribute to size
         return d.children && d.children.length > 0 ? 0 : 100;
       });
     
-    // Create pack layout with intelligently sized canvas
     const pack = d3.pack()
       .size([width - 50, height - 50])
       .padding(this.options.padding);
     
-    return pack(root);
+    const packedRoot = pack(root);
+    
+    // If we have root leaf nodes to position radially, handle them specially
+    if (this.hybridLayout && this.hybridLayout.rootLeafNodes.length > 0) {
+      return this.addRadialLayout(packedRoot, centerX, centerY);
+    }
+    
+    return packedRoot;
+  }
+  
+  /**
+   * Add radial positioning for root leaf nodes around the packed layout
+   */
+  addRadialLayout(packedRoot, centerX, centerY) {
+    const { rootLeafNodes, otherRootGroups } = this.hybridLayout;
+    
+    console.log(`Adding radial layout: ${rootLeafNodes.length} root leaves, ${otherRootGroups.length} other groups`);
+    
+    // Find the private-network node in the packed hierarchy
+    const privateNetworkNode = packedRoot.descendants().find(d => d.data.id === 'private-network');
+    let privateNetworkRadius = 0;
+    
+    if (privateNetworkNode) {
+      privateNetworkRadius = privateNetworkNode.r;
+      
+      // Center the private network on the canvas
+      const offsetX = centerX - privateNetworkNode.x;
+      const offsetY = centerY - privateNetworkNode.y;
+      
+      // Apply offset to all nodes in the packed hierarchy
+      packedRoot.descendants().forEach(node => {
+        node.x += offsetX;
+        node.y += offsetY;
+      });
+      
+      console.log(`Private network: radius ${privateNetworkRadius}, centered at (${privateNetworkNode.x}, ${privateNetworkNode.y}), offset applied: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
+    }
+    
+    // Position root leaf nodes in a ring around the private network
+    const ringRadius = privateNetworkRadius + 80; // 80px gap from private network edge
+    const radialNodes = [];
+    
+    if (rootLeafNodes.length > 0) {
+      const angleStep = (2 * Math.PI) / rootLeafNodes.length;
+      
+      rootLeafNodes.forEach((leafNode, index) => {
+        const angle = index * angleStep;
+        const x = centerX + Math.cos(angle) * ringRadius;
+        const y = centerY + Math.sin(angle) * ringRadius;
+        
+        // Create a packed node structure for consistency
+        const radialNode = {
+          data: leafNode,
+          x: x,
+          y: y,
+          r: this.options.nodeRadius || 25,
+          children: null,
+          parent: packedRoot,
+          depth: 1,
+          height: 0
+        };
+        
+        radialNodes.push(radialNode);
+        
+        console.log(`Root leaf ${leafNode.id}: positioned at (${x}, ${y}) at angle ${(angle * 180 / Math.PI).toFixed(1)}°`);
+      });
+    }
+    
+    // Handle other root groups (if any) - position them further out
+    if (otherRootGroups.length > 0) {
+      const outerRingRadius = ringRadius + 100;
+      const outerAngleStep = (2 * Math.PI) / otherRootGroups.length;
+      
+      otherRootGroups.forEach((group, index) => {
+        const angle = index * outerAngleStep;
+        const x = centerX + Math.cos(angle) * outerRingRadius;
+        const y = centerY + Math.sin(angle) * outerRingRadius;
+        
+        const radialGroup = {
+          data: group,
+          x: x,
+          y: y,
+          r: 50, // Default group radius
+          children: null,
+          parent: packedRoot,
+          depth: 1,
+          height: 0
+        };
+        
+        radialNodes.push(radialGroup);
+      });
+    }
+    
+    // Add radial nodes to the packed hierarchy's descendants method
+    const originalDescendants = packedRoot.descendants.bind(packedRoot);
+    packedRoot.descendants = () => [...originalDescendants(), ...radialNodes];
+    
+    console.log(`Radial layout complete: added ${radialNodes.length} radial nodes to packed hierarchy`);
+    
+    return packedRoot;
   }
   
   /**

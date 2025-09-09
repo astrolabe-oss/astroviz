@@ -25,9 +25,10 @@
 * [x] getEdgeSegmentsForUpdate unused? | Tues, September 9
 * [x] filters | Tues, September 9
 * [x] data impedence mismatch d.data.data | Tues, September 9
-* [~] position root leafs radially
+* [x] position root leafs radially | Tues, September 9
 * [ ] re-install package.json removing g6
 * [ ] leaf nodes offset for label collision
+* [ ] filterhighlight lost purpling of icons
 
 ## Bonus Features
 * [ ] collapse expand groups
