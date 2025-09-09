@@ -19,11 +19,6 @@ export default {
       required: true,
       default: () => ({ vertices: {}, edges: [] })
     },
-    viewMode: {
-      type: String,
-      required: true,
-      default: 'detailed'
-    },
     nodeColors: {
       type: Object,
       required: true

@@ -27,9 +27,6 @@
       </div>
 
       <div class="filter-container">
-        <div class="view-mode-wrapper">
-          <ViewModeSelector v-model="viewMode" />
-        </div>
         <FilterControls 
           :uniqueValues="uniqueValues" 
           :value="filters" 
@@ -58,7 +55,6 @@
       <D3NetworkGraph
           ref="networkGraph"
           :graph-data="filteredGraphData"
-          :view-mode="viewMode"
           :highlighted-node-ids="highlightedNodeIds"
           @node-clicked="onNodeClicked"
       />
@@ -66,7 +62,6 @@
       <NodeDetails
           :node="selectedNode"
           :graph-data="filteredGraphData"
-          :view-mode="viewMode"
           :raw-graph-data="rawGraphData"
           @close="selectedNode = null"
           @select-node="onSelectConnectedNode"
@@ -84,7 +79,6 @@ import LoadingOverlay from '@/components/connection/LoadingOverlay.vue';
 // Existing components
 import D3NetworkGraph from '@/components/D3NetworkGraph.vue';
 import FilterControls from '@/components/filter/FilterControls.vue';
-import ViewModeSelector from '@/components/filter/ViewModeSelector.vue';
 
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
@@ -102,7 +96,6 @@ export default {
     ConnectionError,
     LoadingOverlay,
     FilterControls,
-    ViewModeSelector,
     D3NetworkGraph,
     NodeDetails,
   },
@@ -124,10 +117,6 @@ export default {
         vertices: {},
         edges: []
       },
-      aggregatedGraphData: {
-        vertices: {},
-        edges: []
-      },
       uniqueValues: {
         appNames: [],
         providers: [],
@@ -136,7 +125,6 @@ export default {
       },
 
       // Visualization state
-      viewMode: localStorage.getItem('viewMode') || 'detailed',
       filters: {
         appName: '',
         provider: '',
@@ -150,25 +138,12 @@ export default {
     };
   },
 
-  watch: {
-    /**
-     * Watch for changes in viewMode to save to localStorage
-     */
-    viewMode(newValue) {
-      console.log(`APP: View mode changed to ${newValue}, saving to localStorage`);
-      localStorage.setItem('viewMode', newValue);
-    }
-  },
 
   computed: {
     /**
-     * Get filtered graph data based on current filters and view mode
+     * Get filtered graph data (always returns detailed raw data)
      */
     filteredGraphData() {
-      console.log(`APP: Computing filteredGraphData with view mode: ${this.viewMode}`, JSON.parse(JSON.stringify(this.filters)));
-      if (this.viewMode === 'application') {
-        return this.aggregatedGraphData;
-      }
       return this.rawGraphData;
     },
 
@@ -244,15 +219,10 @@ export default {
         }
       });
 
-      // Always generate aggregated data regardless of view mode
-      const aggregatedData = neo4jService.aggregateDataForApplicationView(rawData);
-
       console.log(`APP: Fetched raw data with ${Object.keys(rawData.vertices).length} nodes and ${rawData.edges.length} edges`);
-      console.log(`APP: Generated aggregated data with ${Object.keys(aggregatedData.vertices).length} nodes and ${aggregatedData.edges.length} edges`);
 
-      // Update both data stores
+      // Update data store
       this.rawGraphData = rawData;
-      this.aggregatedGraphData = aggregatedData;
 
       return rawData;
     },
@@ -267,7 +237,7 @@ export default {
         this.loadingStatus = "Refreshing graph data...";
         this.loadingProgress = 10;
 
-        // Call the consolidated method to update both raw and aggregated data
+        // Call the consolidated method to update raw data
         await this.fetchGraphFromNeo4j();
 
         // Hide loading state
@@ -317,7 +287,6 @@ export default {
       neo4jService.disconnect();
       this.connected = false;
       this.rawGraphData = { vertices: {}, edges: [] };
-      this.aggregatedGraphData = { vertices: {}, edges: [] };
       this.uniqueValues = {
         appNames: [],
         providers: [],
@@ -353,8 +322,7 @@ export default {
         this.loadingStatus = "Processing graph data...";
         this.loadingProgress = 70;
         // Store the graph data
-        // We are not directly assigning to this.graphData as we maintain separate
-        // rawGraphData and aggregatedGraphData properties
+        // Data is stored in this.rawGraphData by the fetchGraphFromNeo4j method
 
         // Extract unique values for filters
         console.log("APP: Extracting filter values");
@@ -542,7 +510,6 @@ export default {
   display: flex;
   flex-direction: row;
   align-items: flex-start;
-  gap: 8px;
   box-sizing: border-box;
 }
 
@@ -666,14 +633,4 @@ export default {
   background-color: #388e3c;
 }
 
-.view-mode-wrapper {
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  margin-right: 15px;
-  flex-shrink: 0;
-  border-right: 1px solid #ddd;
-  padding: 4px 15px 4px 5px;
-  min-width: 150px;
-}
 </style>

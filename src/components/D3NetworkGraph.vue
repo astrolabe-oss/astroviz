@@ -22,7 +22,6 @@
     <GraphVisualization
         ref="visualization"
         :graphData="graphData"
-        :viewMode="viewMode"
         :nodeColors="nodeColors"
         :highlightedNodeIds="highlightedNodeIds"
         @node-clicked="onNodeClick"
@@ -66,12 +65,6 @@ export default {
       type: Object,
       required: true,
       default: () => ({ vertices: {}, edges: [] })
-    },
-    // Current view mode: 'detailed' or 'application'
-    viewMode: {
-      type: String,
-      required: true,
-      default: 'detailed'
     },
     // Set of node IDs that should be highlighted (from filters)
     highlightedNodeIds: {

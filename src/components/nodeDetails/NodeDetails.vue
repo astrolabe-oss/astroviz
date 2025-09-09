@@ -38,55 +38,6 @@
       </div>
     </div>
 
-    <!-- Component Graph Section for Application view -->
-    <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
-      <div class="connections-container component-graph-container">
-        <div class="connections-header component-graph-header">
-          <h5>Component Graph</h5>
-        </div>
-
-        <ComponentGraph
-          :components="nodeComponents"
-          :nodeColors="nodeColors"
-          :rawGraphData="rawGraphData"
-        />
-      </div>
-    </div>
-
-    <!-- Components Section for Application view -->
-    <div class="detail-section" v-if="viewMode === 'application' && nodeComponents.length > 0">
-      <div class="connections-container component-inventory-container">
-        <div class="connections-header component-inventory-header">
-          <h5>Component Inventory</h5>
-        </div>
-
-        <div class="tab-content">
-          <div v-if="nodeComponents.length === 0" class="no-connections">
-            No component inventory
-          </div>
-          <div v-else>
-            <div v-for="(group, index) in groupedNodeComponents" :key="`component-group-${index}`" class="relationship-group">
-              <h5>{{ group.type }} ({{ group.components.length }})</h5>
-              <ul class="relationship-list">
-                <li
-                  v-for="(component, compIndex) in group.components"
-                  :key="`component-${index}-${compIndex}`"
-                  class="relationship-item component-item"
-                  :title="getComponentTooltip(component)"
-                >
-                  <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(component.nodeType) }">
-                    {{ component.nodeType }}
-                  </span>
-                  <span class="connection-details">
-                    {{ formatComponentDetails(component) }}
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
 
     <!-- Node Other Properties Section -->
     <div class="detail-section" v-if="Object.keys(filteredNodeProperties).length > 0">
@@ -117,23 +68,23 @@
               :class="['tab-button', { active: realActiveTab === 'to' }]"
               @click="realActiveTab = 'to'"
           >
-            TO ({{ realOutgoingRelationships.length }})
+            TO ({{ outgoingRelationships.length }})
           </button>
           <button
               :class="['tab-button', { active: realActiveTab === 'from' }]"
               @click="realActiveTab = 'from'"
           >
-            FROM ({{ realIncomingRelationships.length }})
+            FROM ({{ incomingRelationships.length }})
           </button>
         </div>
 
-        <!-- Real TO Connections Tab -->
+        <!-- TO Connections Tab -->
         <div v-if="realActiveTab === 'to'" class="tab-content">
-          <div v-if="realOutgoingRelationships.length === 0" class="no-connections">
-            No real outgoing connections
+          <div v-if="outgoingRelationships.length === 0" class="no-connections">
+            No outgoing connections
           </div>
           <div v-else>
-            <div v-for="(group, index) in groupedRealOutgoingRelationships" :key="`real-out-${index}`" class="relationship-group">
+            <div v-for="(group, index) in groupedOutgoingRelationships" :key="`out-${index}`" class="relationship-group">
               <h5>{{ group.type }}</h5>
               <ul class="relationship-list">
                 <li
@@ -154,13 +105,13 @@
           </div>
         </div>
 
-        <!-- Real FROM Connections Tab -->
+        <!-- FROM Connections Tab -->
         <div v-if="realActiveTab === 'from'" class="tab-content">
-          <div v-if="realIncomingRelationships.length === 0" class="no-connections">
-            No real incoming connections
+          <div v-if="incomingRelationships.length === 0" class="no-connections">
+            No incoming connections
           </div>
           <div v-else>
-            <div v-for="(group, index) in groupedRealIncomingRelationships" :key="`real-in-${index}`" class="relationship-group">
+            <div v-for="(group, index) in groupedIncomingRelationships" :key="`in-${index}`" class="relationship-group">
               <h5>{{ group.type }}</h5>
               <ul class="relationship-list">
                 <li
@@ -182,82 +133,6 @@
         </div>
       </div>
 
-      <!-- Virtual Connections Container (Application View Only) -->
-      <div v-if="viewMode === 'application' && hasVirtualRelationships" class="connections-container virtual-connections-container">
-        <div class="connections-header virtual-header">
-          <h5>Virtual Connections (Aggregated)</h5>
-        </div>
-
-        <!-- Virtual Connections Tabs -->
-        <div class="relationship-tabs">
-          <button
-              :class="['tab-button', { active: virtualActiveTab === 'to' }]"
-              @click="virtualActiveTab = 'to'"
-          >
-            TO ({{ virtualOutgoingRelationships.length }})
-          </button>
-          <button
-              :class="['tab-button', { active: virtualActiveTab === 'from' }]"
-              @click="virtualActiveTab = 'from'"
-          >
-            FROM ({{ virtualIncomingRelationships.length }})
-          </button>
-        </div>
-
-        <!-- Virtual TO Connections Tab -->
-        <div v-if="virtualActiveTab === 'to'" class="tab-content">
-          <div v-if="virtualOutgoingRelationships.length === 0" class="no-connections">
-            No virtual outgoing connections
-          </div>
-          <div v-else>
-            <div v-for="(group, index) in groupedVirtualOutgoingRelationships" :key="`virtual-out-${index}`" class="relationship-group">
-              <h5>{{ group.type }}</h5>
-              <ul class="relationship-list">
-                <li
-                    v-for="(rel, relIndex) in group.relationships"
-                    :key="`virtual-out-${relIndex}`"
-                    class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
-                >
-                  <span class="node-type-badge virtual-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
-                    {{ rel.nodeType }}
-                  </span>
-                  <span class="connection-details" :title="getNodeTooltip(rel)">
-                    {{ formatConnectionDetails(rel) }}
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-
-        <!-- Virtual FROM Connections Tab -->
-        <div v-if="virtualActiveTab === 'from'" class="tab-content">
-          <div v-if="virtualIncomingRelationships.length === 0" class="no-connections">
-            No virtual incoming connections
-          </div>
-          <div v-else>
-            <div v-for="(group, index) in groupedVirtualIncomingRelationships" :key="`virtual-in-${index}`" class="relationship-group">
-              <h5>{{ group.type }}</h5>
-              <ul class="relationship-list">
-                <li
-                    v-for="(rel, relIndex) in group.relationships"
-                    :key="`virtual-in-${relIndex}`"
-                    class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
-                >
-                  <span class="node-type-badge virtual-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
-                    {{ rel.nodeType }}
-                  </span>
-                  <span class="connection-details" :title="getNodeTooltip(rel)">
-                    {{ formatConnectionDetails(rel) }}
-                  </span>
-                </li>
-              </ul>
-            </div>
-          </div>
-        </div>
-      </div>
     </div>
   </div>
 </template>
@@ -265,13 +140,11 @@
 <script>
 import { getNodeTypeColor } from '@/utils/nodeUtils';
 import { processNodeRelationships, groupRelationshipsByType } from '@/utils/relationshipUtils';
-import ComponentGraph from './ComponentGraph.vue';
 
 export default {
   name: 'NodeDetails',
 
   components: {
-    ComponentGraph
   },
 
   props: {
@@ -287,17 +160,12 @@ export default {
     rawGraphData: {
       type: Object,
       required: true
-    },
-    viewMode: {
-      type: String,
-      default: 'detailed'
     }
   },
 
   data() {
     return {
-      realActiveTab: 'to',   // Default to TO tab for real connections
-      virtualActiveTab: 'to',  // Default to TO tab for virtual connections
+      realActiveTab: 'to',   // Default to TO tab for connections
       nodeColors: {
         'Application': '#F9696E', // Red 
         'Deployment': '#F2A3B3', // Pink
@@ -387,158 +255,12 @@ export default {
       return groupRelationshipsByType(this.incomingRelationships);
     },
 
-    /**
-     * Get components for the current node in application view
-     * Components are extracted from the node's components property if it exists
-     * and grouped by component type (excluding Application nodes)
-     */
-    nodeComponents() {
-      if (!this.node || !this.node.components || this.viewMode !== 'application') {
-        return [];
-      }
-
-      // Convert and process components data
-      const components = this.node.components
-        .filter(component => component.type !== 'Application') // Exclude Application nodes
-        .map(component => {
-          return {
-            nodeType: component.type || 'Component',
-            name: component.name || '',
-            address: component.address || '',
-            app_name: component.app_name || '',
-            provider: component.provider || '',
-            protocol_multiplexor: component.protocol_multiplexor || '',
-            public_ip: component.public_ip,
-            // Include the original component data for selection
-            originalData: component
-          };
-        });
-
-      return components;
-    },
 
     /**
-     * Group node components by their type
-     */
-    groupedNodeComponents() {
-      if (!this.nodeComponents.length) {
-        return [];
-      }
-
-      // Group components by their nodeType
-      const groupedByType = {};
-      this.nodeComponents.forEach(component => {
-        const type = component.nodeType;
-        if (!groupedByType[type]) {
-          groupedByType[type] = [];
-        }
-        groupedByType[type].push(component);
-      });
-
-      // Convert to array format for easier rendering
-      return Object.entries(groupedByType).map(([type, components]) => {
-        return {
-          type,
-          components
-        };
-      });
-    },
-
-    /**
-     * Get real outgoing relationships (non-virtual connections)
-     */
-    realOutgoingRelationships() {
-      if (this.viewMode !== 'application') {
-        return this.outgoingRelationships;
-      }
-      return this.outgoingRelationships.filter(rel => {
-        const edge = this.findEdge(this.node, rel.nodeId);
-        return !edge || !edge.connectedComponents;
-      });
-    },
-
-    /**
-     * Get virtual outgoing relationships (virtual connections)
-     */
-    virtualOutgoingRelationships() {
-      if (this.viewMode !== 'application') {
-        return [];
-      }
-      return this.outgoingRelationships.filter(rel => {
-        const edge = this.findEdge(this.node, rel.nodeId);
-        return edge && edge.connectedComponents;
-      });
-    },
-
-    /**
-     * Get real incoming relationships (non-virtual connections)
-     */
-    realIncomingRelationships() {
-      if (this.viewMode !== 'application') {
-        return this.incomingRelationships;
-      }
-      return this.incomingRelationships.filter(rel => {
-        const edge = this.findEdge(rel.nodeId, this.node);
-        return !edge || !edge.connectedComponents;
-      });
-    },
-
-    /**
-     * Get virtual incoming relationships (virtual connections)
-     */
-    virtualIncomingRelationships() {
-      if (this.viewMode !== 'application') {
-        return [];
-      }
-      return this.incomingRelationships.filter(rel => {
-        const edge = this.findEdge(rel.nodeId, this.node);
-        return edge && edge.connectedComponents;
-      });
-    },
-
-    /**
-     * Get real outgoing relationships grouped by type
-     */
-    groupedRealOutgoingRelationships() {
-      return groupRelationshipsByType(this.realOutgoingRelationships);
-    },
-
-    /**
-     * Get virtual outgoing relationships grouped by type
-     */
-    groupedVirtualOutgoingRelationships() {
-      return groupRelationshipsByType(this.virtualOutgoingRelationships);
-    },
-
-    /**
-     * Get real incoming relationships grouped by type
-     */
-    groupedRealIncomingRelationships() {
-      return groupRelationshipsByType(this.realIncomingRelationships);
-    },
-
-    /**
-     * Get virtual incoming relationships grouped by type
-     */
-    groupedVirtualIncomingRelationships() {
-      return groupRelationshipsByType(this.virtualIncomingRelationships);
-    },
-
-    /**
-     * Check if there are any relationships (real or virtual)
+     * Check if there are any relationships
      */
     hasAnyRelationships() {
-      return this.realOutgoingRelationships.length > 0 || 
-             this.realIncomingRelationships.length > 0 ||
-             (this.viewMode === 'application' && this.hasVirtualRelationships);
-    },
-
-    /**
-     * Check if there are any virtual relationships
-     */
-    hasVirtualRelationships() {
-      return this.virtualOutgoingRelationships.length > 0 || 
-             this.virtualIncomingRelationships.length > 0;
+      return this.outgoingRelationships.length > 0 || this.incomingRelationships.length > 0;
     }
   },
 
@@ -599,18 +321,11 @@ export default {
      * Set the initial active tabs based on available connections
      */
     setInitialActiveTabs() {
-      // Set real connections tab
-      if (this.realOutgoingRelationships.length === 0 && this.realIncomingRelationships.length > 0) {
+      // Set connections tab
+      if (this.outgoingRelationships.length === 0 && this.incomingRelationships.length > 0) {
         this.realActiveTab = 'from';
       } else {
         this.realActiveTab = 'to';
-      }
-
-      // Set virtual connections tab
-      if (this.virtualOutgoingRelationships.length === 0 && this.virtualIncomingRelationships.length > 0) {
-        this.virtualActiveTab = 'from';
-      } else {
-        this.virtualActiveTab = 'to';
       }
     },
 
@@ -795,52 +510,11 @@ export default {
   border-radius: 6px 0 0 6px;
 }
 
-.component-graph-header::before {
-  background-color: #2196F3; /* Blue for component graph */
-}
-
-.component-graph-header {
-  background-color: #e3f2fd; /* Light blue background */
-}
-
 .connections-header h5 {
   margin: 0;
   font-size: 15px;
   color: #333;
   font-weight: 600;
-}
-
-.virtual-connections-container {
-  margin-top: 20px;
-  border-top: 2px dashed #ddd;
-  padding-top: 20px;
-}
-
-.component-inventory-header::before {
-  background-color: #FF9800; /* Orange for component inventory */
-}
-
-.component-inventory-header {
-  background-color: #fff3e0; /* Light orange background */
-}
-
-.component-graph-container {
-  margin-bottom: 16px;
-}
-
-.virtual-header::before {
-  background-color: #2196F3;
-}
-
-.virtual-header {
-  background-color: #e3f2fd;
-}
-
-.virtual-badge::after {
-  content: '↝';
-  font-size: 12px;
-  margin-left: 3px;
-  opacity: 0.7;
 }
 
 .node-details {
@@ -942,9 +616,6 @@ export default {
   overflow: hidden;
 }
 
-.component-graph-container {
-  margin-bottom: 16px;
-}
 
 .tab-button {
   padding: 8px 16px;
