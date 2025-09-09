@@ -701,12 +701,18 @@ export class GraphRenderer {
   }
   
   /**
+   * Unified cursor management for drag operations
+   */
+  setCursor(event, cursor) {
+    d3.select(event.sourceEvent.target).style('cursor', cursor);
+  }
+
+  /**
    * Drag handlers
    */
   onDragStart(event, d) {
     console.log('=== onDragStart called ===', d.data.id);
-    // Change cursor
-    d3.select(event.sourceEvent.target).style('cursor', 'grabbing');
+    this.setCursor(event, 'grabbing');
   }
   
   onDrag(event, d) {
@@ -739,31 +745,10 @@ export class GraphRenderer {
   
   onDragEnd(event, d) {
     console.log('=== onDragEnd called ===');
-    // Reset cursor
-    d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    this.setCursor(event, 'grab');
     
-    
-    // Update the packed root coordinates to match current positions
-    if (this.hierarchyRoot) {
-      console.log('Has hierarchyRoot, syncing positions...');
-      this.hierarchyRoot.descendants().forEach(node => {
-        if (!node.data.isVirtual) {
-          const currentPos = this.nodePositions.get(node.data.id) || this.groupPositions.get(node.data.id);
-          if (currentPos) {
-            // console.log(`Syncing node${node.data.id}: (${node.x}, ${node.y}) -> (${currentPos.x - 25}, ${currentPos.y - 25})`);
-            node.x = currentPos.x - 25;  // Subtract offset used in renderEdges
-            node.y = currentPos.y - 25;
-          }
-        }
-      });
-      
-      console.log('Calling renderEdges...');
-      // Now re-render all edges with updated positions
-      this.renderEdges(this.hierarchyRoot);
-      console.log('renderEdges complete');
-    } else {
-      console.log('NO hierarchyRoot available!');
-    }
+    // Use unified pipeline like group drag end
+    this.updateAllEdgesAsync();
   }
   
   /**
@@ -771,8 +756,7 @@ export class GraphRenderer {
    */
   onGroupDragStart(event, d) {
     console.log('=== onGroupDragStart called ===', d.data.id);
-    // Change cursor
-    d3.select(event.sourceEvent.target).style('cursor', 'grabbing');
+    this.setCursor(event, 'grabbing');
   }
   
   onGroupDrag(event, d) {
@@ -791,8 +775,7 @@ export class GraphRenderer {
   
   onGroupDragEnd(event, d) {
     console.log('=== onGroupDragEnd called ===', d.data.id);
-    // Reset cursor
-    d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    this.setCursor(event, 'grab');
     
     // Cancel any in-progress async update and do a final synchronous update
     if (this.edgeUpdateController) {
@@ -842,9 +825,6 @@ export class GraphRenderer {
         d3.select(`#node-label-${childId}`)
           .attr('x', childNodePos.x)
           .attr('y', childNodePos.y + this.options.nodeRadius + 8);
-        
-        // Update all edges
-        this.updateAllEdgesAsync();
         
       } else if (childGroupPos) {
         // Recursively move child group
@@ -921,49 +901,6 @@ export class GraphRenderer {
       }
     });
   }
-
-  /**
-   * Calculate adjusted edge coordinates to prevent overlap with node icons
-   * @param {Object} sourcePos - Source position {x, y}
-   * @param {Object} targetPos - Target position {x, y}
-   * @returns {Object} - Adjusted coordinates {x1, y1, x2, y2}
-   */
-  calculateAdjustedEdgeCoordinates(sourcePos, targetPos) {
-    const dx = targetPos.x - sourcePos.x;
-    const dy = targetPos.y - sourcePos.y;
-    const length = Math.sqrt(dx * dx + dy * dy);
-    const shortenBy = this.options.nodeRadius * 0.7;
-    const ratio = (length - shortenBy) / length;
-    const adjustedTargetX = sourcePos.x + dx * ratio;
-    const adjustedTargetY = sourcePos.y + dy * ratio;
-    
-    return {
-      x1: sourcePos.x,
-      y1: sourcePos.y,
-      x2: adjustedTargetX,
-      y2: adjustedTargetY
-    };
-  }
-
-  /**
-   * Build current group positions for segment calculations
-   * @returns {Object} - {applicationGroups: Array, clusterGroups: Array}
-   */
-  getCurrentGroupPositions() {
-    const applicationGroups = [];
-    const clusterGroups = [];
-    
-    this.groupPositions.forEach((pos, id) => {
-      if (id.startsWith('app-')) {
-        applicationGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      } else if (id.startsWith('cluster')) {
-        clusterGroups.push({ id, x: pos.x, y: pos.y, r: pos.r });
-      }
-    });
-    
-    return { applicationGroups, clusterGroups };
-  }
-
 
   /**
    * Get connected nodes and edges for a given node ID
@@ -1132,29 +1069,15 @@ export class GraphRenderer {
         }
       });
 
-    // Restore original edge appearance
-    this.edgeLayer.selectAll('.edge')
-      .each(function() {
-        const edge = d3.select(this);
-        
-        // Restore original stroke properties
-        const originalStroke = edge.attr('data-original-stroke');
-        const originalStrokeWidth = edge.attr('data-original-stroke-width');
-        
-        if (originalStroke) {
-          edge.attr('stroke', originalStroke)
-              .attr('data-original-stroke', null);
-        }
-        if (originalStrokeWidth) {
-          edge.attr('stroke-width', originalStrokeWidth)
-              .attr('data-original-stroke-width', null);
-        }
-      });
-
-    // Clear selection state
+    // Clear selection state first
     this.selectedNodeIds.clear();
     this.highlightedElements.nodes.clear();
     this.highlightedElements.edgeKeys.clear();
+    
+    // Re-render all edges to restore normal styling now that edgeKeys is cleared
+    if (this.hierarchyRoot) {
+      this.renderEdges(this.hierarchyRoot);
+    }
   }
 
   /**

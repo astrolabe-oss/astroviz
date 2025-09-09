@@ -20,7 +20,7 @@
 * [x] detail view | Mon, September 8
 * [x] edges - render on drag | Mon, September 8
 * [x] highlight | Tues, September 9
-* [~] highlight on drag
+* [x] highlight on drag | Tues, September 9
 * [ ] filters
 * [ ] reset button broken
 * [ ] bug: edge calculation in-out?
