@@ -26,9 +26,11 @@
 * [x] filters | Tues, September 9
 * [x] data impedence mismatch d.data.data | Tues, September 9
 * [x] position root leafs radially | Tues, September 9
-* [ ] re-install package.json removing g6
-* [ ] leaf nodes offset for label collision
+* [x] re-install package.json removing g6 | Tues, September 9
+* [x] remove node labels, add tool tip | Tues, September 9
 * [ ] filterhighlight lost purpling of icons
+* [ ] remove application view, keep app panel
+* [ ] applications? should not display?
 
 ## Bonus Features
 * [ ] collapse expand groups

@@ -345,8 +345,6 @@ export class GraphRenderer {
         node.x += offsetX;
         node.y += offsetY;
       });
-      
-      console.log(`Private network: radius ${privateNetworkRadius}, centered at (${privateNetworkNode.x}, ${privateNetworkNode.y}), offset applied: (${offsetX.toFixed(1)}, ${offsetY.toFixed(1)})`);
     }
     
     // Position root leaf nodes in a ring around the private network
@@ -532,6 +530,14 @@ export class GraphRenderer {
         if (this.options.onNodeClick) {
           this.options.onNodeClick(d.data, event);
         }
+      })
+      .on('mouseover', (event, d) => {
+        // Show tooltip on hover
+        this.showTooltip(event, d.data);
+      })
+      .on('mouseout', () => {
+        // Hide tooltip
+        this.hideTooltip();
       });
 
     // Add icons to node elements (like the old GraphVisualization.vue)
@@ -568,22 +574,7 @@ export class GraphRenderer {
         iconSvg.html(svgElement.innerHTML);
       }
     });
-    
-    // Node labels (dark text, no background)
-    const labelElements = this.labelLayer
-      .selectAll('text.node-label')
-      .data(nodes, d => d.data.id)
-      .join('text')
-      .attr('class', 'node-label')
-      .attr('id', d => `node-label-${d.data.id}`)
-      .attr('x', d => d.x + 25)
-      .attr('y', d => d.y + 25 + this.options.nodeRadius + 8) // Position below the icon
-      .attr('text-anchor', 'middle')
-      .style('font-size', '10px')
-      .style('fill', '#333')
-      .style('font-weight', 'normal')
-      .style('pointer-events', 'none')
-      .text(d => this.getNodeLabel(d.data) || d.data.id);
+
     
     // Add drag behavior
     const dragBehavior = d3.drag()
@@ -758,10 +749,6 @@ renderEdges(packedRoot) {
     d3.select(`#node-${nodeId}`)
       .attr('transform', `translate(${event.x}, ${event.y})`);
     
-    // Move the node label
-    d3.select(`#node-label-${nodeId}`)
-      .attr('x', event.x)
-      .attr('y', event.y + this.options.nodeRadius + 8);
     
     
     // Update all non-highlighted edges
@@ -847,9 +834,6 @@ renderEdges(packedRoot) {
         d3.select(`#node-${childId}`)
           .attr('transform', `translate(${childNodePos.x}, ${childNodePos.y})`);
         
-        d3.select(`#node-label-${childId}`)
-          .attr('x', childNodePos.x)
-          .attr('y', childNodePos.y + this.options.nodeRadius + 8);
         
       } else if (childGroupPos) {
         // Recursively move child group
@@ -1274,12 +1258,6 @@ renderEdges(packedRoot) {
           .duration(500)
           .attr('transform', `translate(${pos.originalX}, ${pos.originalY})`);
         
-        // Animate label back to original position
-        d3.select(`#node-label-${nodeId}`)
-          .transition()
-          .duration(500)
-          .attr('x', pos.originalX)
-          .attr('y', pos.originalY + this.options.nodeRadius + 8);
       }
     });
     
@@ -1343,18 +1321,6 @@ renderEdges(packedRoot) {
     console.log(`Fit to view: scale=${scale.toFixed(2)}, translate=(${translateX.toFixed(0)}, ${translateY.toFixed(0)})`);
   }
 
-  /**
-   * Get node label based on vertex type (matching old GraphVisualization.vue)
-   */
-  getNodeLabel(vertex) {
-    if (!vertex) return '';
-    
-    const type = vertex.type;
-    if (type in ['Application', 'Deployment', 'TrafficController']) return vertex.name;
-    if (type in ['Compute', 'Resource']) return vertex.address;
-    if (type === 'InternetIP') return `${vertex.address} (${vertex.name})`;
-    return vertex.name || vertex.type;
-  }
 
   /**
    * Get current zoom level
@@ -1362,6 +1328,52 @@ renderEdges(packedRoot) {
   getZoom() {
     if (!this.svg) return 1;
     return d3.zoomTransform(this.svg.node()).k;
+  }
+
+  /**
+   * Show tooltip on node hover
+   */
+  showTooltip(event, nodeData) {
+    // Create tooltip if it doesn't exist
+    if (!this.tooltip) {
+      this.tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'graph-tooltip')
+        .style('position', 'absolute')
+        .style('background', 'rgba(0, 0, 0, 0.8)')
+        .style('color', 'white')
+        .style('padding', '8px')
+        .style('border-radius', '4px')
+        .style('font-size', '12px')
+        .style('pointer-events', 'none')
+        .style('z-index', '9999')
+        .style('opacity', 0);
+    }
+
+    // Build tooltip content
+    let content = `Type: ${nodeData.type || 'Unknown'}`;
+    if (nodeData.name) {
+      content += `\nName: ${nodeData.name}`;
+    }
+    if (nodeData.address) {
+      content += `\nAddress: ${nodeData.address}`;
+    }
+
+    // Show tooltip with content
+    this.tooltip
+      .html(content.replace(/\n/g, '<br>'))
+      .style('left', (event.pageX + 10) + 'px')
+      .style('top', (event.pageY - 10) + 'px')
+      .style('opacity', 1);
+  }
+
+  /**
+   * Hide tooltip
+   */
+  hideTooltip() {
+    if (this.tooltip) {
+      this.tooltip.style('opacity', 0);
+    }
   }
   
   /**
@@ -1371,5 +1383,11 @@ renderEdges(packedRoot) {
     d3.select(this.container).selectAll('*').remove();
     this.nodePositions.clear();
     this.groupPositions.clear();
+    
+    // Clean up tooltip
+    if (this.tooltip) {
+      this.tooltip.remove();
+      this.tooltip = null;
+    }
   }
 }
