@@ -34,7 +34,7 @@ export class GraphRenderer {
     this.selectedNodeIds = new Set();
     this.highlightedElements = {
       nodes: new Set(),
-      edges: new Set()
+      edgeKeys: new Set() // Store "source-target" keys for persistence
     };
     
     this.init();
@@ -596,20 +596,6 @@ export class GraphRenderer {
     
     // Create single gradient edges using segment data
     visibleEdges.forEach((edge, edgeIndex) => {
-      // Find home applications and clusters for this edge
-      const homeApps = new Set();
-      const homeClusters = new Set();
-      
-      const sourceApp = nodeToAppMap.get(edge.source);
-      const targetApp = nodeToAppMap.get(edge.target);
-      if (sourceApp) homeApps.add(sourceApp);
-      if (targetApp) homeApps.add(targetApp);
-      
-      const sourceCluster = nodeToClusterMap.get(edge.source);
-      const targetCluster = nodeToClusterMap.get(edge.target);
-      if (sourceCluster) homeClusters.add(sourceCluster);
-      if (targetCluster) homeClusters.add(targetCluster);
-      
       // Get source and target positions FIRST
       const sourcePos = positionMap.get(edge.source);
       const targetPos = positionMap.get(edge.target);
@@ -623,65 +609,93 @@ export class GraphRenderer {
       const adjustedTargetX = sourcePos.x + dx * ratio;
       const adjustedTargetY = sourcePos.y + dy * ratio;
       
-      // Create adjusted position map for segment calculation
-      const adjustedPositionMap = new Map(positionMap);
-      adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+      // Check if this edge is highlighted
+      const edgeKey = `${edge.source}-${edge.target}`;
+      const isHighlighted = this.highlightedElements.edgeKeys.has(edgeKey);
       
-      // Create filter function for unrelated groups
-      const isUnrelatedGroupFilter = (point, allGroups) => {
-        // Check if inside any unrelated application
-        for (const appGroup of applicationGroups) {
-          if (EdgeUtils.pointInCircle(point, appGroup)) {
-            if (!homeApps.has(appGroup.id)) return true;
-          }
-        }
+      let strokeStyle, strokeWidth;
+      
+      if (isHighlighted) {
+        // Use solid purple for highlighted edges
+        strokeStyle = '#4444ff';
+        strokeWidth = 3;
+      } else {
+        // Use gradient segments for non-highlighted edges
+        // Find home applications and clusters for this edge
+        const homeApps = new Set();
+        const homeClusters = new Set();
         
-        // Check if inside any unrelated cluster
-        for (const clusterGroup of clusterGroups) {
-          if (EdgeUtils.pointInCircle(point, clusterGroup)) {
-            if (!homeClusters.has(clusterGroup.id)) return true;
-          }
-        }
+        const sourceApp = nodeToAppMap.get(edge.source);
+        const targetApp = nodeToAppMap.get(edge.target);
+        if (sourceApp) homeApps.add(sourceApp);
+        if (targetApp) homeApps.add(targetApp);
         
-        return false;
-      };
+        const sourceCluster = nodeToClusterMap.get(edge.source);
+        const targetCluster = nodeToClusterMap.get(edge.target);
+        if (sourceCluster) homeClusters.add(sourceCluster);
+        if (targetCluster) homeClusters.add(targetCluster);
+        
+        // Create adjusted position map for segment calculation
+        const adjustedPositionMap = new Map(positionMap);
+        adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+        
+        // Create filter function for unrelated groups
+        const isUnrelatedGroupFilter = (point, allGroups) => {
+          // Check if inside any unrelated application
+          for (const appGroup of applicationGroups) {
+            if (EdgeUtils.pointInCircle(point, appGroup)) {
+              if (!homeApps.has(appGroup.id)) return true;
+            }
+          }
+          
+          // Check if inside any unrelated cluster
+          for (const clusterGroup of clusterGroups) {
+            if (EdgeUtils.pointInCircle(point, clusterGroup)) {
+              if (!homeClusters.has(clusterGroup.id)) return true;
+            }
+          }
+          
+          return false;
+        };
+        
+        const segments = EdgeUtils.calculateEdgeSegments(
+          edge, 
+          adjustedPositionMap,
+          [...applicationGroups, ...clusterGroups],
+          isUnrelatedGroupFilter
+        );
+        
+        // Convert segments to gradient stops
+        const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
+        
+        // Create unique edge ID
+        const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
+        
+        // Create gradient for this edge (use adjusted coordinates)
+        strokeStyle = this.createEdgeGradient(
+          edgeId, 
+          gradientStops, 
+          sourcePos.x, 
+          sourcePos.y, 
+          adjustedTargetX, 
+          adjustedTargetY
+        );
+        strokeWidth = 1.5;
+      }
       
-      const segments = EdgeUtils.calculateEdgeSegments(
-        edge, 
-        adjustedPositionMap,
-        [...applicationGroups, ...clusterGroups],
-        isUnrelatedGroupFilter
-      );
-      
-      // Convert segments to gradient stops
-      const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
-      
-      // Create unique edge ID
-      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
-      
-      // Create gradient for this edge (use adjusted coordinates)
-      const gradientUrl = this.createEdgeGradient(
-        edgeId, 
-        gradientStops, 
-        sourcePos.x, 
-        sourcePos.y, 
-        adjustedTargetX, 
-        adjustedTargetY
-      );
-      
-      // Create single line with gradient and arrow marker
+      // Create single line with appropriate styling
       this.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
         .attr('data-target', edge.target)
-        .attr('data-edge-id', edgeId)
+        .attr('data-edge-id', `${edge.source}-${edge.target}-${edgeIndex}`)
         .attr('x1', sourcePos.x)
         .attr('y1', sourcePos.y)
         .attr('x2', adjustedTargetX)
         .attr('y2', adjustedTargetY)
-        .attr('stroke', gradientUrl)
-        .attr('stroke-width', 1.5)
+        .attr('stroke', strokeStyle)
+        .attr('stroke-width', strokeWidth)
         .attr('marker-end', 'url(#arrow)');
     });
   }
@@ -718,7 +732,8 @@ export class GraphRenderer {
       .attr('x', event.x)
       .attr('y', event.y + this.options.nodeRadius + 8);
     
-    // Update all edges
+    
+    // Update all non-highlighted edges
     this.updateAllEdgesAsync();
   }
   
@@ -726,6 +741,7 @@ export class GraphRenderer {
     console.log('=== onDragEnd called ===');
     // Reset cursor
     d3.select(event.sourceEvent.target).style('cursor', 'grab');
+    
     
     // Update the packed root coordinates to match current positions
     if (this.hierarchyRoot) {
@@ -768,7 +784,7 @@ export class GraphRenderer {
     const deltaX = event.x - groupPos.x;
     const deltaY = event.y - groupPos.y;
     
-    // Update the group position and move all children (this includes basic edge following)
+    // Update the group position and move all children
     this.moveGroupAndChildren(groupId, deltaX, deltaY);
     this.updateAllEdgesAsync();
   }
@@ -784,34 +800,9 @@ export class GraphRenderer {
       this.edgeUpdateController = null;
     }
     
+    
     // Do a final edge update to ensure everything is accurate
     this.updateAllEdgesAsync();
-    
-    // Sync hierarchyRoot with current group positions before re-rendering
-    if (this.hierarchyRoot) {
-      console.log('Syncing group positions to hierarchyRoot...');
-      
-      // Update all positions in hierarchyRoot to match current drag positions
-      this.hierarchyRoot.descendants().forEach(node => {
-        if (node.data.isGroup) {
-          const groupPos = this.groupPositions.get(node.data.id);
-          if (groupPos) {
-            // console.log(`Syncing group ${node.data.id}: (${node.x}, ${node.y}) -> (${groupPos.x - 25}, ${groupPos.y - 25})`);
-            node.x = groupPos.x - 25;
-            node.y = groupPos.y - 25;
-          }
-        } else if (!node.data.isVirtual) {
-          const nodePos = this.nodePositions.get(node.data.id);
-          if (nodePos) {
-            node.x = nodePos.x - 25;
-            node.y = nodePos.y - 25;
-          }
-        }
-      });
-      
-      console.log('Re-rendering edges...');
-      this.renderEdges(this.hierarchyRoot);
-    }
   }
   
   /**
@@ -896,103 +887,39 @@ export class GraphRenderer {
    * Internal method to do the actual edge updates (extracted from sync method)
    */
   doAllEdgesUpdate() {
-    if (!this.data.edges) return;
+    if (!this.data.edges || !this.hierarchyRoot) return;
     
-    // Build current group positions for segment calculation
-    const { applicationGroups, clusterGroups } = this.getCurrentGroupPositions();
+    console.log(`EdgeUpdate: Re-rendering all edges with current positions`);
     
-    // Update all edges
-    this.edgeLayer.selectAll('line.edge')
-      .each((d, i, nodes) => {
-        const element = d3.select(nodes[i]);
-        const source = element.attr('data-source');
-        const target = element.attr('data-target');
-        
-        // Get updated positions
-        const sourcePos = this.nodePositions.get(source);
-        const targetPos = this.nodePositions.get(target);
-        
-        if (sourcePos && targetPos) {
-          // Calculate adjusted coordinates using helper
-          const coords = this.calculateAdjustedEdgeCoordinates(sourcePos, targetPos);
-          
-          // Update line coordinates
-          element
-            .attr('x1', coords.x1)
-            .attr('y1', coords.y1)
-            .attr('x2', coords.x2)
-            .attr('y2', coords.y2);
-          
-          // Recalculate segments
-          const edgeId = element.attr('data-edge-id');
-          if (edgeId) {
-            // Find home apps and clusters for this edge
-            const homeApps = new Set();
-            const homeClusters = new Set();
-            
-            for (const app of applicationGroups) {
-              const sourceDist = Math.sqrt((sourcePos.x - app.x) ** 2 + (sourcePos.y - app.y) ** 2);
-              const targetDist = Math.sqrt((coords.x2 - app.x) ** 2 + (coords.y2 - app.y) ** 2);
-              if (sourceDist <= app.r || targetDist <= app.r) {
-                homeApps.add(app.id);
-              }
-            }
-            
-            for (const cluster of clusterGroups) {
-              const sourceDist = Math.sqrt((sourcePos.x - cluster.x) ** 2 + (sourcePos.y - cluster.y) ** 2);
-              const targetDist = Math.sqrt((coords.x2 - cluster.x) ** 2 + (coords.y2 - cluster.y) ** 2);
-              if (sourceDist <= cluster.r || targetDist <= cluster.r) {
-                homeClusters.add(cluster.id);
-              }
-            }
-            
-            // Create adjusted position map
-            const adjustedPositionMap = new Map();
-            adjustedPositionMap.set(source, sourcePos);
-            adjustedPositionMap.set(target, { x: coords.x2, y: coords.y2 });
-            
-            // Create filter function
-            const isUnrelatedGroupFilter = (point, allGroups) => {
-              for (const appGroup of applicationGroups) {
-                if (EdgeUtils.pointInCircle(point, appGroup)) {
-                  if (!homeApps.has(appGroup.id)) return true;
-                }
-              }
-              for (const clusterGroup of clusterGroups) {
-                if (EdgeUtils.pointInCircle(point, clusterGroup)) {
-                  if (!homeClusters.has(clusterGroup.id)) return true;
-                }
-              }
-              return false;
-            };
-            
-            // Calculate segments
-            const edge = { source, target };
-            const segments = EdgeUtils.calculateEdgeSegments(
-              edge,
-              adjustedPositionMap,
-              [...applicationGroups, ...clusterGroups],
-              isUnrelatedGroupFilter
-            );
-            
-            // Convert to gradient stops
-            const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
-            
-            // Recreate gradient
-            const gradientUrl = this.createEdgeGradient(
-              edgeId,
-              gradientStops,
-              coords.x1,
-              coords.y1,
-              coords.x2,
-              coords.y2
-            );
-            
-            // Update stroke
-            element.attr('stroke', gradientUrl);
-          }
+    // Sync current drag positions back to hierarchyRoot before rendering
+    this.syncCurrentPositionsToHierarchy();
+    
+    // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
+    this.renderEdges(this.hierarchyRoot);
+  }
+
+  /**
+   * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
+   */
+  syncCurrentPositionsToHierarchy() {
+    if (!this.hierarchyRoot) return;
+    
+    this.hierarchyRoot.descendants().forEach(node => {
+      if (node.data.isGroup && !node.data.isVirtual) {
+        const groupPos = this.groupPositions.get(node.data.id);
+        if (groupPos) {
+          node.x = groupPos.x - 25; // Remove offset used in rendering
+          node.y = groupPos.y - 25;
+          node.r = groupPos.r;
         }
-      });
+      } else if (!node.data.isGroup && !node.data.isVirtual) {
+        const nodePos = this.nodePositions.get(node.data.id);
+        if (nodePos) {
+          node.x = nodePos.x - 25; // Remove offset used in rendering
+          node.y = nodePos.y - 25;
+        }
+      }
+    });
   }
 
   /**
@@ -1037,11 +964,11 @@ export class GraphRenderer {
     return { applicationGroups, clusterGroups };
   }
 
-  
+
   /**
    * Get connected nodes and edges for a given node ID
    * @param {string} nodeId - ID of the node to find connections for
-   * @returns {Object} - Object with connected nodes Set and edge indices Array
+   * @returns {Object} - Object with connected nodes Set and edge keys Array
    */
   getConnectedNodes(nodeId) {
     const connectedNodes = new Set([nodeId]); // Include the node itself
@@ -1049,13 +976,13 @@ export class GraphRenderer {
 
     if (!this.data.edges) return { nodes: connectedNodes, edges: connectedEdges };
 
-    this.data.edges.forEach((edge, index) => {
+    this.data.edges.forEach((edge) => {
       if (edge.source === nodeId) {
         connectedNodes.add(edge.target);
-        connectedEdges.push(index);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
       } else if (edge.target === nodeId) {
         connectedNodes.add(edge.source);
-        connectedEdges.push(index);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
       }
     });
 
@@ -1091,7 +1018,7 @@ export class GraphRenderer {
 
     // Update highlighted elements tracking
     allConnectedNodes.forEach(id => this.highlightedElements.nodes.add(id));
-    allConnectedEdges.forEach(index => this.highlightedElements.edges.add(index));
+    allConnectedEdges.forEach(edgeKey => this.highlightedElements.edgeKeys.add(edgeKey));
 
     // Apply visual highlighting to nodes
     const selectedNodeIds = this.selectedNodeIds; // Capture context for use in .each()
@@ -1139,9 +1066,13 @@ export class GraphRenderer {
 
     // Apply highlighting to connected edges
     this.edgeLayer.selectAll('.edge')
-      .each(function(d, i) {
-        if (allConnectedEdges.includes(i)) {
-          const edge = d3.select(this);
+      .each(function() {
+        const edge = d3.select(this);
+        const source = edge.attr('data-source');
+        const target = edge.attr('data-target');
+        const edgeKey = `${source}-${target}`;
+        
+        if (allConnectedEdges.includes(edgeKey)) {
           // Store original stroke properties if not already stored
           if (!edge.attr('data-original-stroke')) {
             edge.attr('data-original-stroke', edge.attr('stroke'))
@@ -1223,7 +1154,7 @@ export class GraphRenderer {
     // Clear selection state
     this.selectedNodeIds.clear();
     this.highlightedElements.nodes.clear();
-    this.highlightedElements.edges.clear();
+    this.highlightedElements.edgeKeys.clear();
   }
 
   /**
@@ -1263,6 +1194,7 @@ export class GraphRenderer {
     
     // Reset all node positions to original
     this.resetNodePositions();
+    this.fitToView(this.hierarchyRoot);
   }
   
   /**

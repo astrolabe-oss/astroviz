@@ -16,18 +16,23 @@
 * [x] arrow heads | Mon, September 8
 * [x] refactor graphRenderer.js | Mon, September 8
 * [x] remove g6test.vue and button switcher | Mon, September 8
-* [ ] leaf nodes offset for label collision
-* [ ] edges - render on drag
+* [x] fix node size | Mon, September 8
+* [x] detail view | Mon, September 8
+* [x] edges - render on drag | Mon, September 8
+* [x] highlight | Tues, September 9
+* [~] highlight on drag
 * [ ] filters
-* [ ] detail view
-* [ ] highlight
-* [ ] highlight on drag
-* [ ] position root leafs radially
-* [ ] node labels offset -y
-* [ ] re-install package.json removing g6
+* [ ] reset button broken
+* [ ] bug: edge calculation in-out?
+* [ ] getEdgeSegmentsForUpdate unused?
 
 ## Bonus Features
 * [ ] collapse expand groups
+* [ ] leaf nodes offset for label collision
+* [ ] position root leafs radially
+* [ ] data impedence mismatch d.data.data
+* [ ] re-install package.json removing g6
+* [ ] node labels offset -y
 
 ## Not sure
 * [x] sub-connections missing in app view
