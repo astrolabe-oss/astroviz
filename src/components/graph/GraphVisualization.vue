@@ -27,6 +27,11 @@ export default {
     nodeColors: {
       type: Object,
       required: true
+    },
+    // Set of node IDs that should be highlighted (from filters)
+    highlightedNodeIds: {
+      type: Set,
+      default: () => new Set()
     }
   },
 
@@ -58,6 +63,16 @@ export default {
         this.updateGraph(newData);
       },
       deep: true
+    },
+    
+    highlightedNodeIds: {
+      handler(newHighlighted) {
+        console.log('HighlightedNodeIds changed, updating filter highlights');
+        if (this.graph) {
+          this.graph.setFilterHighlights(newHighlighted);
+        }
+      },
+      immediate: true
     }
   },
 
