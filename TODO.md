@@ -21,10 +21,9 @@
 * [x] edges - render on drag | Mon, September 8
 * [x] highlight | Tues, September 9
 * [x] highlight on drag | Tues, September 9
-* [ ] filters
-* [ ] reset button broken
-* [ ] bug: edge calculation in-out?
-* [ ] getEdgeSegmentsForUpdate unused?
+* [x] reset button broken | Tues, September 9
+* [x] getEdgeSegmentsForUpdate unused? | Tues, September 9
+* [x] filters | Tues, September 9
 
 ## Bonus Features
 * [ ] collapse expand groups

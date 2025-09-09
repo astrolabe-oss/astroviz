@@ -24,6 +24,7 @@
         :graphData="graphData"
         :viewMode="viewMode"
         :nodeColors="nodeColors"
+        :highlightedNodeIds="highlightedNodeIds"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
@@ -71,6 +72,11 @@ export default {
       type: String,
       required: true,
       default: 'detailed'
+    },
+    // Set of node IDs that should be highlighted (from filters)
+    highlightedNodeIds: {
+      type: Set,
+      default: () => new Set()
     }
   },
 

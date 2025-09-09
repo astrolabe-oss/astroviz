@@ -32,6 +32,7 @@ export class GraphRenderer {
     
     // Selection and highlighting state
     this.selectedNodeIds = new Set();
+    this.filterHighlightedNodes = new Set(); // Track filter-based highlights
     this.highlightedElements = {
       nodes: new Set(),
       edgeKeys: new Set() // Store "source-target" keys for persistence
@@ -880,8 +881,8 @@ renderEdges(packedRoot) {
 
           // Apply scaling and styling - don't store transforms, just modify current
           const isDirectlySelected = selectedNodeIds.has(d.data.id);
-          const scale = isDirectlySelected ? 1.5 : 1.3;
-          const color = isDirectlySelected ? '#7030A0' : '#9966CC'; // Dark purple for selected, light purple for connected
+          const scale = isDirectlySelected ? 1.2 : 1.1;
+          const color = isDirectlySelected ? '#8A4FBE' : '#A875D4'; // Less intense purple for selected, lighter purple for connected
           
           node.attr('transform', `translate(${x},${y}) scale(${scale})`)
               .style('filter', 'drop-shadow(0 0 5px ' + color + ')')
@@ -932,50 +933,19 @@ renderEdges(packedRoot) {
   }
 
   /**
-   * Clear all node and edge highlighting
+   * Clear manual selection highlighting (preserve filter highlights)
    */
   clearHighlight() {
-    console.log("GraphRenderer: Clearing all highlights");
+    console.log("GraphRenderer: Clearing manual selection highlights");
 
-    // Restore original node appearance - only for highlighted nodes
-    this.nodeLayer.selectAll('.node.highlighted')
-      .each(function() {
-        const node = d3.select(this);
-        
-        // Remove scaling from current transform but keep position
-        const currentTransform = node.attr('transform') || 'translate(0,0)';
-        const translate = currentTransform.match(/translate\(([^)]+)\)/);
-        if (translate) {
-          const coords = translate[1].split(',');
-          const x = parseFloat(coords[0]);
-          const y = parseFloat(coords[1]);
-          // Reset to scale(1)
-          node.attr('transform', `translate(${x},${y}) scale(1)`);
-        }
+    // Clear ALL highlighted nodes from manual selection (including connected ones)
+    this.highlightedElements.nodes.forEach(nodeId => {
+      if (!this.filterHighlightedNodes.has(nodeId)) {
+        this.unhighlightNode(nodeId);
+      }
+    });
 
-        // Remove drop shadow and highlighting class
-        node.style('filter', null)
-            .classed('highlighted', false);
-
-        // Restore original color
-        const originalColor = node.attr('data-original-color');
-        if (originalColor) {
-          const svgIcon = node.select('svg');
-          svgIcon.style('color', originalColor);
-
-          // Restore Unknown node special styling
-          const d = d3.select(this).datum();
-          if (d.data?.type === 'Unknown') {
-            svgIcon.select('circle').attr('fill', '#F9C96E'); // Restore original orange
-            svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
-          }
-
-          // Clear stored color data
-          node.attr('data-original-color', null);
-        }
-      });
-
-    // Clear selection state first
+    // Clear selection state
     this.selectedNodeIds.clear();
     this.highlightedElements.nodes.clear();
     this.highlightedElements.edgeKeys.clear();
@@ -993,6 +963,125 @@ renderEdges(packedRoot) {
    */
   selectNodeById(nodeId, appendToSelection = false) {
     this.highlightNode(nodeId, appendToSelection);
+  }
+
+  /**
+   * Apply visual highlighting to a single node (reused by both manual and filter highlighting)
+   * @param {string} nodeId - Node ID to highlight
+   * @param {boolean} isDirectlySelected - Whether this node is directly selected (vs connected)
+   */
+  applyNodeHighlighting(nodeId, isDirectlySelected = true) {
+    const nodeElement = this.nodeLayer.select(`#node-${nodeId}`);
+    if (nodeElement.empty()) return;
+
+    nodeElement.each(function(d) {
+      const node = d3.select(this);
+      
+      // Get current transform and apply scaling to it
+      const currentTransform = node.attr('transform') || 'translate(0,0)';
+      const translate = currentTransform.match(/translate\(([^)]+)\)/);
+      if (translate) {
+        const coords = translate[1].split(',');
+        const x = parseFloat(coords[0]);
+        const y = parseFloat(coords[1]);
+
+        // Apply scaling and styling (less intense)
+        const scale = isDirectlySelected ? 1.2 : 1.1;
+        const color = isDirectlySelected ? '#8A4FBE' : '#A875D4';
+        
+        node.attr('transform', `translate(${x},${y}) scale(${scale})`)
+            .style('filter', 'drop-shadow(0 0 5px ' + color + ')')
+            .classed('highlighted', true);
+
+        // Update SVG icon color
+        const svgIcon = node.select('svg');
+        if (!svgIcon.empty()) {
+          // Store original color if not already stored
+          if (!node.attr('data-original-color')) {
+            const originalColor = svgIcon.style('color');
+            node.attr('data-original-color', originalColor);
+          }
+          
+          svgIcon.style('color', color);
+
+          // Handle Unknown node special styling
+          if (d.data.type === 'Unknown') {
+            svgIcon.select('circle').attr('fill', color);
+            svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
+          }
+        }
+      }
+    });
+  }
+
+  /**
+   * Remove visual highlighting from a single node
+   * @param {string} nodeId - Node ID to unhighlight
+   */
+  unhighlightNode(nodeId) {
+    const nodeElement = this.nodeLayer.select(`#node-${nodeId}`);
+    if (nodeElement.empty()) return;
+
+    nodeElement.each(function(d) {
+      const node = d3.select(this);
+      
+      // Remove scaling from current transform but keep position
+      const currentTransform = node.attr('transform') || 'translate(0,0)';
+      const translate = currentTransform.match(/translate\(([^)]+)\)/);
+      if (translate) {
+        const coords = translate[1].split(',');
+        const x = parseFloat(coords[0]);
+        const y = parseFloat(coords[1]);
+        // Reset to scale(1)
+        node.attr('transform', `translate(${x},${y}) scale(1)`);
+      }
+
+      // Remove drop shadow and highlighting class
+      node.style('filter', null)
+          .classed('highlighted', false);
+
+      // Restore original color
+      const originalColor = node.attr('data-original-color');
+      if (originalColor) {
+        const svgIcon = node.select('svg');
+        svgIcon.style('color', originalColor);
+
+        // Restore Unknown node special styling
+        if (d.data?.type === 'Unknown') {
+          svgIcon.select('circle').attr('fill', '#F9C96E');
+          svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
+        }
+
+        // Clear stored color data
+        node.attr('data-original-color', null);
+      }
+    });
+  }
+
+  /**
+   * Set filter-based highlighting for nodes (reuses existing highlight styling)
+   * @param {Set} filterHighlightedNodeIds - Set of node IDs to highlight via filters
+   */
+  setFilterHighlights(filterHighlightedNodeIds) {
+    console.log("GraphRenderer: Setting filter highlights for", filterHighlightedNodeIds.size, "nodes");
+    
+    // Store current filter highlights and clear previous ones
+    const previousFilterHighlights = new Set(this.filterHighlightedNodes || []);
+    this.filterHighlightedNodes = new Set(filterHighlightedNodeIds);
+    
+    // Clear highlights that are no longer in the filter set (but preserve manual selections)
+    previousFilterHighlights.forEach(nodeId => {
+      if (!filterHighlightedNodeIds.has(nodeId) && !this.selectedNodeIds.has(nodeId)) {
+        this.unhighlightNode(nodeId);
+      }
+    });
+
+    // Apply highlighting to new filter matches (reuse existing highlight method)
+    filterHighlightedNodeIds.forEach(nodeId => {
+      if (!this.selectedNodeIds.has(nodeId)) {
+        this.applyNodeHighlighting(nodeId, true); // Filter highlights get same treatment as directly selected
+      }
+    });
   }
 
   /**
