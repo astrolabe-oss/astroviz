@@ -515,76 +515,12 @@ export class GraphRenderer {
   /**
    * Render edges
    */
-  renderEdges(packedRoot) {
+renderEdges(packedRoot) {
     if (!this.data.edges) return;
     
-    // Create position map for nodes
-    const positionMap = new Map();
-    packedRoot.descendants().forEach(d => {
-      if (!d.data.isVirtual) {
-        positionMap.set(d.data.id, { x: d.x + 25, y: d.y + 25 });
-      }
-    });
-    
-    // Create group circles map for intersection detection
-    // Separate application and cluster groups
-    const applicationGroups = [];
-    const clusterGroups = [];
-    const allGroupCircles = [];
-    
-    // Build maps of which nodes belong to which groups
-    const nodeToAppMap = new Map();
-    const nodeToClusterMap = new Map();
-    
-    packedRoot.descendants().forEach(d => {
-      if (d.data.isGroup && !d.data.isVirtual) {
-        const circle = {
-          id: d.data.id,
-          x: d.x + 25,
-          y: d.y + 25,
-          r: d.r,
-          isApp: d.data.id.startsWith('app-'),
-          isCluster: d.data.id.startsWith('cluster')
-        };
-        allGroupCircles.push(circle);
-        
-        // Track application groups
-        if (circle.isApp) {
-          applicationGroups.push(circle);
-          
-          // Map all child nodes to this application
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToAppMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
-          }
-        }
-        
-        // Track cluster groups
-        if (circle.isCluster) {
-          clusterGroups.push(circle);
-          
-          // Map all child nodes to this cluster
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToClusterMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
-          }
-        }
-      }
-    });
+    // Extract rendering data using utility method
+    const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } = 
+      EdgeUtils.extractRenderingData(packedRoot);
     
     // Filter edges to only those with both endpoints visible
     const visibleEdges = this.data.edges.filter(edge => {
@@ -596,18 +532,13 @@ export class GraphRenderer {
     
     // Create single gradient edges using segment data
     visibleEdges.forEach((edge, edgeIndex) => {
-      // Get source and target positions FIRST
+      // Get source and target positions
       const sourcePos = positionMap.get(edge.source);
       const targetPos = positionMap.get(edge.target);
       
-      // Calculate adjusted endpoint (shorten line to make arrow visible)
-      const dx = targetPos.x - sourcePos.x;
-      const dy = targetPos.y - sourcePos.y;
-      const length = Math.sqrt(dx * dx + dy * dy);
-      const shortenBy = this.options.nodeRadius * 0.7;  // Less aggressive - stop closer to node
-      const ratio = (length - shortenBy) / length;
-      const adjustedTargetX = sourcePos.x + dx * ratio;
-      const adjustedTargetY = sourcePos.y + dy * ratio;
+      // Calculate adjusted endpoint using utility method
+      const shortenBy = this.options.nodeRadius * 0.7;
+      const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
       
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
@@ -621,42 +552,17 @@ export class GraphRenderer {
         strokeWidth = 3;
       } else {
         // Use gradient segments for non-highlighted edges
-        // Find home applications and clusters for this edge
-        const homeApps = new Set();
-        const homeClusters = new Set();
-        
-        const sourceApp = nodeToAppMap.get(edge.source);
-        const targetApp = nodeToAppMap.get(edge.target);
-        if (sourceApp) homeApps.add(sourceApp);
-        if (targetApp) homeApps.add(targetApp);
-        
-        const sourceCluster = nodeToClusterMap.get(edge.source);
-        const targetCluster = nodeToClusterMap.get(edge.target);
-        if (sourceCluster) homeClusters.add(sourceCluster);
-        if (targetCluster) homeClusters.add(targetCluster);
+        // Find home groups using utility method
+        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
         
         // Create adjusted position map for segment calculation
         const adjustedPositionMap = new Map(positionMap);
         adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
         
-        // Create filter function for unrelated groups
-        const isUnrelatedGroupFilter = (point, allGroups) => {
-          // Check if inside any unrelated application
-          for (const appGroup of applicationGroups) {
-            if (EdgeUtils.pointInCircle(point, appGroup)) {
-              if (!homeApps.has(appGroup.id)) return true;
-            }
-          }
-          
-          // Check if inside any unrelated cluster
-          for (const clusterGroup of clusterGroups) {
-            if (EdgeUtils.pointInCircle(point, clusterGroup)) {
-              if (!homeClusters.has(clusterGroup.id)) return true;
-            }
-          }
-          
-          return false;
-        };
+        // Create filter function using utility method
+        const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
+          homeApps, homeClusters, applicationGroups, clusterGroups
+        );
         
         const segments = EdgeUtils.calculateEdgeSegments(
           edge, 

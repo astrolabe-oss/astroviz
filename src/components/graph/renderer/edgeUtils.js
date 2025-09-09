@@ -199,37 +199,156 @@ export class EdgeUtils {
     return (dx * dx + dy * dy) <= (circle.r * circle.r);
   }
 
+
   /**
-   * Check if a line segment intersects with a circle
-   * @param {Object} p1 - Start point {x, y}
-   * @param {Object} p2 - End point {x, y}
-   * @param {Object} circle - Circle {x, y, r}
-   * @returns {boolean} True if line intersects circle
+   * Extract rendering data from D3 hierarchy for edge processing
+   * @param {Object} packedRoot - D3 packed hierarchy root
+   * @returns {Object} Object with position maps and group data
    */
-  static lineIntersectsCircle(p1, p2, circle) {
-    // Vector from p1 to p2
-    const dx = p2.x - p1.x;
-    const dy = p2.y - p1.y;
+  static extractRenderingData(packedRoot) {
+    // Create position map for nodes
+    const positionMap = new Map();
+    packedRoot.descendants().forEach(d => {
+      if (!d.data.isVirtual) {
+        positionMap.set(d.data.id, { x: d.x + 25, y: d.y + 25 });
+      }
+    });
     
-    // Vector from p1 to circle center
-    const fx = p1.x - circle.x;
-    const fy = p1.y - circle.y;
+    // Create group circles map for intersection detection
+    const applicationGroups = [];
+    const clusterGroups = [];
+    const nodeToAppMap = new Map();
+    const nodeToClusterMap = new Map();
     
-    // Quadratic equation coefficients for line-circle intersection
-    const a = dx * dx + dy * dy;
-    const b = 2 * (fx * dx + fy * dy);
-    const c = (fx * fx + fy * fy) - circle.r * circle.r;
+    // Build group data and node mappings
+    packedRoot.descendants().forEach(d => {
+      if (d.data.isGroup && !d.data.isVirtual) {
+        const circle = {
+          id: d.data.id,
+          x: d.x + 25,
+          y: d.y + 25,
+          r: d.r,
+          isApp: d.data.id.startsWith('app-'),
+          isCluster: d.data.id.startsWith('cluster')
+        };
+        
+        // Track application groups
+        if (circle.isApp) {
+          applicationGroups.push(circle);
+          
+          // Map all child nodes to this application
+          if (d.children) {
+            const mapChildNodes = (node) => {
+              if (!node.data.isGroup) {
+                nodeToAppMap.set(node.data.id, d.data.id);
+              }
+              if (node.children) {
+                node.children.forEach(mapChildNodes);
+              }
+            };
+            d.children.forEach(mapChildNodes);
+          }
+        }
+        
+        // Track cluster groups
+        if (circle.isCluster) {
+          clusterGroups.push(circle);
+          
+          // Map all child nodes to this cluster
+          if (d.children) {
+            const mapChildNodes = (node) => {
+              if (!node.data.isGroup) {
+                nodeToClusterMap.set(node.data.id, d.data.id);
+              }
+              if (node.children) {
+                node.children.forEach(mapChildNodes);
+              }
+            };
+            d.children.forEach(mapChildNodes);
+          }
+        }
+      }
+    });
     
-    const discriminant = b * b - 4 * a * c;
+    return {
+      positionMap,
+      applicationGroups,
+      clusterGroups,
+      nodeToAppMap,
+      nodeToClusterMap
+    };
+  }
+
+  /**
+   * Shorten edge coordinates to accommodate arrow markers
+   * @param {Object} sourcePos - Source position {x, y}
+   * @param {Object} targetPos - Target position {x, y}
+   * @param {number} shortenBy - Amount to shorten by
+   * @returns {Object} Adjusted coordinates {x1, y1, x2, y2}
+   */
+  static shortenEdgeForArrow(sourcePos, targetPos, shortenBy) {
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    const ratio = (length - shortenBy) / length;
     
-    if (discriminant < 0) return false; // No intersection
+    return {
+      x1: sourcePos.x,
+      y1: sourcePos.y,
+      x2: sourcePos.x + dx * ratio,
+      y2: sourcePos.y + dy * ratio
+    };
+  }
+
+  /**
+   * Find home groups for an edge based on node mappings
+   * @param {Object} edge - Edge with source and target
+   * @param {Map} nodeToAppMap - Map of node to application group
+   * @param {Map} nodeToClusterMap - Map of node to cluster group
+   * @returns {Object} Object with homeApps and homeClusters Sets
+   */
+  static findHomeGroups(edge, nodeToAppMap, nodeToClusterMap) {
+    const homeApps = new Set();
+    const homeClusters = new Set();
     
-    // Check if intersection points are within the line segment
-    const sqrt_discriminant = Math.sqrt(discriminant);
-    const t1 = (-b - sqrt_discriminant) / (2 * a);
-    const t2 = (-b + sqrt_discriminant) / (2 * a);
+    const sourceApp = nodeToAppMap.get(edge.source);
+    const targetApp = nodeToAppMap.get(edge.target);
+    if (sourceApp) homeApps.add(sourceApp);
+    if (targetApp) homeApps.add(targetApp);
     
-    // Intersection occurs if either t value is between 0 and 1 (within segment)
-    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1);
+    const sourceCluster = nodeToClusterMap.get(edge.source);
+    const targetCluster = nodeToClusterMap.get(edge.target);
+    if (sourceCluster) homeClusters.add(sourceCluster);
+    if (targetCluster) homeClusters.add(targetCluster);
+    
+    return { homeApps, homeClusters };
+  }
+
+  /**
+   * Create filter function for unrelated groups
+   * @param {Set} homeApps - Set of home application group IDs
+   * @param {Set} homeClusters - Set of home cluster group IDs
+   * @param {Array} applicationGroups - Array of application group circles
+   * @param {Array} clusterGroups - Array of cluster group circles
+   * @returns {Function} Filter function (point, allGroups) => boolean
+   */
+  static createUnrelatedGroupFilter(homeApps, homeClusters, applicationGroups, clusterGroups) {
+    return (point, allGroups) => {
+      // Check if inside any unrelated application
+      for (const appGroup of applicationGroups) {
+        if (this.pointInCircle(point, appGroup)) {
+          if (!homeApps.has(appGroup.id)) return true;
+        }
+      }
+      
+      // Check if inside any unrelated cluster
+      for (const clusterGroup of clusterGroups) {
+        if (this.pointInCircle(point, clusterGroup)) {
+          if (!homeClusters.has(clusterGroup.id)) return true;
+        }
+      }
+      
+      return false;
+    };
   }
 }
