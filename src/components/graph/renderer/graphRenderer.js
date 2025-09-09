@@ -173,19 +173,17 @@ export class GraphRenderer {
     
     console.log('Raw vertices data:', vertices);
     
-    // Create vertex map
+    // Create vertex map - flatten the structure so D3 hierarchy will have clean d.data access
     const vertexMap = new Map();
     
     Object.entries(vertices).forEach(([id, vertex]) => {
-      // Determine if this is a group based on whether it has child elements
-      // Groups are marked with type === 'group' from GraphVisualization.vue
-      const isGroup = vertex.type === 'group';
-      
+      // Create a node with ALL vertex properties directly on it
+      // This way, after D3 hierarchy processing, properties will be at d.data.*
       vertexMap.set(id, {
-        id,
-        data: vertex,        // Preserve original vertex data
-        children: [],
-        isGroup: isGroup
+        ...vertex,           // Spread ALL vertex properties directly
+        id,                  // Ensure id is set
+        children: [],        // Initialize children array
+        isGroup: vertex.type === 'group'  // Add convenience property
       });
     });
     
@@ -198,11 +196,10 @@ export class GraphRenderer {
       }
     });
     
-    // Find roots
+    // Find roots (nodes with no parentId)
     const roots = [];
     vertexMap.forEach(vertex => {
-      const hasParent = Object.values(vertices).some(v => v.parentId === vertex.id);
-      if (!vertex.data.parentId) {
+      if (!vertex.parentId) {
         roots.push(vertex);
       }
     });
@@ -213,6 +210,7 @@ export class GraphRenderer {
     } else {
       return {
         id: 'virtual-root',
+        type: 'group',       // Use type instead of just isGroup
         children: roots,
         isGroup: true,
         isVirtual: true
@@ -310,8 +308,8 @@ export class GraphRenderer {
       .attr('cx', d => d.x + 25) // Offset for margin
       .attr('cy', d => d.y + 25)
       .attr('r', d => d.r)
-      .attr('fill', d => d.data.data?.fill || 'none')
-      .attr('stroke', d => d.data.data?.stroke || '#5B8FF9')
+      .attr('fill', d => d.data?.fill || 'none')
+      .attr('stroke', d => d.data?.stroke || '#5B8FF9')
       .attr('stroke-width', 2)
       .attr('stroke-dasharray', d => {
         // Different dash patterns based on hierarchy level
@@ -334,7 +332,7 @@ export class GraphRenderer {
     // Add label backgrounds
     groupLabelElements.each(function(d) {
       const group = d3.select(this);
-      const labelText = d.data.data?.label || d.data.id;
+      const labelText = d.data?.label || d.data.id;
       
       // Create temporary text to measure width
       const tempText = group.append('text')
@@ -411,7 +409,7 @@ export class GraphRenderer {
         
         // Emit click event with node data
         if (this.options.onNodeClick) {
-          this.options.onNodeClick(d.data.data, event);
+          this.options.onNodeClick(d.data, event);
         }
       });
 
@@ -420,9 +418,8 @@ export class GraphRenderer {
     nodeElements.each(function(d) {
       const group = d3.select(this);
       
-      // Since we spread all vertex data at root level in GraphVisualization.vue, 
-      // the type is now directly accessible on d.data.data
-      const nodeType = d.data.data?.type || 'Unknown';
+      // Node type is now directly accessible on d.data
+      const nodeType = d.data?.type || 'Unknown';
       
       // Get the appropriate icon SVG (matching the old code exactly)
       const iconSvg = networkIcons[nodeType] || networkIcons.default;
@@ -444,7 +441,7 @@ export class GraphRenderer {
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
           .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.data.data?.fill || '#5B8FF9'); // Use node color
+          .style('color', d.data?.fill || '#5B8FF9'); // Use node color
         
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
@@ -465,7 +462,7 @@ export class GraphRenderer {
       .style('fill', '#333')
       .style('font-weight', 'normal')
       .style('pointer-events', 'none')
-      .text(d => this.getNodeLabel(d.data.data) || d.data.id);
+      .text(d => this.getNodeLabel(d.data) || d.data.id);
     
     // Add drag behavior
     const dragBehavior = d3.drag()
@@ -900,7 +897,7 @@ renderEdges(packedRoot) {
             svgIcon.style('color', color);
 
             // Handle Unknown node special styling
-            if (d.data.type === 'Unknown') {
+            if (d.data?.type === 'Unknown') {
               svgIcon.select('circle').attr('fill', color);
               svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
             }

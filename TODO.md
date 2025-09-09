@@ -24,13 +24,13 @@
 * [x] reset button broken | Tues, September 9
 * [x] getEdgeSegmentsForUpdate unused? | Tues, September 9
 * [x] filters | Tues, September 9
-* [ ] position root leafs radially
+* [x] data impedence mismatch d.data.data | Tues, September 9
+* [~] position root leafs radially
 * [ ] re-install package.json removing g6
 * [ ] leaf nodes offset for label collision
 
 ## Bonus Features
 * [ ] collapse expand groups
-* [ ] data impedence mismatch d.data.data
 * [ ] node labels offset -y
 
 ## Not sure
