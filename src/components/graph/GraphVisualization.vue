@@ -155,14 +155,31 @@ export default {
       const vertices = {};
       const edges = [];
 
-      // Create private network group if we have private nodes
+      // Create Internet Boundary as the root container for private network
       if (privateNodes.length > 0) {
+        vertices['internet-boundary'] = {
+          label: 'Internet Boundary',
+          type: 'group',
+          parentId: null,
+          style: {
+            fill: 'none',
+            stroke: '#4A98E3',
+            strokeDasharray: '10,6,2,6',
+            strokeWidth: 4  // Make it thicker for visibility
+          }
+        };
+
+        // Create private network group inside Internet Boundary
         vertices['private-network'] = {
           label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
           type: 'group',
-          parentId: null,
-          fill: '#f0f0f0',
-          stroke: '#888'
+          parentId: 'internet-boundary',
+          style: {
+            fill: '#f0f0f0',
+            stroke: '#888',
+            strokeWidth: 2,
+            opacity: 0.6
+          }
         };
       }
 
@@ -175,8 +192,12 @@ export default {
           label: `Cluster: ${clusterName} (${appCount} apps)`,
           type: 'group',
           parentId: 'private-network',
-          fill: '#E8F4FD',
-          stroke: '#5B8FF9'
+          style: {
+            fill: '#E8F4FD',
+            stroke: '#5B8FF9',
+            strokeWidth: 2,
+            opacity: 0.6
+          }
         };
 
         // Create application groups within clusters
@@ -187,8 +208,12 @@ export default {
             label: `App: ${appName} (${appNodes.length} nodes)`,
             type: 'group',
             parentId: clusterGroupId,
-            fill: '#FFE6CC',
-            stroke: '#FF9933'
+            style: {
+              fill: '#FFE6CC',
+              stroke: '#FF9933',
+              strokeWidth: 2,
+              opacity: 0.6
+            }
           };
 
           // Add nodes to their application groups
@@ -196,7 +221,9 @@ export default {
             vertices[id] = {
               ...vertex,  // Include all original vertex data at root level
               parentId: appGroupId,
-              fill: this.getNodeColor(vertex.type)
+              style: {
+                fill: this.getNodeColor(vertex.type)
+              }
             };
           });
         });
@@ -207,7 +234,9 @@ export default {
         vertices[id] = {
           ...vertex,  // Include all original vertex data at root level
           parentId: null,
-          fill: this.getNodeColor(vertex.type)
+          style: {
+            fill: this.getNodeColor(vertex.type)
+          }
         };
       });
 
@@ -228,7 +257,7 @@ export default {
 
       // Emit rendering complete
       this.$emit('rendering-complete', {
-        nodeCount: Object.keys(vertices).filter(id => vertices[id].type === 'node').length,
+        nodeCount: Object.keys(vertices).filter(id => vertices[id].type !== 'group').length,
         linkCount: edges.length
       });
     },

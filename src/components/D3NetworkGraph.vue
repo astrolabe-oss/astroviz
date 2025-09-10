@@ -81,16 +81,13 @@ export default {
         'Compute': '#5DCAD1', // Light blue like in the image
         'Resource': '#74B56D', // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
-        'Public IP': '#E0E0E0', // Keep Public IP in legend but not as a node type
         'Unknown': '#F9C96E', // Orange for unknown nodes
-        'Private Network': 'rgba(240, 240, 245, 0.8)', // Moved to annotations section in legend
-        'Internet Boundary': '#4A98E3', // Blue color for Internet Boundary
       },
 
       isRendering: false,
       nodeCount: 0,
       edgeCount: 0,
-      showStats: false,
+      showStats: true,
       currentZoomLevel: 1
     };
   },

@@ -29,16 +29,19 @@
 * [x] re-install package.json removing g6 | Tues, September 9
 * [x] remove node labels, add tool tip | Tues, September 9
 * [x] remove application view, keep app panel
-* [~] applications? should not display?
+* [x] applications? should not display? | Wed, September 10
+* [x] viewport fix | Wed, September 10
+* [x] internet boundary root grouping | Wed, September 10
+* [ ] application groups clickable
+* [ ] are we respecting styling on gv.vue data?
+* [ ] public ip
 
 ## Bonus Features
 * [ ] collapse expand groups
-* [ ] node labels offset -y
 
 ## Not sure
 * [x] sub-connections missing in app view
 * [x] node details: components sections (sub graph?)
-* [ ] subgraph, circle packing?
 
 # BUGS
 * [ ] App View: highlighting broken

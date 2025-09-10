@@ -3,6 +3,28 @@ import networkIcons from '../../networkIcons';
 import { EdgeUtils } from './edgeUtils.js';
 
 /**
+ * Supported style properties for graph elements
+ * Each property maps to an SVG attribute and has a default value
+ */
+const SUPPORTED_STYLES = {
+  fill: { attr: 'fill', default: 'none' },
+  stroke: { attr: 'stroke', default: '#5B8FF9' },
+  strokeWidth: { attr: 'stroke-width', default: 2 },
+  strokeDasharray: { attr: 'stroke-dasharray', default: null },
+  opacity: { attr: 'opacity', default: 0.6 }
+};
+
+/**
+ * Get default dash pattern based on node type/id
+ */
+function getDefaultDashPattern(node) {
+  if (node.data.id.startsWith('app')) return '3,3';        // Short dash for apps
+  if (node.data.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
+  if (node.data.id === 'private-network') return '5,5';     // Default dash for private network
+  return null;  // No dash for others
+}
+
+/**
  * GraphRenderer - D3 hierarchical graph renderer with advanced edge styling
  * Renders vertices and edges with circle packing and complex edge interactions
  */
@@ -204,23 +226,23 @@ export class GraphRenderer {
       }
     });
     
-    // Separate private-network group from root leaf nodes for hybrid layout
-    const privateNetworkGroup = roots.find(node => node.id === 'private-network');
-    const rootLeafNodes = roots.filter(node => node.id !== 'private-network' && !node.isGroup);
-    const otherRootGroups = roots.filter(node => node.id !== 'private-network' && node.isGroup);
+    // Separate internet-boundary group from root leaf nodes for hybrid layout
+    const internetBoundaryGroup = roots.find(node => node.id === 'internet-boundary');
+    const rootLeafNodes = roots.filter(node => node.id !== 'internet-boundary' && !node.isGroup);
+    const otherRootGroups = roots.filter(node => node.id !== 'internet-boundary' && node.isGroup);
     
-    console.log(`Hierarchy separation: private-network=${!!privateNetworkGroup}, rootLeaves=${rootLeafNodes.length}, otherGroups=${otherRootGroups.length}`);
+    console.log(`Hierarchy separation: internet-boundary=${!!internetBoundaryGroup}, rootLeaves=${rootLeafNodes.length}, otherGroups=${otherRootGroups.length}`);
     
     // Store separation for hybrid layout calculation
     this.hybridLayout = {
-      privateNetworkGroup,
+      internetBoundaryGroup,
       rootLeafNodes,
       otherRootGroups
     };
     
     // For circle packing, exclude root leaf nodes - they'll be positioned radially
     const packedRoots = this.hybridLayout && this.hybridLayout.rootLeafNodes.length > 0 
-      ? roots.filter(node => node.id === 'private-network' || node.isGroup)
+      ? roots.filter(node => node.id === 'internet-boundary' || node.isGroup)
       : roots;
     
     console.log(`Hierarchy for packing: ${packedRoots.length} roots (excluded ${roots.length - packedRoots.length} root leaf nodes)`);
@@ -329,16 +351,16 @@ export class GraphRenderer {
     
     console.log(`Adding radial layout: ${rootLeafNodes.length} root leaves, ${otherRootGroups.length} other groups`);
     
-    // Find the private-network node in the packed hierarchy
-    const privateNetworkNode = packedRoot.descendants().find(d => d.data.id === 'private-network');
-    let privateNetworkRadius = 0;
+    // Find the internet-boundary node in the packed hierarchy
+    const internetBoundaryNode = packedRoot.descendants().find(d => d.data.id === 'internet-boundary');
+    let internetBoundaryRadius = 0;
     
-    if (privateNetworkNode) {
-      privateNetworkRadius = privateNetworkNode.r;
+    if (internetBoundaryNode) {
+      internetBoundaryRadius = internetBoundaryNode.r;
       
-      // Center the private network on the canvas
-      const offsetX = centerX - privateNetworkNode.x;
-      const offsetY = centerY - privateNetworkNode.y;
+      // Center the internet boundary on the canvas
+      const offsetX = centerX - internetBoundaryNode.x;
+      const offsetY = centerY - internetBoundaryNode.y;
       
       // Apply offset to all nodes in the packed hierarchy
       packedRoot.descendants().forEach(node => {
@@ -348,7 +370,7 @@ export class GraphRenderer {
     }
     
     // Position root leaf nodes in a ring around the private network
-    const ringRadius = privateNetworkRadius + 80; // 80px gap from private network edge
+    const ringRadius = internetBoundaryRadius + 80; // 80px gap from internet boundary edge
     const radialNodes = [];
     
     if (rootLeafNodes.length > 0) {
@@ -427,17 +449,26 @@ export class GraphRenderer {
       .attr('cx', d => d.x + 25) // Offset for margin
       .attr('cy', d => d.y + 25)
       .attr('r', d => d.r)
-      .attr('fill', d => d.data?.fill || 'none')
-      .attr('stroke', d => d.data?.stroke || '#5B8FF9')
-      .attr('stroke-width', 2)
-      .attr('stroke-dasharray', d => {
-        // Different dash patterns based on hierarchy level
-        if (d.data.id.startsWith('app')) return '3,3';        // Short dash for apps
-        if (d.data.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
-        return '5,5';                                          // Default dash for private network
-      })
-      .attr('opacity', 0.6)
       .style('cursor', 'grab');
+    
+    // Apply all supported styles from the style object
+    groupElements.each(function(d) {
+      const element = d3.select(this);
+      
+      Object.entries(SUPPORTED_STYLES).forEach(([styleProp, config]) => {
+        // Check for style in nested style object first, then fall back to legacy flat properties
+        let value = d.data?.style?.[styleProp] ?? d.data?.[styleProp] ?? config.default;
+        
+        // Special handling for strokeDasharray - use type-based defaults if not specified
+        if (styleProp === 'strokeDasharray' && !value && !d.data?.style?.strokeDasharray) {
+          value = getDefaultDashPattern(d);
+        }
+        
+        if (value !== null && value !== undefined) {
+          element.attr(config.attr, value);
+        }
+      });
+    });
     
     // Group labels with backgrounds (like old D3 force styling) - moved to label layer
     const groupLabelElements = this.labelLayer
@@ -455,7 +486,7 @@ export class GraphRenderer {
       
       // Create temporary text to measure width
       const tempText = group.append('text')
-        .attr('font-size', d.data.id === 'private-network' ? '16px' : 
+        .attr('font-size', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '16px' : 
                           d.data.id.startsWith('cluster') ? '14px' : '12px')
         .attr('font-weight', 'bold')
         .text(labelText)
@@ -480,10 +511,10 @@ export class GraphRenderer {
         .attr('class', 'group-label')
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .style('font-size', d.data.id === 'private-network' ? '16px' : 
+        .style('font-size', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '16px' : 
                            d.data.id.startsWith('cluster') ? '14px' : '12px')
         .style('font-weight', 'bold')
-        .style('fill', d.data.id === 'private-network' ? '#333' : '#555')
+        .style('fill', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '#333' : '#555')
         .style('pointer-events', 'none')
         .text(labelText);
     });
@@ -568,7 +599,7 @@ export class GraphRenderer {
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
           .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.data?.fill || '#5B8FF9'); // Use node color
+          .style('color', d.data?.style?.fill ?? d.data?.fill ?? '#5B8FF9'); // Use node color from style object
         
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
