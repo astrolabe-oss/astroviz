@@ -475,14 +475,17 @@ export default {
   color: #2c3e50;
   margin: 0;
   padding: 20px;
-  height: calc(100% - 40px);
-  min-height: calc(100vh - 40px);
+  height: 100vh;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
 }
 
 .header-row {
   display: flex;
   gap: 20px;
-  margin-bottom: 30px;
+  margin-bottom: 20px;
+  flex-shrink: 0;
 }
 
 .logo-container {
@@ -522,11 +525,12 @@ export default {
 
 .main-content {
   position: relative;
-  min-height: 80vh;
+  flex: 1;
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
+  display: flex;
 }
 
 .connection-overlay {

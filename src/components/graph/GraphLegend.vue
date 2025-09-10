@@ -151,7 +151,7 @@ export default {
 <style scoped>
 .legend {
   position: absolute;
-  bottom: 40px;
+  bottom: 20px;
   left: 10px;
   background-color: rgba(255, 255, 255, 0.9);
   padding: 10px;

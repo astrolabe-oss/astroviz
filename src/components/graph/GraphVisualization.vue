@@ -281,8 +281,8 @@ export default {
 
 <style>
 #graph-container {
-  width: 100vw;
-  height: 100vh;
+  width: 100%;
+  height: 100%;
   background-color: #f8f9fa;
   border: 1px solid #ccc;
 }
