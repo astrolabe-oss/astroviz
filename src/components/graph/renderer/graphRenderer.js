@@ -455,26 +455,43 @@ export class GraphRenderer {
         
         // Check if this is an application group
         if (d.data.id.startsWith('app-') && d.data.name) {
+          event.stopPropagation(); // Prevent event bubbling
+          event.preventDefault(); // Prevent default behavior
+          
           const appName = d.data.name;
+          
+          // Apply custom highlighting for application groups
+          this.highlightApplicationGroups(appName, event.shiftKey);
+          
+          // Set flag to skip next regular highlighting call
+          this._skipNextHighlight = true;
+          
+          console.log('Application highlighting applied, about to emit click event');
           
           // Look up application data from the map
           if (this.data?.applicationDataMap?.has(appName)) {
             const applicationData = this.data.applicationDataMap.get(appName);
             
+            // Mark this as an application group click to prevent standard highlighting
+            const applicationClickData = {
+              ...applicationData,
+              _isApplicationGroupClick: true
+            };
+            
             // Emit click event with application data instead of group data
             if (this.options.onNodeClick) {
-              this.options.onNodeClick(applicationData, event);
+              this.options.onNodeClick(applicationClickData, event);
             }
-            return;
+          } else {
+            // Fallback to group data if application data not found
+            if (this.options.onNodeClick) {
+              this.options.onNodeClick(d.data, event);
+            }
           }
+          return; // Always return for application groups to prevent further processing
         }
         
-        // Only show details for application groups, not cluster/boundary groups
-        if (d.data.id.startsWith('app-')) {
-          if (this.options.onNodeClick) {
-            this.options.onNodeClick(d.data, event);
-          }
-        }
+        // For other group types (cluster, boundary), do nothing - no details panel
       });
     
     // Apply all supported styles from the style object
@@ -1032,6 +1049,13 @@ renderEdges(packedRoot) {
   highlightNode(nodeId, appendToSelection = false) {
     console.log("GraphRenderer: Highlighting node", nodeId, "append =", appendToSelection);
 
+    // Skip highlighting if we just processed an application group click
+    if (this._skipNextHighlight) {
+      console.log("GraphRenderer: Skipping highlight due to recent application group click");
+      this._skipNextHighlight = false;
+      return;
+    }
+
     // Only clear existing highlight if not appending
     if (!appendToSelection) {
       this.clearHighlight();
@@ -1136,6 +1160,9 @@ renderEdges(packedRoot) {
       }
     });
 
+    // Clear application group highlights
+    this.clearApplicationHighlights();
+
     // Clear selection state
     this.selectedNodeIds.clear();
     this.highlightedElements.nodes.clear();
@@ -1154,6 +1181,64 @@ renderEdges(packedRoot) {
    */
   selectNodeById(nodeId, appendToSelection = false) {
     this.highlightNode(nodeId, appendToSelection);
+  }
+
+  /**
+   * Highlight all application groups with the same name
+   * @param {string} appName - Name of the application to highlight
+   * @param {boolean} appendToSelection - Whether to add to existing selection
+   */
+  highlightApplicationGroups(appName, appendToSelection = false) {
+    console.log("GraphRenderer: Highlighting application groups with name", appName);
+
+    // Clear existing highlights if not appending
+    if (!appendToSelection) {
+      this.clearApplicationHighlights();
+    }
+
+    // Track highlighted application names
+    if (!this.highlightedApplications) {
+      this.highlightedApplications = new Set();
+    }
+    this.highlightedApplications.add(appName);
+
+    // Find and highlight all application groups with the same name
+    this.groupLayer.selectAll('circle.group')
+      .filter(d => d.data.id.startsWith('app-') && d.data.name === appName)
+      .each(function(d) {
+        const group = d3.select(this);
+        
+        // Apply orange/yellow halo and slight enlargement
+        group.style('filter', 'drop-shadow(0 0 8px #FF9933)')
+             .style('stroke-width', '3')
+             .style('stroke', '#FF6600')
+             .attr('r', d.r * 1.05) // Slightly enlarge
+             .classed('app-highlighted', true);
+      });
+  }
+
+  /**
+   * Clear application group highlights
+   */
+  clearApplicationHighlights() {
+    console.log("GraphRenderer: Clearing application group highlights");
+
+    if (this.highlightedApplications) {
+      this.highlightedApplications.clear();
+    }
+
+    // Remove highlights from all application groups
+    this.groupLayer.selectAll('circle.group.app-highlighted')
+      .each(function(d) {
+        const group = d3.select(this);
+        
+        // Restore original styling
+        group.style('filter', null)
+             .style('stroke-width', null)
+             .style('stroke', null)
+             .attr('r', d.r) // Reset to original radius
+             .classed('app-highlighted', false);
+      });
   }
 
   /**
