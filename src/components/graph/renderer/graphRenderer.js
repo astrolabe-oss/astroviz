@@ -603,6 +603,38 @@ export class GraphRenderer {
         
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
+        
+        // Add public IP annotation if node has public IP
+        if (d.data?.public_ip === true || d.data?.public_ip === 'true') {
+          // Get the PublicIP icon SVG
+          const publicIpIconSvg = networkIcons.PublicIP || networkIcons.default;
+          
+          // Create temporary div to parse the public IP icon SVG
+          const publicIpTempDiv = document.createElement('div');
+          publicIpTempDiv.innerHTML = publicIpIconSvg;
+          const publicIpSvgElement = publicIpTempDiv.querySelector('svg');
+          
+          if (publicIpSvgElement) {
+            // Create small cloud annotation in upper right corner
+            const annotationSize = iconSize * 0.6; // Make annotation 50% of node icon size (bigger)
+            const offsetX = iconSize * 0.05; // Position further left
+            const offsetY = -iconSize * 0.5; // Position further to the top
+            
+            const publicIpAnnotation = group.append('svg')
+              .attr('class', 'public-ip-annotation')
+              .attr('width', annotationSize)
+              .attr('height', annotationSize)
+              .attr('x', offsetX)
+              .attr('y', offsetY)
+              .attr('viewBox', publicIpSvgElement.getAttribute('viewBox') || '0 0 24 24')
+              .attr('preserveAspectRatio', 'xMidYMid meet')
+              .style('color', '#E0E0E0') // Light gray for the cloud
+              .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'); // Add subtle shadow
+            
+            // Insert the public IP icon content
+            publicIpAnnotation.html(publicIpSvgElement.innerHTML);
+          }
+        }
       }
     });
 

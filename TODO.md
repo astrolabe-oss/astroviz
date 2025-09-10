@@ -32,12 +32,13 @@
 * [x] applications? should not display? | Wed, September 10
 * [x] viewport fix | Wed, September 10
 * [x] internet boundary root grouping | Wed, September 10
+* [x] are we respecting styling on gv.vue data?
+* [x] public ip
 * [ ] application groups clickable
-* [ ] are we respecting styling on gv.vue data?
-* [ ] public ip
 
-## Bonus Features
+## Dot Release
 * [ ] collapse expand groups
+* [ ] group by cluster/app <-> app/cluster
 
 ## Not sure
 * [x] sub-connections missing in app view
