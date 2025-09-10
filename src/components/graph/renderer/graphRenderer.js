@@ -1138,12 +1138,43 @@ renderEdges(packedRoot) {
       .each(function(d) {
         const group = d3.select(this);
         
-        // Apply orange/yellow halo and slight enlargement
-        group.style('filter', 'drop-shadow(0 0 8px #FF9933)')
-             .style('stroke-width', '3')
-             .style('stroke', '#FF6600')
-             .attr('r', d.r * 1.05) // Slightly enlarge
+        // Apply more dramatic orange halo with deeper colors
+        group.style('filter', 'drop-shadow(0 0 12px #FF6600) drop-shadow(0 0 6px #FF9933)')
+             .style('fill', '#FFD4A3')  // Softer orange fill (30% less intense than #FFB366)
+             .style('fill-opacity', '0.8')  // Slightly more opaque
+             .style('stroke-width', '4')  // Thicker stroke
+             .style('stroke', '#FF6600')  // Keep the orange stroke
+             .attr('r', d.r * 1.08)  // More noticeable enlargement
              .classed('app-highlighted', true);
+      });
+    
+    // Also enhance the labels for highlighted application groups
+    this.labelLayer.selectAll('g.group-label-container')
+      .filter(d => d.data.id.startsWith('app-') && d.data.name === appName)
+      .each(function(d) {
+        const labelContainer = d3.select(this);
+        
+        // Make the label text bigger and bolder
+        const textElement = labelContainer.select('text.group-label')
+          .style('font-size', '16px')  // Bigger font (was 12px for app groups)
+          .style('font-weight', '900')  // Extra bold
+          .style('fill', '#333');  // Keep black text
+          
+        // Get new text dimensions after size change
+        const bbox = textElement.node().getBBox();
+        
+        // Update the label background to fit the larger text
+        labelContainer.select('rect')
+          .attr('x', -bbox.width/2 - 6)  // Add more padding for larger text
+          .attr('y', -bbox.height/2 - 3)
+          .attr('width', bbox.width + 12)
+          .attr('height', bbox.height + 6)
+          .style('fill', 'rgba(255, 255, 255, 0.95)')  // Brighter background
+          .style('stroke', '#999')  // Keep original gray border
+          .style('stroke-width', '1.5');  // Slightly thicker but not too much
+          
+        // Mark as highlighted for proper restoration
+        labelContainer.classed('app-label-highlighted', true);
       });
   }
 
@@ -1153,6 +1184,35 @@ renderEdges(packedRoot) {
   clearApplicationHighlights() {
     console.log("GraphRenderer: Clearing application group highlights");
 
+    // Restore original label styling
+    this.labelLayer.selectAll('g.group-label-container.app-label-highlighted')
+      .each(function(d) {
+        const labelContainer = d3.select(this);
+        const labelText = d.data?.label || d.data.id;
+        
+        // Restore label text to original size
+        const textElement = labelContainer.select('text.group-label')
+          .style('font-size', '12px')  // Back to default for app groups
+          .style('font-weight', 'bold')  // Back to normal bold
+          .style('fill', '#555');  // Back to default color
+          
+        // Recalculate box size for restored text
+        const bbox = textElement.node().getBBox();
+          
+        // Restore label background with correct size
+        labelContainer.select('rect')
+          .attr('x', -bbox.width/2 - 4)  // Original padding
+          .attr('y', -bbox.height/2 - 2)
+          .attr('width', bbox.width + 8)
+          .attr('height', bbox.height + 4)
+          .style('fill', 'rgba(240, 240, 245, 0.85)')  // Original background
+          .style('stroke', '#999')  // Original border
+          .style('stroke-width', '1');  // Original width
+          
+        // Remove highlighted class
+        labelContainer.classed('app-label-highlighted', false);
+      });
+    
     if (this.highlightedApplications) {
       this.highlightedApplications.clear();
     }
@@ -1164,6 +1224,8 @@ renderEdges(packedRoot) {
         
         // Restore original styling
         group.style('filter', null)
+             .style('fill', null)  // Reset fill color
+             .style('fill-opacity', null)  // Reset opacity
              .style('stroke-width', null)
              .style('stroke', null)
              .attr('r', d.r) // Reset to original radius

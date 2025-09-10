@@ -28,17 +28,18 @@
 * [x] position root leafs radially | Tues, September 9
 * [x] re-install package.json removing g6 | Tues, September 9
 * [x] remove node labels, add tool tip | Tues, September 9
-* [x] remove application view, keep app panel
+* [x] remove application view, keep app panel | Wed, September 10
 * [x] applications? should not display? | Wed, September 10
 * [x] viewport fix | Wed, September 10
 * [x] internet boundary root grouping | Wed, September 10
-* [x] are we respecting styling on gv.vue data?
-* [x] public ip
-* [ ] application groups clickable
+* [x] are we respecting styling on gv.vue data? | Wed, September 10
+* [x] public ip | Wed, September 10
+* [x] application groups clickable
 
 ## Dot Release
 * [ ] collapse expand groups
 * [ ] group by cluster/app <-> app/cluster
+* [ ] highlight "trace mode"
 
 ## Not sure
 * [x] sub-connections missing in app view
