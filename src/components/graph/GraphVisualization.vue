@@ -4,7 +4,7 @@
 -->
 
 <template>
-  <div id="d3-graph-container" class="d3-widget"></div>
+  <div id="graph-container" class="graph-widget"></div>
 </template>
 
 <script>
@@ -39,8 +39,8 @@ export default {
   mounted() {
     console.log('GraphVisualization mounted, waiting for DOM...');
     this.$nextTick(() => {
-      console.log('DOM ready, initializing D3 Graph');
-      this.initializeD3Graph();
+      console.log('DOM ready, initializing Graph');
+      this.initializeGraph();
     });
   },
 
@@ -72,12 +72,12 @@ export default {
   },
 
   methods: {
-    initializeD3Graph() {
+    initializeGraph() {
       console.log('Initializing D3 Graph with container');
 
-      const container = document.getElementById('d3-graph-container');
+      const container = document.getElementById('graph-container');
       if (!container) {
-        console.error('Container element #d3-graph-container not found!');
+        console.error('Container element #graph-container not found!');
         return;
       }
 
@@ -85,7 +85,7 @@ export default {
       const { width, height } = container.getBoundingClientRect();
       console.log('Container dimensions:', width, 'x', height);
 
-      // Create D3 Graph instance
+      // Create Graph Renderer instance
       this.graph = new GraphRenderer(container, {
         width: width || window.innerWidth,
         height: height || window.innerHeight,
@@ -97,7 +97,7 @@ export default {
         }
       });
 
-      console.log('D3 Graph initialized successfully');
+      console.log('Graph Renderer initialized successfully');
 
       // Load real data if available
       if (this.graphData && this.graphData.vertices && Object.keys(this.graphData.vertices).length > 0) {
@@ -129,9 +129,12 @@ export default {
 
       console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
 
-      // Group private nodes by cluster first, then by app_name
+      // Group private nodes by cluster first, then by app_name (excluding application nodes)
       const clusterGroups = {};
       privateNodes.forEach(({ id, vertex }) => {
+        // Skip application nodes from grouping
+        if (vertex.type?.toLowerCase() === 'application') return;
+        
         const cluster = vertex.cluster || 'unknown';
         const appName = vertex.app_name || 'unknown-app';
         
@@ -218,9 +221,9 @@ export default {
 
       const graphData = { vertices, edges };
       
-      console.log(`Setting D3 graph data: ${Object.keys(vertices).length} vertices, ${edges.length} edges`);
+      console.log(`Setting graph data: ${Object.keys(vertices).length} vertices, ${edges.length} edges`);
       
-      // Set data on D3 graph
+      // Set data on graph
       this.graph.setData(graphData);
 
       // Emit rendering complete
@@ -277,7 +280,7 @@ export default {
 </script>
 
 <style>
-#d3-graph-container {
+#graph-container {
   width: 100vw;
   height: 100vh;
   background-color: #f8f9fa;

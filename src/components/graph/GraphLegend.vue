@@ -46,7 +46,7 @@ export default {
      */
     nodeTypes() {
       return Object.keys(this.nodeColors).filter(type => 
-        type !== 'Public IP' && type !== 'Private Network'
+        type !== 'Public IP' && type !== 'Private Network' && type !== 'application' && type !== 'Application'
       );
     },
 
@@ -55,7 +55,7 @@ export default {
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP', 'Virtual', 'Private\nNetwork', 'Internet\nBoundary'];
+      return ['Public IP', 'Virtual', 'Private\nNetwork', 'Internet\nBoundary', 'Application\nGroup', 'Cluster\nGroup'];
     }
   },
 
@@ -103,6 +103,34 @@ export default {
         return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
                   <g transform="translate(12, 12)">
                     <circle cx="0" cy="0" r="${size}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="6,2,1,2" />
+                  </g>
+                </svg>`;
+      }
+
+      if (type === 'Application\nGroup') {
+        // Create a rounded rectangle for application groups matching the graph styling
+        const fillColor = '#FFE6CC'; // Orange background
+        const strokeColor = '#FF9933'; // Orange border
+        const size = 10;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <rect x="${-size}" y="${-size}" width="${size * 2}" height="${size * 2}" 
+                          fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" rx="3" ry="3" />
+                  </g>
+                </svg>`;
+      }
+
+      if (type === 'Cluster\nGroup') {
+        // Create a rounded rectangle for cluster groups matching the graph styling
+        const fillColor = '#E8F4FD'; // Light blue background
+        const strokeColor = '#5B8FF9'; // Blue border
+        const size = 10;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <rect x="${-size}" y="${-size}" width="${size * 2}" height="${size * 2}" 
+                          fill="${fillColor}" stroke="${strokeColor}" stroke-width="2" rx="3" ry="3" />
                   </g>
                 </svg>`;
       }
