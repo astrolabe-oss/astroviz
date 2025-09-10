@@ -449,7 +449,33 @@ export class GraphRenderer {
       .attr('cx', d => d.x + 25) // Offset for margin
       .attr('cy', d => d.y + 25)
       .attr('r', d => d.r)
-      .style('cursor', 'grab');
+      .style('cursor', 'grab')
+      .on('click', (event, d) => {
+        event.stopPropagation(); // Prevent background click
+        
+        // Check if this is an application group
+        if (d.data.id.startsWith('app-') && d.data.name) {
+          const appName = d.data.name;
+          
+          // Look up application data from the map
+          if (this.data?.applicationDataMap?.has(appName)) {
+            const applicationData = this.data.applicationDataMap.get(appName);
+            
+            // Emit click event with application data instead of group data
+            if (this.options.onNodeClick) {
+              this.options.onNodeClick(applicationData, event);
+            }
+            return;
+          }
+        }
+        
+        // Only show details for application groups, not cluster/boundary groups
+        if (d.data.id.startsWith('app-')) {
+          if (this.options.onNodeClick) {
+            this.options.onNodeClick(d.data, event);
+          }
+        }
+      });
     
     // Apply all supported styles from the style object
     groupElements.each(function(d) {

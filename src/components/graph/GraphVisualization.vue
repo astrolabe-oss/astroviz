@@ -130,13 +130,20 @@ export default {
       console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
 
       // Group private nodes by cluster first, then by app_name (excluding application nodes)
+      // Also preserve application node data for click handling
       const clusterGroups = {};
+      const applicationDataMap = new Map(); // Map: app_name -> application node data
+      
       privateNodes.forEach(({ id, vertex }) => {
-        // Skip application nodes from grouping
-        if (vertex.type?.toLowerCase() === 'application') return;
-        
         const cluster = vertex.cluster || 'unknown';
         const appName = vertex.app_name || 'unknown-app';
+        
+        // Store application node data for later lookup
+        if (vertex.type?.toLowerCase() === 'application') {
+          applicationDataMap.set(appName, vertex);
+          return; // Skip application nodes from grouping
+        }
+        
         
         if (!clusterGroups[cluster]) {
           clusterGroups[cluster] = {};
@@ -207,6 +214,7 @@ export default {
           vertices[appGroupId] = {
             label: `App: ${appName} (${appNodes.length} nodes)`,
             type: 'group',
+            name: appName,
             parentId: clusterGroupId,
             style: {
               fill: '#FFE6CC',
@@ -240,15 +248,29 @@ export default {
         };
       });
 
-      // Transform edges
+      // Transform edges, filtering out edges that involve application nodes
+      // applications are rendered as groups, not individual nodes
       data.edges.forEach((edge) => {
-        edges.push({
-          source: edge.start_node,
-          target: edge.end_node
-        });
+        const sourceVertex = data.vertices[edge.start_node];
+        const targetVertex = data.vertices[edge.end_node];
+        
+        // Skip edges that involve application nodes since we no longer render them as vertices
+        const isSourceApplication = sourceVertex?.type?.toLowerCase() === 'application';
+        const isTargetApplication = targetVertex?.type?.toLowerCase() === 'application';
+        
+        if (!isSourceApplication && !isTargetApplication) {
+          edges.push({
+            source: edge.start_node,
+            target: edge.end_node
+          });
+        }
       });
 
-      const graphData = { vertices, edges };
+      const graphData = { 
+        vertices, 
+        edges,
+        applicationDataMap  // Include application data for click handling
+      };
       
       console.log(`Setting graph data: ${Object.keys(vertices).length} vertices, ${edges.length} edges`);
       
