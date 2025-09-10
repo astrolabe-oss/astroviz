@@ -451,47 +451,7 @@ export class GraphRenderer {
       .attr('r', d => d.r)
       .style('cursor', 'grab')
       .on('click', (event, d) => {
-        event.stopPropagation(); // Prevent background click
-        
-        // Check if this is an application group
-        if (d.data.id.startsWith('app-') && d.data.name) {
-          event.stopPropagation(); // Prevent event bubbling
-          event.preventDefault(); // Prevent default behavior
-          
-          const appName = d.data.name;
-          
-          // Apply custom highlighting for application groups
-          this.highlightApplicationGroups(appName, event.shiftKey);
-          
-          // Set flag to skip next regular highlighting call
-          this._skipNextHighlight = true;
-          
-          console.log('Application highlighting applied, about to emit click event');
-          
-          // Look up application data from the map
-          if (this.data?.applicationDataMap?.has(appName)) {
-            const applicationData = this.data.applicationDataMap.get(appName);
-            
-            // Mark this as an application group click to prevent standard highlighting
-            const applicationClickData = {
-              ...applicationData,
-              _isApplicationGroupClick: true
-            };
-            
-            // Emit click event with application data instead of group data
-            if (this.options.onNodeClick) {
-              this.options.onNodeClick(applicationClickData, event);
-            }
-          } else {
-            // Fallback to group data if application data not found
-            if (this.options.onNodeClick) {
-              this.options.onNodeClick(d.data, event);
-            }
-          }
-          return; // Always return for application groups to prevent further processing
-        }
-        
-        // For other group types (cluster, boundary), do nothing - no details panel
+        this.handleGroupClick(event, d);
       });
     
     // Apply all supported styles from the style object
@@ -595,15 +555,7 @@ export class GraphRenderer {
       .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25})`)
       .style('cursor', 'grab')
       .on('click', (event, d) => {
-        event.stopPropagation(); // Prevent background click
-        
-        // Highlight the node and its connections
-        this.highlightNode(d.data.id, event.shiftKey);
-        
-        // Emit click event with node data
-        if (this.options.onNodeClick) {
-          this.options.onNodeClick(d.data, event);
-        }
+        this.handleNodeClick(event, d);
       })
       .on('mouseover', (event, d) => {
         // Show tooltip on hover
@@ -1049,17 +1001,9 @@ renderEdges(packedRoot) {
   highlightNode(nodeId, appendToSelection = false) {
     console.log("GraphRenderer: Highlighting node", nodeId, "append =", appendToSelection);
 
-    // Skip highlighting if we just processed an application group click
-    if (this._skipNextHighlight) {
-      console.log("GraphRenderer: Skipping highlight due to recent application group click");
-      this._skipNextHighlight = false;
-      return;
-    }
-
     // Only clear existing highlight if not appending
     if (!appendToSelection) {
-      this.clearHighlight();
-      this.selectedNodeIds.clear();
+      this.clearNodeHighlights();
     }
 
     // Add the new node to the selection
@@ -1148,30 +1092,16 @@ renderEdges(packedRoot) {
   }
 
   /**
-   * Clear manual selection highlighting (preserve filter highlights)
+   * Clear all manual selection highlighting (preserve filter highlights)
    */
   clearHighlight() {
-    console.log("GraphRenderer: Clearing manual selection highlights");
+    console.log("GraphRenderer: Clearing all manual selection highlights");
 
-    // Clear ALL highlighted nodes from manual selection (including connected ones)
-    this.highlightedElements.nodes.forEach(nodeId => {
-      if (!this.filterHighlightedNodes.has(nodeId)) {
-        this.unhighlightNode(nodeId);
-      }
-    });
-
+    // Clear node highlights
+    this.clearNodeHighlights();
+    
     // Clear application group highlights
     this.clearApplicationHighlights();
-
-    // Clear selection state
-    this.selectedNodeIds.clear();
-    this.highlightedElements.nodes.clear();
-    this.highlightedElements.edgeKeys.clear();
-    
-    // Re-render all edges to restore normal styling now that edgeKeys is cleared
-    if (this.hierarchyRoot) {
-      this.renderEdges(this.hierarchyRoot);
-    }
   }
 
   /**
@@ -1239,6 +1169,97 @@ renderEdges(packedRoot) {
              .attr('r', d.r) // Reset to original radius
              .classed('app-highlighted', false);
       });
+  }
+
+  /**
+   * Unified click handler for groups
+   * Determines group type and routes to appropriate handler
+   */
+  handleGroupClick(event, d) {
+    event.stopPropagation(); // Prevent background click
+    
+    // Clear any existing highlights from other systems
+    this.clearNodeHighlights();
+    
+    // Route based on group type
+    if (d.data.id.startsWith('app-') && d.data.name) {
+      this.handleApplicationGroupClick(event, d);
+    } else {
+      // For cluster/boundary groups, do nothing (no details panel)
+      console.log('Non-application group clicked, ignoring:', d.data.id);
+    }
+  }
+
+  /**
+   * Handle clicks on application groups specifically
+   */
+  handleApplicationGroupClick(event, d) {
+    const appName = d.data.name;
+    console.log('Application group clicked:', appName);
+    
+    // Apply application-specific highlighting
+    this.highlightApplicationGroups(appName, event.shiftKey);
+    
+    // Look up and emit application data
+    if (this.data?.applicationDataMap?.has(appName)) {
+      const applicationData = this.data.applicationDataMap.get(appName);
+      this.emitClickEvent(applicationData, event, 'application');
+    } else {
+      console.warn('Application data not found for:', appName);
+      this.emitClickEvent(d.data, event, 'group');
+    }
+  }
+
+  /**
+   * Unified click handler for nodes
+   */
+  handleNodeClick(event, d) {
+    event.stopPropagation(); // Prevent background click
+    
+    // Clear any existing highlights from other systems
+    this.clearApplicationHighlights();
+    
+    // Apply node-specific highlighting
+    this.highlightNode(d.data.id, event.shiftKey);
+    
+    // Emit node data
+    this.emitClickEvent(d.data, event, 'node');
+  }
+
+  /**
+   * Unified event emission with type information
+   */
+  emitClickEvent(data, event, type) {
+    if (this.options.onNodeClick) {
+      // Add metadata about click type
+      const enrichedData = {
+        ...data,
+        _clickType: type
+      };
+      this.options.onNodeClick(enrichedData, event);
+    }
+  }
+
+  /**
+   * Clear only node highlights (not application highlights)
+   */
+  clearNodeHighlights() {
+    // Clear ALL highlighted nodes from manual selection (including connected ones)
+    this.highlightedElements.nodes.forEach(nodeId => {
+      if (!this.filterHighlightedNodes.has(nodeId)) {
+        this.unhighlightNode(nodeId);
+      }
+    });
+
+    // Clear node selection state
+    this.selectedNodeIds.clear();
+    this.highlightedElements.nodes.clear();
+    this.highlightedElements.edgeKeys.clear();
+    
+    // Re-render edges
+    if (this.hierarchyRoot) {
+      this.renderEdges(this.hierarchyRoot);
+    }
   }
 
   /**
