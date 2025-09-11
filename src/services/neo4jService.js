@@ -6,6 +6,7 @@
 // src/services/neo4jService.js
 import neo4j from 'neo4j-driver';
 import config from '@/config';
+import mockGraphData from '@/data/mockGraphData.json';
 
 /**
  * Service to handle Neo4j database connection and queries
@@ -13,13 +14,45 @@ import config from '@/config';
 class Neo4jService {
     constructor() {
         this.driver = null;
+        this.isDemo = this.detectDemoMode();
     }
 
     /**
-     * Connect to Neo4j database
+     * Detect if we should use demo mode based on environment variables
+     */
+    detectDemoMode() {
+        const hasNeo4jUrl = !!(process.env.VUE_APP_NEO4J_URL || process.env.VUE_APP_NEO4J_HOST);
+        const hasCredentials = !!(process.env.VUE_APP_NEO4J_USERNAME && process.env.VUE_APP_NEO4J_PASSWORD);
+        
+        const hasNeo4jConfig = hasNeo4jUrl && hasCredentials;
+        
+        console.log('NEO4J SERVICE: Environment detection:', {
+            hasNeo4jUrl,
+            hasCredentials,
+            hasNeo4jConfig,
+            willUseDemoMode: !hasNeo4jConfig
+        });
+        
+        return !hasNeo4jConfig;
+    }
+
+    /**
+     * Check if we're running in demo mode
+     */
+    isDemoMode() {
+        return this.isDemo;
+    }
+
+    /**
+     * Connect to Neo4j database or simulate connection in demo mode
      * @returns {Promise} Promise that resolves when connection is successful
      */
     connect() {
+        if (this.isDemo) {
+            console.log('NEO4J SERVICE: Demo mode - simulating connection');
+            return Promise.resolve();
+        }
+        
         console.log("NEO4J SERVICE: Attempting to connect...");
         const { uri, username, password, database } = config.neo4j;
         console.log(`NEO4J SERVICE: Using URI: ${uri}`);
@@ -62,9 +95,14 @@ class Neo4jService {
     }
 
     /**
-     * Close the Neo4j connection
+     * Close the Neo4j connection or simulate disconnection in demo mode
      */
     disconnect() {
+        if (this.isDemo) {
+            console.log('NEO4J SERVICE: Demo mode - simulating disconnection');
+            return;
+        }
+        
         if (this.driver) {
             this.driver.close();
             this.driver = null;
@@ -72,10 +110,13 @@ class Neo4jService {
     }
 
     /**
-     * Check if connected to Neo4j
+     * Check if connected to Neo4j or in demo mode
      * @returns {boolean} Connection status
      */
     isConnected() {
+        if (this.isDemo) {
+            return true; // Always connected in demo mode
+        }
         return this.driver !== null;
     }
 
@@ -117,7 +158,7 @@ class Neo4jService {
     }
 
     /**
-     * Fetch the entire graph data
+     * Fetch the entire graph data from Neo4j or return mock data in demo mode
      * @param {Function} progressCallback Optional callback function for reporting progress
      * @returns {Promise<Object>} Promise resolving to vertices and edges
      */
@@ -135,32 +176,48 @@ class Neo4jService {
         };
 
         try {
-            // Get all nodes and relationships in one query for better performance
-            reportProgress("Fetching graph data...", 20);
+            let result;
+            
+            if (this.isDemo) {
+                // Use mock data instead of querying Neo4j
+                reportProgress("Loading mock graph data...", 30);
+                result = {
+                    records: [{
+                        get: (field) => {
+                            if (field === 'nodes') return mockGraphData[0].nodes;
+                            if (field === 'relationships') return mockGraphData[0].relationships;
+                            return null;
+                        }
+                    }]
+                };
+            } else {
+                // Get all nodes and relationships in one query for better performance
+                reportProgress("Fetching graph data...", 20);
 
-            const query = `
-                // Get all nodes with their labels and properties
-                MATCH (n)
-                WITH collect({
-                    id: id(n),
-                    labels: labels(n),
-                    properties: properties(n)
-                }) AS nodes
-                
-                // Get all relationships
-                MATCH (source)-[r]->(target)
-                WITH nodes, collect({
-                    source: id(source),
-                    target: id(target),
-                    type: type(r),
-                    properties: properties(r)
-                }) AS relationships
-                
-                RETURN nodes, relationships
-            `;
+                const query = `
+                    // Get all nodes with their labels and properties
+                    MATCH (n)
+                    WITH collect({
+                        id: id(n),
+                        labels: labels(n),
+                        properties: properties(n)
+                    }) AS nodes
+                    
+                    // Get all relationships
+                    MATCH (source)-[r]->(target)
+                    WITH nodes, collect({
+                        source: id(source),
+                        target: id(target),
+                        type: type(r),
+                        properties: properties(r)
+                    }) AS relationships
+                    
+                    RETURN nodes, relationships
+                `;
 
-            reportProgress("Executing query...", 30);
-            const result = await this.runQuery(query);
+                reportProgress("Executing query...", 30);
+                result = await this.runQuery(query);
+            }
 
             if (result.records.length === 0) {
                 console.log("NEO4J SERVICE: No data returned");

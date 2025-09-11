@@ -18,18 +18,19 @@ A powerful visualization tool for Astrolabe's Neo4j graph database, featuring hi
 - **Node Details**: Click on any node or application group to see properties
 - **Environment-based Configuration**: Easy setup for different environments
 
-## Recent Improvements (v2.0)
-
-- **Complete Rendering Engine Rewrite**: Replaced D3 force simulation with custom SVG renderer using circle packing
-- **Unified View**: Removed dual-mode system in favor of single hierarchical view
-- **Application-Centric Design**: Applications now shown as containers for their resources
-- **Performance Boost**: Static layout calculation instead of continuous force simulation
-- **Enhanced UX**: Cleaner interactions with separate highlighting systems for nodes vs applications
-- **Visual Hierarchy**: Clear nesting with styled boundaries (dashed borders, opacity levels)
 
 ## Configuration
 
-Connection settings are loaded from environment variables. Create a `.env` file in the project root with the following variables:
+### Demo Mode vs Production
+
+AstroViz automatically detects your environment:
+
+- **Demo Mode**: When Neo4j environment variables are not configured, the app automatically uses mock data for demonstration
+- **Production Mode**: When proper Neo4j credentials are provided, the app connects to your database
+
+### Neo4j Configuration
+
+For production use, create a `.env` file in the project root with your Neo4j connection details:
 
 ```
 VUE_APP_NEO4J_PROTOCOL=bolt
@@ -40,13 +41,19 @@ VUE_APP_NEO4J_PASSWORD=your_password
 VUE_APP_NEO4J_DATABASE=
 ```
 
+The application will automatically switch between demo and production modes based on these environment variables.
+
+## Live Demo
+
+🚀 **[Try AstroViz Demo](https://[username].github.io/astroviz/)** - Interactive demo with sample network data
+
 ## Project Setup
 
 ### Prerequisites
 
 - Node.js (v14+)
 - NPM or Yarn
-- Neo4j database (v4.0+)
+- Neo4j database (v4.0+) *(optional - app works in demo mode without it)*
 
 ### Installation
 
@@ -76,6 +83,19 @@ npm run serve
 # Compile and minify for production
 npm run build
 ```
+
+### Deployment
+
+The application is configured for automatic deployment to GitHub Pages:
+
+1. **Push to main branch** - GitHub Actions automatically builds and deploys
+2. **Enable GitHub Pages** - Set repository Settings → Pages → Source to "GitHub Actions"
+3. **Demo URL** - Available at `https://[username].github.io/astroviz/`
+
+The deployment includes:
+- Automated build process with GitHub Actions
+- Optimized production bundle with vendor chunk splitting
+- Smart environment detection (demo mode when no Neo4j config)
 
 ## Usage Guide
 
@@ -143,6 +163,19 @@ The application follows a modular architecture:
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a Pull Request.
+
+### Exporting Demo Data
+
+To populate the demo mode with real data from your Neo4j database:
+
+1. **Connect to your Neo4j database** with production credentials configured
+2. **Run the export query** from your Neo4j Browser - use the exact same query found in `src/services/neo4jService.js` (lines 197-215)
+3. **Save the result** directly to `src/data/mockGraphData.json` in the array format returned by Neo4j
+4. **Commit the updated mock data** to enable rich demo mode
+
+The service will automatically process the raw Neo4j response format.
+
+### Development Process
 
 1. Fork the project
 2. Create your feature branch (`git checkout -b feature/amazing-feature`)

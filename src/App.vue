@@ -6,6 +6,7 @@
 // src/App.vue - updated to handle node selection from details panel
 <template>
   <div id="app">
+    <DemoModeBanner v-if="neo4jService.isDemoMode()" />
     <ConnectionError
         :error="connectionError"
         @retry="connect"
@@ -82,6 +83,7 @@ import FilterControls from '@/components/filter/FilterControls.vue';
 
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
+import DemoModeBanner from '@/components/DemoModeBanner.vue';
 
 // Services and utilities
 import neo4jService from '@/services/neo4jService';
@@ -98,6 +100,7 @@ export default {
     FilterControls,
     NetworkGraph,
     NodeDetails,
+    DemoModeBanner,
   },
 
   data() {
@@ -107,6 +110,7 @@ export default {
       connecting: false,
       connectionError: null,
       loading: false,
+      neo4jService,
 
       // Loading status
       loadingStatus: "Initializing...",
@@ -185,6 +189,9 @@ export default {
      * Get formatted connection info string
      */
     connectionInfo() {
+      if (neo4jService.isDemoMode()) {
+        return 'Demo Mode (Mock Data)';
+      }
       const { host, port, database } = config.neo4j;
       return `${host}:${port}${database ? ` (${database})` : ''}`;
     }
