@@ -1,5 +1,28 @@
 # APP VIEW
-## Custom Rewrite
+## 0.2.1
+* [ ] demo for github pages
+
+## 0.2.2
+* [ ] tests and CI/CD
+
+## 0.2.3
+* [ ] collapse expand groups
+* [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
+* [ ] group by cluster/app <-> app/cluster
+* [ ] highlight "trace mode"
+
+## Not sure
+* [x] sub-connections missing in app view
+* [x] node details: components sections (sub graph?)
+
+# BUGS
+* [ ] App View: highlighting broken
+* [x] Graph Pane (Highlight) - enlargement is only working sometimes during 'click to highlight from node details' - not during click on graph pane
+* [x] Graph Pane (Highlight) - node detail labels do not follow dragged node
+* [ ] Graph Pane (Reordering) - Dragging a node, all the connected nodes follow. We want to drag it away and not have them follow so aggresively  (Only happens with few nodes)
+
+# ARCHIVE
+## 0.2.0 - Custom Rewrite
 * [x] d3 packing static | Sat, September 6
 * [x] move nodes w/ edges | Sat, September 6
 * [x] basic app view
@@ -35,25 +58,6 @@
 * [x] are we respecting styling on gv.vue data? | Wed, September 10
 * [x] public ip | Wed, September 10
 * [x] application groups clickable
-
-## Dot Release
-* [ ] collapse expand groups
-* [ ] group by cluster/app <-> app/cluster
-* [ ] highlight "trace mode"
-
-## Not sure
-* [x] sub-connections missing in app view
-* [x] node details: components sections (sub graph?)
-
-# BUGS
-* [ ] App View: highlighting broken
-* [x] Graph Pane (Highlight) - enlargement is only working sometimes during 'click to highlight from node details' - not during click on graph pane
-* [x] Graph Pane (Highlight) - node detail labels do not follow dragged node
-* [ ] Graph Pane (Reordering) - Dragging a node, all the connected nodes follow. We want to drag it away and not have them follow so aggresively  (Only happens with few nodes)
-###########
-
-# ARCHIVE #
-###########
 
 ### 0.1.1
 * [x] Node Details: "Last Profiled"
