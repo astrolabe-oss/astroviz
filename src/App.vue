@@ -75,6 +75,8 @@
           @select-node="onSelectConnectedNode"
       />
     </main>
+    
+    <AppFooter />
   </div>
 </template>
 
@@ -92,6 +94,7 @@ import FilterControls from '@/components/filter/FilterControls.vue';
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
 import DemoModeBanner from '@/components/DemoModeBanner.vue';
 import TutorialOverlay from '@/components/tutorial/TutorialOverlay.vue';
+import AppFooter from '@/components/AppFooter.vue';
 
 // Services and utilities
 import neo4jService from '@/services/neo4jService';
@@ -110,6 +113,7 @@ export default {
     NodeDetails,
     DemoModeBanner,
     TutorialOverlay,
+    AppFooter,
   },
 
   data() {
@@ -514,7 +518,7 @@ export default {
   color: #2c3e50;
   margin: 0;
   padding: 20px;
-  height: 100vh;
+  min-height: 100vh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -564,12 +568,12 @@ export default {
 
 .main-content {
   position: relative;
-  flex: 1;
   background-color: #f8f9fa;
   border-radius: 8px;
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   display: flex;
+  height: calc(100vh - 210px);
 }
 
 .connection-overlay {
