@@ -17,6 +17,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Builds and deploys automatically on push to main branch
 - Optimized build configuration for static hosting
 
+### Interactive Tutorial System
+- Step-by-step walkthrough of all major features using driver.js
+- Auto-starts in demo mode (every refresh) and for first-time production users
+
 ---
 
 ## [0.2.0] - 2025-01-11
