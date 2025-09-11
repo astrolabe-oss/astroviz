@@ -14,7 +14,7 @@
         <div class="legend-label">{{ type }}</div>
       </div>
     </div>
-    
+
     <!-- Annotations Section -->
     <div class="legend-section">
       <div class="legend-heading">Annotations</div>
@@ -38,24 +38,24 @@ export default {
       required: true
     }
   },
-  
+
   computed: {
     /**
      * Returns only node type icons (excluding 'Public IP')
      * @returns {Array} Array of node type names
      */
     nodeTypes() {
-      return Object.keys(this.nodeColors).filter(type => 
-        type !== 'Public IP' && type !== 'Private Datacenter'
+      return Object.keys(this.nodeColors).filter(type =>
+        type !== 'Application'
       );
     },
-    
+
     /**
-     * Returns only annotation icons (currently just 'Public IP' and 'Virtual Application')
+     * Returns only annotation icons (currently just 'Public IP', 'Virtual Application', 'Private Network', and 'Internet Boundary')
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP', 'Virtual', 'Private\nDatacenter'];
+      return ['Public IP', 'Internet\nBoundary', 'Private\nNetwork', 'Cluster', 'Application'];
     }
   },
 
@@ -66,38 +66,64 @@ export default {
      * @returns {string} SVG HTML string
      */
     getLegendIcon(type) {
-      if (type === 'Virtual') {
-        // For Virtual Nodes, use the Application icon with dashed circle and transparency
-        const appColor = this.nodeColors['Application'];
-
-        // Calculate the circle radius - should be 1.3x the icon size/2
-        const iconSize = 12;
-
-        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
-                  <g transform="translate(12, 12)">
-                    <circle cx="0" cy="0" r="${iconSize}" fill="none" stroke="${appColor}" stroke-dasharray="3,3" />
-                    <g transform="translate(-${iconSize * .75}, -${iconSize * .75}) scale(${18 / 24})" style="color: ${appColor}; opacity: 0.5;">
-                      ${networkIcons['Application']}
-                    </g>
-                  </g>
-                </svg>`;
-      }
-      
-      if (type === 'Private\nDatacenter') {
-        // Create a special dashed circle for the datacenter with stronger styling
-        const color = 'rgba(100, 100, 140, 0.8)'; // Darker color for better visibility
+      if (type === 'Private\nNetwork') {
+        // Create a special dashed circle for the private network matching graph styling
+        const fillColor = '#f0f0f0'; // Match the actual graph fill
+        const strokeColor = '#888'; // Match the actual graph stroke
         const size = 10;
-        
+
         return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
                   <g transform="translate(12, 12)">
-                    <circle cx="0" cy="0" r="${size}" fill="${this.nodeColors['Private Datacenter']}" fill-opacity="0.2" stroke="${color}" stroke-width="2" stroke-dasharray="3,3" />
+                    <circle cx="0" cy="0" r="${size}" fill="${fillColor}" fill-opacity="0.6" stroke="${strokeColor}" stroke-width="2" stroke-dasharray="5,5" />
                   </g>
                 </svg>`;
       }
-      
+
+      if (type === 'Internet\nBoundary') {
+        // Create a special dashed circle for the Internet Boundary with blue color and long-short dashes
+        const color = '#4A98E3'; // Blue color
+        const size = 12; // Slightly larger than Private Network
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${size}" fill="none" stroke="${color}" stroke-width="2" stroke-dasharray="6,2,1,2" />
+                  </g>
+                </svg>`;
+      }
+
+      if (type === 'Application') {
+        // Create a dashed circle for application groups matching the graph styling
+        const fillColor = '#FFE6CC'; // Orange background
+        const strokeColor = '#FF9933'; // Orange border
+        const size = 10;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${size}" 
+                          fill="${fillColor}" fill-opacity="0.6" 
+                          stroke="${strokeColor}" stroke-width="2" stroke-dasharray="3,3" />
+                  </g>
+                </svg>`;
+      }
+
+      if (type === 'Cluster') {
+        // Create a dashed circle for cluster groups matching the graph styling
+        const fillColor = '#E8F4FD'; // Light blue background
+        const strokeColor = '#5B8FF9'; // Blue border
+        const size = 10;
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <g transform="translate(12, 12)">
+                    <circle cx="0" cy="0" r="${size}" 
+                          fill="${fillColor}" fill-opacity="0.6" 
+                          stroke="${strokeColor}" stroke-width="2" stroke-dasharray="8,4" />
+                  </g>
+                </svg>`;
+      }
+
       // Special case for 'Public IP' which should use the PublicIP icon
       const iconKey = type === 'Public IP' ? 'PublicIP' : type;
-      
+
       // Get the icon SVG from networkIcons
       const iconSvg = networkIcons[iconKey] || networkIcons.default;
 
@@ -111,7 +137,7 @@ export default {
 <style scoped>
 .legend {
   position: absolute;
-  bottom: 40px;
+  bottom: 20px;
   left: 10px;
   background-color: rgba(255, 255, 255, 0.9);
   padding: 10px;

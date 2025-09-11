@@ -35,8 +35,8 @@ export default {
 <style scoped>
 .graph-stats {
   position: absolute;
-  bottom: 10px;
-  left: 10px;
+  top: 55px;  /* Position below the zoom controls */
+  left: 15px;
   background-color: rgba(255, 255, 255, 0.9);
   padding: 8px 12px;
   border-radius: 4px;

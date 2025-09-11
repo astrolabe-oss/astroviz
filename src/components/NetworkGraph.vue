@@ -3,7 +3,7 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 
-// src/components/D3NetworkGraph.vue
+// src/components/NetworkGraph.vue
 <template>
   <div class="network-graph">
     <RenderingStatus
@@ -17,15 +17,13 @@
         @zoom-in="onZoomIn"
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
-        @reset-positions="onResetPositions"
     />
 
     <GraphVisualization
         ref="visualization"
         :graphData="graphData"
-        :viewMode="viewMode"
         :nodeColors="nodeColors"
-        :highlighted-node-ids="highlightedNodeIds"
+        :highlightedNodeIds="highlightedNodeIds"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
@@ -51,7 +49,7 @@ import RenderingStatus from './graph/RenderingStatus.vue';
 import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
-  name: 'D3NetworkGraph',
+  name: 'NetworkGraph',
 
   components: {
     GraphVisualization,
@@ -68,13 +66,7 @@ export default {
       required: true,
       default: () => ({ vertices: {}, edges: [] })
     },
-    // Current view mode: 'detailed' or 'application'
-    viewMode: {
-      type: String,
-      required: true,
-      default: 'detailed'
-    },
-    // Set of node IDs that should be highlighted
+    // Set of node IDs that should be highlighted (from filters)
     highlightedNodeIds: {
       type: Set,
       default: () => new Set()
@@ -89,15 +81,13 @@ export default {
         'Compute': '#5DCAD1', // Light blue like in the image
         'Resource': '#74B56D', // Green like in the image
         'TrafficController': '#4A98E3', // Blue like in the image
-        'Public IP': '#E0E0E0', // Keep Public IP in legend but not as a node type
         'Unknown': '#F9C96E', // Orange for unknown nodes
-        'Private Datacenter': 'rgba(240, 240, 245, 0.8)', // Moved to annotations section in legend
       },
 
       isRendering: false,
       nodeCount: 0,
       edgeCount: 0,
-      showStats: false,
+      showStats: true,
       currentZoomLevel: 1
     };
   },
@@ -119,14 +109,8 @@ export default {
      * @param {boolean} appendToSelection Whether to add to existing selection
      */
     selectNodeById(nodeId, appendToSelection = false) {
-      if (this.$refs.visualization) {
-        if (this.$refs.visualization.highlightNode) {
-          // Use highlightNode directly if available
-          this.$refs.visualization.highlightNode(nodeId, appendToSelection);
-        } else if (this.$refs.visualization.selectAndHighlightNode) {
-          // Fall back to selectAndHighlightNode if highlightNode isn't available
-          this.$refs.visualization.selectAndHighlightNode(nodeId, appendToSelection);
-        }
+      if (this.$refs.visualization && this.$refs.visualization.selectNodeById) {
+        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
       }
     },
 
@@ -142,6 +126,15 @@ export default {
         this.selectNodeById(nodeId);
       } else {
         console.warn('D3NetworkGraph: Node not found with properties', nodeData);
+      }
+    },
+
+    /**
+     * Clear node highlighting
+     */
+    clearHighlight() {
+      if (this.$refs.visualization && this.$refs.visualization.clearHighlight) {
+        this.$refs.visualization.clearHighlight();
       }
     },
 
@@ -196,15 +189,6 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
-      }
-    },
-
-    /**
-     * Handle reset positions button click
-     */
-    onResetPositions() {
-      if (this.$refs.visualization) {
-        this.$refs.visualization.resetNodePositions();
       }
     }
   }

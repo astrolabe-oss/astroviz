@@ -1,3 +1,6 @@
+# todo
+.TO_s_DO_pid.bak
+
 # dependencies
 /node_modules
 
@@ -23,3 +26,6 @@ pnpm-debug.log*
 *.njsproj
 *.sln
 *.sw?
+
+# mac
+.DS_Store
