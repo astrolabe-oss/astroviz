@@ -130,7 +130,7 @@ export default {
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+  background: linear-gradient(135deg, #4A98E3 0%, #3a7bc8 100%);
   color: white;
   border: none;
   border-radius: 6px;
@@ -144,7 +144,7 @@ export default {
 .tutorial-button:hover {
   transform: translateY(-1px);
   box-shadow: 0 4px 8px rgba(0, 0, 0, 0.15);
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  background: linear-gradient(135deg, #3a7bc8 0%, #4A98E3 100%);
 }
 
 .tutorial-icon {
@@ -176,7 +176,7 @@ export default {
 }
 
 :global(.driver-popover-navigation-btns button) {
-  background: #667eea !important;
+  background: #4A98E3 !important;
   color: white !important;
   border: none !important;
   border-radius: 4px !important;
@@ -189,7 +189,7 @@ export default {
 }
 
 :global(.driver-popover-navigation-btns button:hover) {
-  background: #764ba2 !important;
+  background: #3a7bc8 !important;
 }
 
 :global(.driver-popover-close-btn) {
@@ -212,8 +212,8 @@ export default {
 }
 
 @keyframes pulse {
-  0% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(102, 126, 234, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(102, 126, 234, 0); }
+  0% { box-shadow: 0 0 0 0 rgba(74, 152, 227, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(74, 152, 227, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(74, 152, 227, 0); }
 }
 </style>

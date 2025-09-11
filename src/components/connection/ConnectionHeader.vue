@@ -6,7 +6,9 @@
 // src/components/connection/ConnectionHeader.vue
 <template>
   <div class="logo-wrapper">
-    <img :src="logoUrl" alt="AstroViz Logo" class="logo" />
+    <a href="https://github.com/astrolabe-oss/astroviz" target="_blank" rel="noopener" class="logo-link">
+      <img :src="logoUrl" alt="AstroViz Logo" class="logo" />
+    </a>
   </div>
 </template>
 
