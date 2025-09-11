@@ -40,7 +40,9 @@ module.exports = {
                         test: /[\\/]node_modules[\\/]/,
                         name(module) {
                             // Extract vendor name for better debugging and caching
-                            const packageName = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/)[1];
+                            const match = module.context.match(/[\\/]node_modules[\\/](.*?)([\\/]|$)/);
+                            if (!match) return 'vendor';
+                            const packageName = match[1];
                             return `npm.${packageName.replace('@', '')}`;
                         }
                     }
