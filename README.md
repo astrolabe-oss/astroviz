@@ -1,27 +1,31 @@
 # AstroViz
-A powerful visualization tool for Astrolabe's Neo4j graph database, leveraging D3.js force-directed graph layout for improved performance and flexibility.
+A powerful visualization tool for Astrolabe's Neo4j graph database, featuring hierarchical network visualization with custom SVG rendering and D3.js circle packing layout.
 
 <img src="public/logo.svg?sanitize=true" alt="AstroViz Network Visualization" width="600">
 
 ## Features
 
-- **D3.js Visualization**: Using D3's force simulation for smooth, interactive graph rendering
+- **Hierarchical Network Visualization**: Organized view showing Internet Boundary → Private Network → Clusters → Applications → Resources
+- **Custom SVG Rendering**: High-performance custom renderer with D3.js circle packing for optimal layout
 - **Direct Neo4j Connection**: Connect to any Neo4j database with proper credentials
-- **Multiple View Modes**:
-    - Detailed view showing all nodes and relationships
-    - Application-level view that rolls up compute-level connections
-- **Advanced Filtering**: Filter by app_name, provider, protocol_multiplexor, and address
-- **Interactive Controls**: Zoom, pan, and node dragging capabilities
-- **Node Details**: Click on nodes to see all properties
+- **Application Grouping**: Applications displayed as container groups that organize their resources
+- **Advanced Filtering**: Filter by app_name, provider, protocol_multiplexor, address, and public IP status
+- **Smart Highlighting**: 
+    - Purple highlighting for nodes and their connections
+    - Orange highlighting for application groups (with cross-cluster matching)
+- **Public IP Annotations**: Cloud icon overlays on public-facing resources
+- **Interactive Controls**: Zoom, pan, and group dragging capabilities
+- **Node Details**: Click on any node or application group to see properties
 - **Environment-based Configuration**: Easy setup for different environments
 
-## Advantages Over Previous Visualizer
+## Recent Improvements (v2.0)
 
-- **Improved Performance**: D3's optimized force layout handles larger graphs more efficiently
-- **Better User Interaction**: More intuitive dragging, zooming, and panning
-- **Enhanced Visual Appeal**: Smoother animations and transitions
-- **Greater Customization**: More control over the visual representation of nodes and edges
-- **Responsive Design**: Better handling of different screen sizes
+- **Complete Rendering Engine Rewrite**: Replaced D3 force simulation with custom SVG renderer using circle packing
+- **Unified View**: Removed dual-mode system in favor of single hierarchical view
+- **Application-Centric Design**: Applications now shown as containers for their resources
+- **Performance Boost**: Static layout calculation instead of continuous force simulation
+- **Enhanced UX**: Cleaner interactions with separate highlighting systems for nodes vs applications
+- **Visual Hierarchy**: Clear nesting with styled boundaries (dashed borders, opacity levels)
 
 ## Configuration
 
@@ -80,9 +84,10 @@ npm run build
     - Launch the application
     - Click "Connect to Neo4j" to establish connection
 
-2. **View Modes**:
-    - **Detailed View**: Shows all nodes and relationships in the database
-    - **Application View**: Consolidates nodes to show application-level connections
+2. **Navigate the Hierarchy**:
+    - View the network organized by Internet Boundary → Private Network → Clusters → Applications
+    - Click on application groups to see application details
+    - Shift-click to select multiple nodes or applications
 
 3. **Filtering**:
     - Use the filter controls to narrow down the visualization
@@ -92,34 +97,47 @@ npm run build
 4. **Interaction**:
     - **Zoom**: Use mouse wheel or zoom buttons
     - **Pan**: Click and drag on the background
-    - **Move Nodes**: Click and drag individual nodes
-    - **View Details**: Click on any node to see its properties
+    - **Move Groups**: Click and drag groups to reposition
+    - **Select Nodes**: Click to highlight node and connections (purple)
+    - **Select Applications**: Click application groups for orange highlighting across clusters
+    - **View Details**: Click on any node or application group to see properties
+    - **Multi-Select**: Hold Shift while clicking to select multiple items
 
-5. **Node Types and Colors**:
-    - Application: Green
-    - Deployment: Blue
-    - Compute: Orange
-    - Resource: Purple
-    - TrafficController: Teal
-    - InternetIP: Pink
+5. **Visual Elements**:
+    - **Node Types**:
+        - Deployment: Pink (#F2A3B3)
+        - Compute: Light Blue (#5DCAD1)
+        - Resource: Green (#74B56D)
+        - TrafficController: Blue (#4A98E3)
+    - **Group Boundaries**:
+        - Internet Boundary: Blue dashed border with long-short pattern
+        - Private Network: Gray dashed border
+        - Clusters: Light blue background with blue border
+        - Applications: Orange background with orange border
+    - **Annotations**:
+        - Public IP: Cloud icon overlay on public-facing nodes
 
 ## Architecture
 
 The visualizer is built with:
 
 - **Vue.js 2**: Frontend framework for reactive UI
-- **D3.js**: For advanced graph visualization and force layout
+- **D3.js**: Circle packing algorithm for hierarchical layout
+- **Custom SVG Renderer**: High-performance rendering engine (`graphRenderer.js`)
 - **Neo4j JavaScript Driver**: For direct database connection
 - **ES6+**: Modern JavaScript features
-- **Responsive Design**: Works on desktop and tablets
+- **Responsive Design**: Flexbox-based layout that adapts to viewport
 
 The application follows a modular architecture:
 
-- **App.vue**: Main application component
-- **D3NetworkGraph.vue**: D3 force-directed graph visualization
-- **FilterBar.vue**: Filter controls for the graph data
+- **App.vue**: Main application component and state management
+- **D3NetworkGraph.vue**: Graph visualization orchestrator
+- **GraphVisualization.vue**: Data transformation and renderer integration
+- **graphRenderer.js**: Custom SVG rendering engine with circle packing
+- **FilterControls.vue**: Advanced filtering interface
+- **NodeDetails.vue**: Property viewer for nodes and applications
 - **neo4jService.js**: Service for Neo4j database connections
-- **config/index.js**: Configuration management
+- **config/index.js**: Environment-based configuration
 
 ## Contributing
 
