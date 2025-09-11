@@ -394,8 +394,6 @@ export class GraphRenderer {
         };
         
         radialNodes.push(radialNode);
-        
-        console.log(`Root leaf ${leafNode.id}: positioned at (${x}, ${y}) at angle ${(angle * 180 / Math.PI).toFixed(1)}°`);
       });
     }
     

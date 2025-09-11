@@ -52,7 +52,7 @@
         </div>
       </div>
 
-      <D3NetworkGraph
+      <NetworkGraph
           ref="networkGraph"
           :graph-data="filteredGraphData"
           :highlighted-node-ids="highlightedNodeIds"
@@ -77,7 +77,7 @@ import ConnectionError from '@/components/connection/ConnectionError.vue';
 import LoadingOverlay from '@/components/connection/LoadingOverlay.vue';
 
 // Existing components
-import D3NetworkGraph from '@/components/D3NetworkGraph.vue';
+import NetworkGraph from '@/components/NetworkGraph.vue';
 import FilterControls from '@/components/filter/FilterControls.vue';
 
 // New components
@@ -96,7 +96,7 @@ export default {
     ConnectionError,
     LoadingOverlay,
     FilterControls,
-    D3NetworkGraph,
+    NetworkGraph,
     NodeDetails,
   },
 

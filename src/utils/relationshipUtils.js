@@ -117,7 +117,7 @@ export function findComponentRelationships(components, rawGraphData) {
     const componentMap = {};
 
     // Create a map of component IDs to their index position in the nodes array
-    // This is important because the D3 force layout works with indices
+    // This is important for maintaining node references
     components.forEach((component, index) => {
         // Use originalData if available, otherwise use the component itself
         const componentData = component.originalData || component;

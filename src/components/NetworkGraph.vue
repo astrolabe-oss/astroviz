@@ -3,7 +3,7 @@
   SPDX-License-Identifier: Apache-2.0
 -->
 
-// src/components/D3NetworkGraph.vue
+// src/components/NetworkGraph.vue
 <template>
   <div class="network-graph">
     <RenderingStatus
@@ -49,7 +49,7 @@ import RenderingStatus from './graph/RenderingStatus.vue';
 import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
-  name: 'D3NetworkGraph',
+  name: 'NetworkGraph',
 
   components: {
     GraphVisualization,

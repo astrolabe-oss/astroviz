@@ -131,9 +131,10 @@ The visualizer is built with:
 The application follows a modular architecture:
 
 - **App.vue**: Main application component and state management
-- **D3NetworkGraph.vue**: Graph visualization orchestrator
-- **GraphVisualization.vue**: Data transformation and renderer integration
+- **NetworkGraph.vue**: Graph visualization orchestrator
+- **GraphVisualization.vue**: Renderer integration and component coordination
 - **graphRenderer.js**: Custom SVG rendering engine with circle packing
+- **graphTransformUtils.js**: Graph data transformation and hierarchy creation
 - **FilterControls.vue**: Advanced filtering interface
 - **NodeDetails.vue**: Property viewer for nodes and applications
 - **neo4jService.js**: Service for Neo4j database connections

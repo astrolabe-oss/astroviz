@@ -9,6 +9,7 @@
 
 <script>
 import { GraphRenderer } from './renderer/graphRenderer.js';
+import { transformGraphDataForVisualization } from './graphTransformUtils.js';
 
 export default {
   name: 'GraphVisualization',
@@ -112,180 +113,22 @@ export default {
         return;
       }
 
-      console.log(`Updating graph with ${Object.keys(data.vertices).length} nodes and ${data.edges.length} edges`);
-
-      // Classify nodes as public or private
-      const publicNodes = [];
-      const privateNodes = [];
-
-      Object.entries(data.vertices).forEach(([id, vertex]) => {
-        const isPublic = vertex.public_ip === true || vertex.public_ip === 'true';
-        if (isPublic) {
-          publicNodes.push({ id, vertex });
-        } else {
-          privateNodes.push({ id, vertex });
-        }
-      });
-
-      console.log(`Classified nodes: ${privateNodes.length} private, ${publicNodes.length} public`);
-
-      // Group private nodes by cluster first, then by app_name (excluding application nodes)
-      // Also preserve application node data for click handling
-      const clusterGroups = {};
-      const applicationDataMap = new Map(); // Map: app_name -> application node data
+      // Use the utility function to transform the data
+      const transformedData = transformGraphDataForVisualization(data, this.nodeColors);
       
-      privateNodes.forEach(({ id, vertex }) => {
-        const cluster = vertex.cluster || 'unknown';
-        const appName = vertex.app_name || 'unknown-app';
-        
-        // Store application node data for later lookup
-        if (vertex.type?.toLowerCase() === 'application') {
-          applicationDataMap.set(appName, vertex);
-          return; // Skip application nodes from grouping
-        }
-        
-        
-        if (!clusterGroups[cluster]) {
-          clusterGroups[cluster] = {};
-        }
-        if (!clusterGroups[cluster][appName]) {
-          clusterGroups[cluster][appName] = [];
-        }
-        clusterGroups[cluster][appName].push({ id, vertex });
-      });
-
-      const clusterCount = Object.keys(clusterGroups).length;
-      const totalApps = Object.values(clusterGroups).reduce((total, cluster) => total + Object.keys(cluster).length, 0);
-      console.log(`Found ${clusterCount} clusters with ${totalApps} total application groups`);
-
-      // Transform into vertices/edges format for GraphRenderer
-      const vertices = {};
-      const edges = [];
-
-      // Create Internet Boundary as the root container for private network
-      if (privateNodes.length > 0) {
-        vertices['internet-boundary'] = {
-          label: 'Internet Boundary',
-          type: 'group',
-          parentId: null,
-          style: {
-            fill: 'none',
-            stroke: '#4A98E3',
-            strokeDasharray: '10,6,2,6',
-            strokeWidth: 4  // Make it thicker for visibility
-          }
-        };
-
-        // Create private network group inside Internet Boundary
-        vertices['private-network'] = {
-          label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
-          type: 'group',
-          parentId: 'internet-boundary',
-          style: {
-            fill: '#f0f0f0',
-            stroke: '#888',
-            strokeWidth: 2,
-            opacity: 0.6
-          }
-        };
+      if (!transformedData) {
+        console.log('Failed to transform graph data');
+        return;
       }
-
-      // Create cluster groups within private network
-      Object.entries(clusterGroups).forEach(([clusterName, clusterApps]) => {
-        const clusterGroupId = `cluster-${clusterName}`;
-        const appCount = Object.keys(clusterApps).length;
-        
-        vertices[clusterGroupId] = {
-          label: `Cluster: ${clusterName} (${appCount} apps)`,
-          type: 'group',
-          parentId: 'private-network',
-          style: {
-            fill: '#E8F4FD',
-            stroke: '#5B8FF9',
-            strokeWidth: 2,
-            opacity: 0.6
-          }
-        };
-
-        // Create application groups within clusters
-        Object.entries(clusterApps).forEach(([appName, appNodes]) => {
-          const appGroupId = `app-${clusterName}-${appName}`;
-          
-          vertices[appGroupId] = {
-            label: `App: ${appName} (${appNodes.length} nodes)`,
-            type: 'group',
-            name: appName,
-            parentId: clusterGroupId,
-            style: {
-              fill: '#FFE6CC',
-              stroke: '#FF9933',
-              strokeWidth: 2,
-              opacity: 0.6
-            }
-          };
-
-          // Add nodes to their application groups
-          appNodes.forEach(({ id, vertex }) => {
-            vertices[id] = {
-              ...vertex,  // Include all original vertex data at root level
-              parentId: appGroupId,
-              style: {
-                fill: this.getNodeColor(vertex.type)
-              }
-            };
-          });
-        });
-      });
-
-      // Add public nodes (no parent)
-      publicNodes.forEach(({ id, vertex }) => {
-        vertices[id] = {
-          ...vertex,  // Include all original vertex data at root level
-          parentId: null,
-          style: {
-            fill: this.getNodeColor(vertex.type)
-          }
-        };
-      });
-
-      // Transform edges, filtering out edges that involve application nodes
-      // applications are rendered as groups, not individual nodes
-      data.edges.forEach((edge) => {
-        const sourceVertex = data.vertices[edge.start_node];
-        const targetVertex = data.vertices[edge.end_node];
-        
-        // Skip edges that involve application nodes since we no longer render them as vertices
-        const isSourceApplication = sourceVertex?.type?.toLowerCase() === 'application';
-        const isTargetApplication = targetVertex?.type?.toLowerCase() === 'application';
-        
-        if (!isSourceApplication && !isTargetApplication) {
-          edges.push({
-            source: edge.start_node,
-            target: edge.end_node
-          });
-        }
-      });
-
-      const graphData = { 
-        vertices, 
-        edges,
-        applicationDataMap  // Include application data for click handling
-      };
-      
-      console.log(`Setting graph data: ${Object.keys(vertices).length} vertices, ${edges.length} edges`);
       
       // Set data on graph
-      this.graph.setData(graphData);
+      this.graph.setData(transformedData);
 
       // Emit rendering complete
       this.$emit('rendering-complete', {
-        nodeCount: Object.keys(vertices).filter(id => vertices[id].type !== 'group').length,
-        linkCount: edges.length
+        nodeCount: Object.keys(transformedData.vertices).filter(id => transformedData.vertices[id].type !== 'group').length,
+        linkCount: transformedData.edges.length
       });
-    },
-
-    getNodeColor(type) {
-      return this.nodeColors[type] || '#999';
     },
 
     // Public methods for parent component
