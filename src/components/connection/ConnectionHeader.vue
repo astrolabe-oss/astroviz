@@ -6,7 +6,7 @@
 // src/components/connection/ConnectionHeader.vue
 <template>
   <div class="logo-wrapper">
-    <img src="/logo.svg" alt="AstroViz Logo" class="logo" />
+    <img :src="logoUrl" alt="AstroViz Logo" class="logo" />
   </div>
 </template>
 
@@ -18,6 +18,12 @@ export default {
     connected: {
       type: Boolean,
       required: true
+    }
+  },
+
+  computed: {
+    logoUrl() {
+      return `${process.env.BASE_URL}logo.svg`;
     }
   },
 
