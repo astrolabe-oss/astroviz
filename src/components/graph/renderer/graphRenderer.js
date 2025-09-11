@@ -73,6 +73,7 @@ export class GraphRenderer {
     // Create SVG
     this.svg = d3.select(this.container)
       .append('svg')
+      .attr('id', 'graph-svg')
       .attr('width', this.options.width)
       .attr('height', this.options.height)
       .style('background', '#f8f9fa')

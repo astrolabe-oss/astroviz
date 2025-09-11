@@ -2,8 +2,10 @@
 ## New Section 1
 
 ## 0.2.1
-* [ ] demo for github pages
-* [ ] walk through helper?
+* [x] demo for github pages | Thurs, September 11
+* [x] walk through helper? | Thurs, September 11
+* [ ] about snippet
+* [ ] version shown in demo
 
 ## 0.2.2
 * [ ] tests and CI/CD

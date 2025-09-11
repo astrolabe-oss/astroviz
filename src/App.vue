@@ -45,11 +45,13 @@
         <div class="connection-info">
           Connected to: {{ connectionInfo }}
           <button @click="disconnect" class="disconnect-button">Disconnect</button>
-          <button @click="refreshGraphData" class="refresh-button" title="Refresh graph data">
-            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
-            </svg>
-          </button>
+          <div class="refresh-button-wrapper">
+            <button @click="refreshGraphData" class="refresh-button" title="Refresh graph data">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/>
+              </svg>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -58,6 +60,11 @@
           :graph-data="filteredGraphData"
           :highlighted-node-ids="highlightedNodeIds"
           @node-clicked="onNodeClicked"
+      />
+
+      <TutorialOverlay 
+        :auto-start="shouldAutoStartTutorial" 
+        :is-demo="neo4jService.isDemoMode()"
       />
 
       <NodeDetails
@@ -84,6 +91,7 @@ import FilterControls from '@/components/filter/FilterControls.vue';
 // New components
 import NodeDetails from '@/components/nodeDetails/NodeDetails.vue';
 import DemoModeBanner from '@/components/DemoModeBanner.vue';
+import TutorialOverlay from '@/components/tutorial/TutorialOverlay.vue';
 
 // Services and utilities
 import neo4jService from '@/services/neo4jService';
@@ -101,6 +109,7 @@ export default {
     NetworkGraph,
     NodeDetails,
     DemoModeBanner,
+    TutorialOverlay,
   },
 
   data() {
@@ -138,7 +147,10 @@ export default {
         hidePublicTraffic: true
       },
       selectedNode: null,
-      selectedNodes: [] // Array to track multiple selected nodes
+      selectedNodes: [], // Array to track multiple selected nodes
+      
+      // Tutorial state
+      hasLoadedBefore: false
     };
   },
 
@@ -194,11 +206,31 @@ export default {
       }
       const { host, port, database } = config.neo4j;
       return `${host}:${port}${database ? ` (${database})` : ''}`;
+    },
+
+    /**
+     * Determine when to auto-start tutorial
+     */
+    shouldAutoStartTutorial() {
+      if (neo4jService.isDemoMode()) {
+        // In demo mode, always auto-start (every page refresh)
+        return true;
+      } else {
+        // In production mode, only auto-start for first-time users
+        return !this.hasLoadedBefore;
+      }
     }
   },
 
   mounted() {
     console.log("APP: Component mounted, connecting automatically");
+    
+    // Check if user has loaded the app before
+    this.hasLoadedBefore = localStorage.getItem('astroviz_has_loaded') === 'true';
+    if (!this.hasLoadedBefore) {
+      localStorage.setItem('astroviz_has_loaded', 'true');
+    }
+    
     // Auto-connect when the component is mounted
     this.connect();
   },
@@ -556,6 +588,7 @@ export default {
   border-radius: 6px;
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
   font-size: 14px;
+  flex-wrap: wrap;
 }
 
 .connect-button, .disconnect-button {

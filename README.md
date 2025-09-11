@@ -90,7 +90,7 @@ The application is configured for automatic deployment to GitHub Pages:
 
 1. **Push to main branch** - GitHub Actions automatically builds and deploys
 2. **Enable GitHub Pages** - Set repository Settings → Pages → Source to "GitHub Actions"
-3. **Demo URL** - Available at `https://[username].github.io/astroviz/`
+3. **Demo URL** - Available at `https://astrolabe-oss.github.io/astroviz/`
 
 The deployment includes:
 - Automated build process with GitHub Actions
