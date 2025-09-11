@@ -5,6 +5,20 @@ All notable changes to AstroViz will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.1] - 2025-09-11
+
+### Demo Mode
+- Automatic environment detection - switches to demo mode when Neo4j environment variables are not configured
+- Demo mode banner with visual indicator when using mock data
+- Direct support for exported Neo4j data as static JSON for demos
+
+### GitHub Pages Deployment
+- Automated deployment pipeline with GitHub Actions
+- Builds and deploys automatically on push to main branch
+- Optimized build configuration for static hosting
+
+---
+
 ## [0.2.0] - 2025-01-11
 
 ### Major Changes - Complete Rendering Engine Rewrite

@@ -7,6 +7,9 @@
  * @type {import('@vue/cli-service').ProjectOptions}
  */
 module.exports = {
+    // GitHub Pages deployment configuration
+    publicPath: process.env.NODE_ENV === 'production' ? '/astroviz/' : '/',
+    
     // Prevent generation of source maps in production
     productionSourceMap: false,
 

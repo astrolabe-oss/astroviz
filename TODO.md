@@ -1,6 +1,9 @@
 # APP VIEW
+## New Section 1
+
 ## 0.2.1
 * [ ] demo for github pages
+* [ ] walk through helper?
 
 ## 0.2.2
 * [ ] tests and CI/CD
@@ -10,6 +13,7 @@
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
 * [ ] group by cluster/app <-> app/cluster
 * [ ] highlight "trace mode"
+* [ ] pass through proxy
 
 ## Not sure
 * [x] sub-connections missing in app view
