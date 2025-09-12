@@ -7,11 +7,12 @@
 * [x] user: properties
 * [x] user: filter verbage & port
 * [x] fix: footer/about
-* [ ] user: scroll
-* [ ] version shown in demo
+* [x] user: scroll
+* [ ] walk through timeout
 
 ## 0.2.2
 * [ ] tests and CI/CD
+* [ ] version shown in demo
 
 ## 0.2.3
 * [ ] collapse expand groups

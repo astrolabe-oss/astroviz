@@ -584,8 +584,6 @@ export default {
 
 .node-properties {
   padding: 5px 8px;
-  max-height: 200px;
-  overflow-y: auto;
   font-size: 13px;
 }
 
