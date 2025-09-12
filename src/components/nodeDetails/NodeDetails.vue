@@ -39,47 +39,32 @@
     </div>
 
 
-    <!-- Node Other Properties Section -->
-    <div class="detail-section" v-if="Object.keys(filteredNodeProperties).length > 0">
-      <div class="connections-container properties-container">
-        <div class="connections-header properties-header">
-          <h5>Other Properties</h5>
-        </div>
-
-        <div class="node-properties">
-          <div v-for="(value, key) in filteredNodeProperties" :key="key" class="property">
-            <strong>{{ key }}:</strong> {{ value }}
-          </div>
-        </div>
-      </div>
-    </div>
-
     <!-- Node Relationships Section -->
     <div class="detail-section" v-if="hasAnyRelationships">
-      <!-- Real Connections Container -->
+      <!-- Connections Container -->
       <div class="connections-container">
         <div class="connections-header">
-          <h5>Real Connections</h5>
+          <h5>Connections</h5>
         </div>
 
-        <!-- Real Connections Tabs -->
+        <!-- Connections Tabs -->
         <div class="relationship-tabs">
           <button
-              :class="['tab-button', { active: realActiveTab === 'to' }]"
-              @click="realActiveTab = 'to'"
+              :class="['tab-button', { active: activeConnsTab === 'to' }]"
+              @click="activeConnsTab = 'to'"
           >
             TO ({{ outgoingRelationships.length }})
           </button>
           <button
-              :class="['tab-button', { active: realActiveTab === 'from' }]"
-              @click="realActiveTab = 'from'"
+              :class="['tab-button', { active: activeConnsTab === 'from' }]"
+              @click="activeConnsTab = 'from'"
           >
             FROM ({{ incomingRelationships.length }})
           </button>
         </div>
 
         <!-- TO Connections Tab -->
-        <div v-if="realActiveTab === 'to'" class="tab-content">
+        <div v-if="activeConnsTab === 'to'" class="tab-content">
           <div v-if="outgoingRelationships.length === 0" class="no-connections">
             No outgoing connections
           </div>
@@ -89,7 +74,7 @@
               <ul class="relationship-list">
                 <li
                     v-for="(rel, relIndex) in group.relationships"
-                    :key="`real-out-${relIndex}`"
+                    :key="`conns-out-${relIndex}`"
                     class="relationship-item"
                     @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
                 >
@@ -106,7 +91,7 @@
         </div>
 
         <!-- FROM Connections Tab -->
-        <div v-if="realActiveTab === 'from'" class="tab-content">
+        <div v-if="activeConnsTab === 'from'" class="tab-content">
           <div v-if="incomingRelationships.length === 0" class="no-connections">
             No incoming connections
           </div>
@@ -116,7 +101,7 @@
               <ul class="relationship-list">
                 <li
                     v-for="(rel, relIndex) in group.relationships"
-                    :key="`real-in-${relIndex}`"
+                    :key="`conns-in-${relIndex}`"
                     class="relationship-item"
                     @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
                 >
@@ -133,6 +118,21 @@
         </div>
       </div>
 
+    </div>
+
+    <!-- Node Other Properties Section -->
+    <div class="detail-section" v-if="Object.keys(filteredNodeProperties).length > 0">
+      <div class="connections-container properties-container">
+        <div class="connections-header properties-header">
+          <h5>Additional/Debug Properties</h5>
+        </div>
+
+        <div class="node-properties">
+          <div v-for="(value, key) in filteredNodeProperties" :key="key" class="property">
+            <strong>{{ key }}:</strong> {{ value }}
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </template>
@@ -165,7 +165,7 @@ export default {
 
   data() {
     return {
-      realActiveTab: 'to',   // Default to TO tab for connections
+      activeConnsTab: 'to',   // Default to TO tab for connections
       nodeColors: {
         'Application': '#F9696E', // Red 
         'Deployment': '#F2A3B3', // Pink
@@ -323,9 +323,9 @@ export default {
     setInitialActiveTabs() {
       // Set connections tab
       if (this.outgoingRelationships.length === 0 && this.incomingRelationships.length > 0) {
-        this.realActiveTab = 'from';
+        this.activeConnsTab = 'from';
       } else {
-        this.realActiveTab = 'to';
+        this.activeConnsTab = 'to';
       }
     },
 

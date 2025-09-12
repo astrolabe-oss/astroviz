@@ -4,7 +4,11 @@
 ## 0.2.1
 * [x] demo for github pages | Thurs, September 11
 * [x] walk through helper? | Thurs, September 11
-* [ ] about snippet
+* [x] user: properties
+* [~] footer/about
+* [ ] user: scroll
+* [ ] user: footer
+* [ ] user: port
 * [ ] version shown in demo
 
 ## 0.2.2
