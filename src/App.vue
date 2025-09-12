@@ -517,17 +517,18 @@ export default {
   -moz-osx-font-smoothing: grayscale;
   color: #2c3e50;
   margin: 0;
-  padding: 20px;
-  min-height: 100vh;
+  padding: 0;
+  height: 100vh;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .header-row {
   display: flex;
   gap: 20px;
-  margin-bottom: 20px;
+  margin: 20px 20px 20px 20px;
   flex-shrink: 0;
 }
 
@@ -573,7 +574,9 @@ export default {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
   overflow: hidden;
   display: flex;
-  height: calc(100vh - 250px);
+  flex: 1;
+  margin: 0 20px 20px 20px;
+  min-height: 0;
 }
 
 .connection-overlay {

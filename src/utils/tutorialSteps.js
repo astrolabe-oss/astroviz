@@ -16,8 +16,8 @@ export const tutorialSteps = [
   {
     element: '.filter-container',
     popover: {
-      title: 'Filter Controls',
-      description: 'Use these dropdowns to filter and highlight specific nodes by app name, provider, protocol, or address.',
+      title: 'Highlight Controls',
+      description: 'Use these dropdowns to highlight specific nodes by app name, provider, protocol, or address.',
       position: 'bottom'
     }
   },
@@ -75,6 +75,14 @@ export const tutorialSteps = [
       title: 'Refresh Data',
       description: 'Try clicking the refresh button (↻) to reload the graph data from the source. Useful when data has been updated. Avoid the disconnect button to keep the demo running!',
       position: 'left'
+    }
+  },
+  {
+    element: '.footer-toggle-btn',
+    popover: {
+      title: 'Footer Information',
+      description: 'Try clicking this button to hide or show the footer with information about AstroViz, the Astrolabe ecosystem, and enterprise deployment options.',
+      position: 'top'
     }
   }
 ];

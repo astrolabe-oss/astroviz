@@ -6,8 +6,7 @@
 * [x] walk through helper? | Thurs, September 11
 * [x] user: properties
 * [x] user: filter verbage & port
-* [~] footer/about
-* [~] user: footer
+* [x] fix: footer/about
 * [ ] user: scroll
 * [ ] version shown in demo
 
