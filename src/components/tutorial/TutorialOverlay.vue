@@ -52,22 +52,16 @@ export default {
     // Check if user has seen tutorial before
     this.hasSeenTutorial = localStorage.getItem('astroviz_tutorial_seen') === 'true';
     
-    // Auto-start logic
-    let shouldAutoStart = false;
-    if (this.isDemo) {
-      // In demo mode, always auto-start (every page refresh)
-      shouldAutoStart = true;
-    } else {
-      // In production mode, only auto-start if user hasn't seen it and autoStart is true
-      shouldAutoStart = !this.hasSeenTutorial && this.autoStart;
-    }
-    
-    if (shouldAutoStart) {
+    // Use the autoStart prop passed from parent (which already includes timeout logic)
+    if (this.autoStart) {
       // Delay to let the app fully render
       setTimeout(() => {
         this.startTutorial();
       }, 500);
     }
+    
+    // Store the current visit timestamp AFTER the tutorial decision
+    localStorage.setItem('astroviz_last_visit', Date.now().toString());
   },
 
   beforeDestroy() {

@@ -217,8 +217,22 @@ export default {
      */
     shouldAutoStartTutorial() {
       if (neo4jService.isDemoMode()) {
-        // In demo mode, always auto-start (every page refresh)
-        return true;
+        // In demo mode, check if enough time has passed since last visit
+        const lastVisit = localStorage.getItem('astroviz_last_visit');
+        const now = Date.now();
+        const timeoutMs = 60 * 60 * 1000; // 1 hour
+        
+        if (!lastVisit) {
+          // First visit ever
+          return true;
+        }
+        
+        const timeSinceLastVisit = now - parseInt(lastVisit);
+        console.log(`Time since last visit: ${timeSinceLastVisit}ms (${timeSinceLastVisit / 1000}s)`);
+        console.log(`Timeout threshold: ${timeoutMs}ms (${timeoutMs / 1000}s)`);
+        console.log(`Should auto-start: ${timeSinceLastVisit > timeoutMs}`);
+        
+        return timeSinceLastVisit > timeoutMs;
       } else {
         // In production mode, only auto-start for first-time users
         return !this.hasLoadedBefore;
@@ -234,7 +248,7 @@ export default {
     if (!this.hasLoadedBefore) {
       localStorage.setItem('astroviz_has_loaded', 'true');
     }
-    
+
     // Auto-connect when the component is mounted
     this.connect();
   },

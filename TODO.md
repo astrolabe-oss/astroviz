@@ -3,7 +3,7 @@
 
 ## 0.2.2
 * [x] restrict repositioning private networks
-* [ ] walk through timeout
+* [x] walk through timeout
 * [ ] collapse expand groups
 * [ ] highlight "trace mode"
 * [ ] version shown in demo
