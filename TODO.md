@@ -5,10 +5,10 @@
 * [x] demo for github pages | Thurs, September 11
 * [x] walk through helper? | Thurs, September 11
 * [x] user: properties
+* [x] user: filter verbage & port
 * [~] footer/about
+* [~] user: footer
 * [ ] user: scroll
-* [ ] user: footer
-* [ ] user: port
 * [ ] version shown in demo
 
 ## 0.2.2

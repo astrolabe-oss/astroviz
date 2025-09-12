@@ -15,18 +15,10 @@
     </div>
 
     <div class="filter-item">
-      <label for="provider">Provider:</label>
+      <label for="provider">Compute Platform:</label>
       <select id="provider" v-model="localFilters.provider" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="provider in uniqueValues.providers" :key="provider" :value="provider" :title="provider">{{ provider }}</option>
-      </select>
-    </div>
-
-    <div class="filter-item">
-      <label for="protocol-mux">Protocol Mux:</label>
-      <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
-        <option value="">All</option>
-        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux" :title="mux">{{ mux }}</option>
       </select>
     </div>
 
@@ -39,7 +31,16 @@
     </div>
 
     <div class="filter-item">
-      <label for="public-ip">IP Type:</label>
+      <label for="protocol-mux">TCP Port:</label>
+      <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
+        <option value="">All</option>
+        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux" :title="mux">{{ mux }}</option>
+      </select>
+    </div>
+
+
+    <div class="filter-item">
+      <label for="public-ip">Public/Private IP:</label>
       <select id="public-ip" v-model="localFilters.publicIp" @change="emitFilterChange">
         <option value="">All</option>
         <option value="public">Public</option>
@@ -59,7 +60,7 @@
 
     <div class="filter-item reset-container">
       <label>&nbsp;</label>
-      <button @click="resetFilters" class="reset-button">Reset Filters</button>
+      <button @click="resetFilters" class="reset-button">Reset Highlights</button>
     </div>
   </div>
 </template>
