@@ -789,7 +789,6 @@ renderEdges(packedRoot) {
   }
   
   onDrag(event, d) {
-    // console.log('onDrag called for', d.data.id);
     const nodeId = d.data.id;
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
@@ -805,8 +804,6 @@ renderEdges(packedRoot) {
     // Move the node group visually
     d3.select(`#node-${nodeId}`)
       .attr('transform', `translate(${event.x}, ${event.y})`);
-    
-    
     
     // Update all non-highlighted edges
     this.updateAllEdgesAsync();
@@ -825,11 +822,24 @@ renderEdges(packedRoot) {
    */
   onGroupDragStart(event, d) {
     console.log('=== onGroupDragStart called ===', d.data.id);
+    
+    // Prevent dragging the private network
+    if (d.data.id === 'private-network') {
+      event.sourceEvent.preventDefault();
+      return;
+    }
+    
     this.setCursor(event, 'grabbing');
   }
   
   onGroupDrag(event, d) {
     const groupId = d.data.id;
+    
+    // Prevent dragging the private network
+    if (groupId === 'private-network') {
+      return;
+    }
+    
     const groupPos = this.groupPositions.get(groupId);
     if (!groupPos) return;
     
@@ -899,6 +909,7 @@ renderEdges(packedRoot) {
     });
   }
   
+
 
   /**
    * Update all edges asynchronously with cancellation support

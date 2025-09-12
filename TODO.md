@@ -1,25 +1,22 @@
 # APP VIEW
 ## New Section 1
 
-## 0.2.1
-* [x] demo for github pages | Thurs, September 11
-* [x] walk through helper? | Thurs, September 11
-* [x] user: properties
-* [x] user: filter verbage & port
-* [x] fix: footer/about
-* [x] user: scroll
-* [ ] walk through timeout
-
 ## 0.2.2
-* [ ] tests and CI/CD
-* [ ] version shown in demo
-
-## 0.2.3
+* [x] restrict repositioning private networks
+* [ ] walk through timeout
 * [ ] collapse expand groups
+* [ ] highlight "trace mode"
+* [ ] version shown in demo
+* [ ] filter actually filters
+* [ ] bug: debug properties in .data and displayed
+
+## 0.3.1
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
 * [ ] group by cluster/app <-> app/cluster
-* [ ] highlight "trace mode"
 * [ ] pass through proxy
+
+## 0.3.2
+* [ ] tests and CI/CD
 
 ## Not sure
 * [x] sub-connections missing in app view
@@ -32,6 +29,14 @@
 * [ ] Graph Pane (Reordering) - Dragging a node, all the connected nodes follow. We want to drag it away and not have them follow so aggresively  (Only happens with few nodes)
 
 # ARCHIVE
+## 0.2.1
+* [x] demo for github pages | Thurs, September 11
+* [x] walk through helper? | Thurs, September 11
+* [x] user: properties
+* [x] user: filter verbage & port
+* [x] fix: footer/about
+* [x] user: scroll
+
 ## 0.2.0 - Custom Rewrite
 * [x] d3 packing static | Sat, September 6
 * [x] move nodes w/ edges | Sat, September 6
