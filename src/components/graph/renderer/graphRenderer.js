@@ -17,10 +17,10 @@ const SUPPORTED_STYLES = {
 /**
  * Get default dash pattern based on node type/id
  */
-function getDefaultDashPattern(node) {
-  if (node.data.id.startsWith('app')) return '3,3';        // Short dash for apps
-  if (node.data.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
-  if (node.data.id === 'private-network') return '5,5';     // Default dash for private network
+function getDefaultDashPattern(vertex) {
+  if (vertex.id.startsWith('app')) return '3,3';        // Short dash for apps
+  if (vertex.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
+  if (vertex.id === 'private-network') return '5,5';     // Default dash for private network
   return null;  // No dash for others
 }
 
@@ -135,13 +135,16 @@ export class GraphRenderer {
   render() {
     if (!this.data) return;
     
-    // Build hierarchy from vertices
+    // Build hierarchy from vertices (stores vertexMap as class property)
     const hierarchy = this.buildHierarchy();
     if (!hierarchy) return;
     
     // Calculate positions using D3 pack
     const packedRoot = this.calculatePack(hierarchy);
     if (!packedRoot) return;
+    
+    // Extract D3 positioning back to our vertex structure
+    this.extractPositionsFromD3(packedRoot);
     
     // Store the packed root for later use (e.g., drag end re-rendering)
     this.hierarchyRoot = packedRoot;
@@ -165,27 +168,28 @@ export class GraphRenderer {
     this.nodePositions.clear();
     this.groupPositions.clear();
     
-    // Store group positions and track their children
-    packedRoot.descendants().forEach(d => {
-      if (!d.data.isVirtual) {
+    // Store positions using our clean vertex structure
+    this.vertexMap.forEach((vertex, id) => {
+      if (!vertex.isVirtual) {
         const position = {
-          x: d.x + 25,
-          y: d.y + 25,
-          originalX: d.x + 25,
-          originalY: d.y + 25
+          x: vertex.x,
+          y: vertex.y,
+          originalX: vertex.x,
+          originalY: vertex.y
         };
         
-        if (d.data.isGroup) {
-          position.r = d.r;
-          position.originalR = d.r;
-          position.children = d.children ? d.children.map(c => c.data.id) : [];
-          this.groupPositions.set(d.data.id, position);
+        if (vertex.isGroup) {
+          position.r = vertex.r;
+          position.originalR = vertex.r;
+          position.children = vertex.children ? vertex.children.map(c => c.id) : [];
+          this.groupPositions.set(vertex.id, position);
         } else {
-          this.nodePositions.set(d.data.id, position);
+          this.nodePositions.set(vertex.id, position);
         }
       }
     });
   }
+
   
   /**
    * Build hierarchy from vertices data
@@ -196,32 +200,39 @@ export class GraphRenderer {
     
     console.log('Raw vertices data:', vertices);
     
-    // Create vertex map - flatten the structure so D3 hierarchy will have clean d.data access
-    const vertexMap = new Map();
+    // Create vertex map with clean separation between app and database properties
+    this.vertexMap = new Map();
     
     Object.entries(vertices).forEach(([id, vertex]) => {
-      // Create a node with ALL vertex properties directly on it
-      // This way, after D3 hierarchy processing, properties will be at d.data.*
-      vertexMap.set(id, {
-        ...vertex,           // Spread ALL vertex properties directly
-        id,                  // Ensure id is set
-        children: [],        // Initialize children array
-        isGroup: vertex.type === 'group'  // Add convenience property
+      // Use the already properly structured data from graphTransformUtils
+      this.vertexMap.set(id, {
+        // Application properties (for visualization/interaction)
+        id: vertex.id || id,
+        children: [],
+        isGroup: vertex.type === 'group',
+        isVirtual: vertex.isVirtual || false,
+        parentId: vertex.parentId,
+        label: vertex.label,
+        style: vertex.style,
+        x: 0, y: 0, r: 0,    // Will be set from D3 positioning
+        
+        // Database properties (clean for end users) - already separated
+        data: vertex.data || { label: vertex.label, type: vertex.type }  // Groups use minimal data
       });
     });
     
     // Build parent-child relationships
     Object.entries(vertices).forEach(([id, vertex]) => {
-      if (vertex.parentId && vertexMap.has(vertex.parentId)) {
-        const parent = vertexMap.get(vertex.parentId);
-        const child = vertexMap.get(id);
+      if (vertex.parentId && this.vertexMap.has(vertex.parentId)) {
+        const parent = this.vertexMap.get(vertex.parentId);
+        const child = this.vertexMap.get(id);
         parent.children.push(child);
       }
     });
     
     // Find roots (nodes with no parentId)
     const roots = [];
-    vertexMap.forEach(vertex => {
+    this.vertexMap.forEach(vertex => {
       if (!vertex.parentId) {
         roots.push(vertex);
       }
@@ -260,6 +271,20 @@ export class GraphRenderer {
         isVirtual: true
       };
     }
+  }
+
+  /**
+   * Extract D3 positioning data back into our clean vertex structure
+   */
+  extractPositionsFromD3(packedRoot) {
+    packedRoot.descendants().forEach(d => {
+      const vertex = this.vertexMap.get(d.data.id);
+      if (vertex) {
+        vertex.x = d.x + 25;  // Apply offset for margin
+        vertex.y = d.y + 25;
+        vertex.r = d.r;
+      }
+    });
   }
   
   /**
@@ -436,21 +461,21 @@ export class GraphRenderer {
    * Render group circles
    */
   renderGroups(packedRoot) {
-    const groups = packedRoot.descendants()
-      .filter(d => d.data.isGroup && !d.data.isVirtual);
+    const groups = Array.from(this.vertexMap.values())
+      .filter(vertex => vertex.isGroup && !vertex.isVirtual);
     
     const groupElements = this.groupLayer
       .selectAll('circle.group')
-      .data(groups, d => d.data.id)
+      .data(groups, vertex => vertex.id)
       .join('circle')
       .attr('class', 'group')
-      .attr('id', d => `group-${d.data.id}`)
-      .attr('cx', d => d.x + 25) // Offset for margin
-      .attr('cy', d => d.y + 25)
-      .attr('r', d => d.r)
+      .attr('id', vertex => `group-${vertex.id}`)
+      .attr('cx', vertex => vertex.x)
+      .attr('cy', vertex => vertex.y)
+      .attr('r', vertex => vertex.r)
       .style('cursor', 'grab')
-      .on('click', (event, d) => {
-        this.handleGroupClick(event, d);
+      .on('click', (event, vertex) => {
+        this.handleGroupClick(event, vertex);
       });
     
     // Apply all supported styles from the style object
@@ -459,10 +484,10 @@ export class GraphRenderer {
       
       Object.entries(SUPPORTED_STYLES).forEach(([styleProp, config]) => {
         // Check for style in nested style object first, then fall back to legacy flat properties
-        let value = d.data?.style?.[styleProp] ?? d.data?.[styleProp] ?? config.default;
+        let value = d.style?.[styleProp] ?? d.data?.[styleProp] ?? config.default;
         
         // Special handling for strokeDasharray - use type-based defaults if not specified
-        if (styleProp === 'strokeDasharray' && !value && !d.data?.style?.strokeDasharray) {
+        if (styleProp === 'strokeDasharray' && !value && !d.style?.strokeDasharray) {
           value = getDefaultDashPattern(d);
         }
         
@@ -475,21 +500,21 @@ export class GraphRenderer {
     // Group labels with backgrounds (like old D3 force styling) - moved to label layer
     const groupLabelElements = this.labelLayer
       .selectAll('g.group-label-container')
-      .data(groups, d => d.data.id)
+      .data(groups, vertex => vertex.id)
       .join('g')
       .attr('class', 'group-label-container')
-      .attr('id', d => `group-label-container-${d.data.id}`)
-      .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25 - d.r - 5})`);
+      .attr('id', vertex => `group-label-container-${vertex.id}`)
+      .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y - vertex.r - 5})`);
 
     // Add label backgrounds
     groupLabelElements.each(function(d) {
       const group = d3.select(this);
-      const labelText = d.data?.label || d.data.id;
+      const labelText = d.label || d.id;
       
       // Create temporary text to measure width
       const tempText = group.append('text')
-        .attr('font-size', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '16px' : 
-                          d.data.id.startsWith('cluster') ? '14px' : '12px')
+        .attr('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' : 
+                          d.id.startsWith('cluster') ? '14px' : '12px')
         .attr('font-weight', 'bold')
         .text(labelText)
         .style('visibility', 'hidden');
@@ -513,10 +538,10 @@ export class GraphRenderer {
         .attr('class', 'group-label')
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .style('font-size', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '16px' : 
-                           d.data.id.startsWith('cluster') ? '14px' : '12px')
+        .style('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' : 
+                           d.id.startsWith('cluster') ? '14px' : '12px')
         .style('font-weight', 'bold')
-        .style('fill', d.data.id === 'internet-boundary' || d.data.id === 'private-network' ? '#333' : '#555')
+        .style('fill', d.id === 'internet-boundary' || d.id === 'private-network' ? '#333' : '#555')
         .style('pointer-events', 'none')
         .text(labelText);
     });
@@ -525,8 +550,8 @@ export class GraphRenderer {
     const groupDragBehavior = d3.drag()
       .subject((event, d) => {
         // Initialize drag subject with current group position
-        const pos = this.groupPositions.get(d.data.id);
-        return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
+        const pos = this.groupPositions.get(d.id);
+        return pos ? { x: pos.x, y: pos.y } : { x: d.x, y: d.y };
       })
       .on('start', (event, d) => this.onGroupDragStart(event, d))
       .on('drag', (event, d) => this.onGroupDrag(event, d))
@@ -540,25 +565,25 @@ export class GraphRenderer {
    */
   renderNodes(packedRoot) {
     console.log('=== renderNodes called ===');
-    const nodes = packedRoot.descendants()
-      .filter(d => !d.data.isGroup && !d.data.isVirtual);
+    const nodes = Array.from(this.vertexMap.values())
+      .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
     console.log('Found nodes:', nodes.length);
     
     // Create node elements to hold icons
     const nodeElements = this.nodeLayer
       .selectAll('g.node')
-      .data(nodes, d => d.data.id)
+      .data(nodes, vertex => vertex.id)
       .join('g')
       .attr('class', 'node')
-      .attr('id', d => `node-${d.data.id}`)
-      .attr('transform', d => `translate(${d.x + 25}, ${d.y + 25})`)
+      .attr('id', vertex => `node-${vertex.id}`)
+      .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y})`)
       .style('cursor', 'grab')
-      .on('click', (event, d) => {
-        this.handleNodeClick(event, d);
+      .on('click', (event, vertex) => {
+        this.handleNodeClick(event, vertex);
       })
-      .on('mouseover', (event, d) => {
+      .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
-        this.showTooltip(event, d.data);
+        this.showTooltip(event, vertex.data);
       })
       .on('mouseout', () => {
         // Hide tooltip
@@ -593,7 +618,7 @@ export class GraphRenderer {
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
           .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.data?.style?.fill ?? d.data?.fill ?? '#5B8FF9'); // Use node color from style object
+          .style('color', d.style?.fill ?? '#5B8FF9'); // Use node color from style object
         
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
@@ -637,7 +662,7 @@ export class GraphRenderer {
     const dragBehavior = d3.drag()
       .subject((event, d) => {
         // Initialize drag subject with current node position
-        const pos = this.nodePositions.get(d.data.id);
+        const pos = this.nodePositions.get(d.id);
         return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
       })
       .on('start', (event, d) => this.onDragStart(event, d))
@@ -784,12 +809,12 @@ renderEdges(packedRoot) {
    * Drag handlers
    */
   onDragStart(event, d) {
-    console.log('=== onDragStart called ===', d.data.id);
+    console.log('=== onDragStart called ===', d.id);
     this.setCursor(event, 'grabbing');
   }
   
   onDrag(event, d) {
-    const nodeId = d.data.id;
+    const nodeId = d.id;
     const nodePos = this.nodePositions.get(nodeId);
     if (!nodePos) return;
     
@@ -821,10 +846,10 @@ renderEdges(packedRoot) {
    * Group drag handlers
    */
   onGroupDragStart(event, d) {
-    console.log('=== onGroupDragStart called ===', d.data.id);
+    console.log('=== onGroupDragStart called ===', d.id);
     
     // Prevent dragging the private network
-    if (d.data.id === 'private-network') {
+    if (d.id === 'private-network') {
       event.sourceEvent.preventDefault();
       return;
     }
@@ -833,7 +858,7 @@ renderEdges(packedRoot) {
   }
   
   onGroupDrag(event, d) {
-    const groupId = d.data.id;
+    const groupId = d.id;
     
     // Prevent dragging the private network
     if (groupId === 'private-network') {
@@ -853,7 +878,7 @@ renderEdges(packedRoot) {
   }
   
   onGroupDragEnd(event, d) {
-    console.log('=== onGroupDragEnd called ===', d.data.id);
+    console.log('=== onGroupDragEnd called ===', d.id);
     this.setCursor(event, 'grab');
     
     // Cancel any in-progress async update and do a final synchronous update
@@ -1036,7 +1061,7 @@ renderEdges(packedRoot) {
     // Apply visual highlighting to nodes
     const selectedNodeIds = this.selectedNodeIds; // Capture context for use in .each()
     this.nodeLayer.selectAll('.node')
-      .filter(d => allConnectedNodes.has(d.data.id))
+      .filter(d => allConnectedNodes.has(d.id))
       .each(function(d) {
         const node = d3.select(this);
         
@@ -1049,7 +1074,7 @@ renderEdges(packedRoot) {
           const y = parseFloat(coords[1]);
 
           // Apply scaling and styling - don't store transforms, just modify current
-          const isDirectlySelected = selectedNodeIds.has(d.data.id);
+          const isDirectlySelected = selectedNodeIds.has(d.id);
           const scale = isDirectlySelected ? 1.2 : 1.1;
           const color = isDirectlySelected ? '#8A4FBE' : '#A875D4'; // Less intense purple for selected, lighter purple for connected
           
@@ -1144,7 +1169,7 @@ renderEdges(packedRoot) {
 
     // Find and highlight all application groups with the same name
     this.groupLayer.selectAll('circle.group')
-      .filter(d => d.data.id.startsWith('app-') && d.data.name === appName)
+      .filter(d => d.id.startsWith('app-') && d.data.name === appName)
       .each(function(d) {
         const group = d3.select(this);
         
@@ -1160,7 +1185,7 @@ renderEdges(packedRoot) {
     
     // Also enhance the labels for highlighted application groups
     this.labelLayer.selectAll('g.group-label-container')
-      .filter(d => d.data.id.startsWith('app-') && d.data.name === appName)
+      .filter(d => d.id.startsWith('app-') && d.data.name === appName)
       .each(function(d) {
         const labelContainer = d3.select(this);
         
@@ -1198,7 +1223,7 @@ renderEdges(packedRoot) {
     this.labelLayer.selectAll('g.group-label-container.app-label-highlighted')
       .each(function(d) {
         const labelContainer = d3.select(this);
-        const labelText = d.data?.label || d.data.id;
+        const labelText = d.label || d.id;
         
         // Restore label text to original size
         const textElement = labelContainer.select('text.group-label')
@@ -1254,11 +1279,11 @@ renderEdges(packedRoot) {
     this.clearNodeHighlights();
     
     // Route based on group type
-    if (d.data.id.startsWith('app-') && d.data.name) {
+    if (d.id.startsWith('app-') && d.data.name) {
       this.handleApplicationGroupClick(event, d);
     } else {
       // For cluster/boundary groups, do nothing (no details panel)
-      console.log('Non-application group clicked, ignoring:', d.data.id);
+      console.log('Non-application group clicked, ignoring:', d.id);
     }
   }
 
@@ -1278,7 +1303,7 @@ renderEdges(packedRoot) {
       this.emitClickEvent(applicationData, event, 'application');
     } else {
       console.warn('Application data not found for:', appName);
-      this.emitClickEvent(d.data, event, 'group');
+      this.emitClickEvent(d, event, 'group');
     }
   }
 
@@ -1292,10 +1317,10 @@ renderEdges(packedRoot) {
     this.clearApplicationHighlights();
     
     // Apply node-specific highlighting
-    this.highlightNode(d.data.id, event.shiftKey);
+    this.highlightNode(d.id, event.shiftKey);
     
-    // Emit node data
-    this.emitClickEvent(d.data, event, 'node');
+    // Emit vertex data (includes both app and database properties)
+    this.emitClickEvent(d, event, 'node');
   }
 
   /**
@@ -1303,12 +1328,19 @@ renderEdges(packedRoot) {
    */
   emitClickEvent(data, event, type) {
     if (this.options.onNodeClick) {
-      // Add metadata about click type
-      const enrichedData = {
-        ...data,
-        _clickType: type
-      };
-      this.options.onNodeClick(enrichedData, event);
+      // For vertex objects (nodes/groups), pass the data property (clean database properties)
+      // For application data, pass as-is
+      let cleanData;
+      if (data && data.data && typeof data.data === 'object') {
+        // This is a vertex object - pass the clean database properties only
+        cleanData = data.data;
+      } else {
+        // This is already application data - pass as-is
+        cleanData = data;
+      }
+      
+      // Pass only clean data to UI - no internal application metadata
+      this.options.onNodeClick(cleanData, event);
     }
   }
 
@@ -1540,17 +1572,17 @@ renderEdges(packedRoot) {
   fitToView(packedRoot) {
     if (!packedRoot) return;
     
-    // Get the bounds of all visible elements
-    const allElements = packedRoot.descendants().filter(d => !d.data.isVirtual);
+    // Get the bounds of all visible elements using our vertex structure
+    const allElements = Array.from(this.vertexMap.values()).filter(vertex => !vertex.isVirtual);
     if (allElements.length === 0) return;
     
-    // Calculate bounding box of all elements (including the 25px offset)
+    // Calculate bounding box of all elements
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     
-    allElements.forEach(d => {
-      const x = d.x + 25;
-      const y = d.y + 25;
-      const radius = d.data.isGroup ? d.r : this.options.nodeRadius;
+    allElements.forEach(vertex => {
+      const x = vertex.x;
+      const y = vertex.y;
+      const radius = vertex.isGroup ? vertex.r : this.options.nodeRadius;
       
       minX = Math.min(minX, x - radius);
       minY = Math.min(minY, y - radius);

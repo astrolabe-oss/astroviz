@@ -124,7 +124,7 @@
     <div class="detail-section" v-if="Object.keys(filteredNodeProperties).length > 0">
       <div class="connections-container properties-container">
         <div class="connections-header properties-header">
-          <h5>Additional/Debug Properties</h5>
+          <h5>Node Properties</h5>
         </div>
 
         <div class="node-properties">

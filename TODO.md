@@ -2,15 +2,16 @@
 ## New Section 1
 
 ## 0.2.2
-* [x] restrict repositioning private networks
-* [x] walk through timeout
-* [ ] collapse expand groups
+* [x] restrict repositioning private networks | Fri, September 12
+* [x] walk through timeout | Fri, September 12
+* [x] refact: d.data and displayed properties
+* [ ] filter actually filters
+* [ ] bug: fix sizing/spacing per viewport aka nodeSize, padding do not work
 * [ ] highlight "trace mode"
 * [ ] version shown in demo
-* [ ] filter actually filters
-* [ ] bug: debug properties in .data and displayed
 
 ## 0.3.1
+* [ ] collapse expand groups
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
 * [ ] group by cluster/app <-> app/cluster
 * [ ] pass through proxy

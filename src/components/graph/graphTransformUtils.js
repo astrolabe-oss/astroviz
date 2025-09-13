@@ -130,12 +130,18 @@ export function transformGraphDataForVisualization(data, nodeColors) {
 
       // Add nodes to their application groups
       appNodes.forEach(({ id, vertex }) => {
+        // Clean separation: database data nested, app properties at root
         vertices[id] = {
-          ...vertex,  // Include all original vertex data at root level
+          // Application properties (for visualization/interaction)
+          id: id,
+          label: vertex.label || vertex.name || id,
+          type: vertex.type,
           parentId: appGroupId,
           style: {
             fill: getNodeColor(vertex.type, nodeColors)
-          }
+          },
+          // Clean database properties (for end users)
+          data: vertex
         };
       });
     });
@@ -143,12 +149,18 @@ export function transformGraphDataForVisualization(data, nodeColors) {
 
   // Add public nodes (no parent)
   publicNodes.forEach(({ id, vertex }) => {
+    // Clean separation: database data nested, app properties at root
     vertices[id] = {
-      ...vertex,  // Include all original vertex data at root level
+      // Application properties (for visualization/interaction)
+      id: id,
+      label: vertex.label || vertex.name || id,
+      type: vertex.type,
       parentId: null,
       style: {
         fill: getNodeColor(vertex.type, nodeColors)
-      }
+      },
+      // Clean database properties (for end users)
+      data: vertex
     };
   });
 
@@ -173,7 +185,8 @@ export function transformGraphDataForVisualization(data, nodeColors) {
   const graphData = { 
     vertices, 
     edges,
-    applicationDataMap  // Include application data for click handling
+    applicationDataMap,  // Include application data for click handling
+    originalVertices: data.vertices  // Preserve original clean database data
   };
   
   console.log(`Transformed graph data: ${Object.keys(vertices).length} vertices, ${edges.length} edges`);
