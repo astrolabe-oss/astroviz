@@ -40,11 +40,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-platform",
           "profile_timestamp": 1747956588.52036,
           "protocol_multiplexor": "8080",
@@ -126,11 +126,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-platform",
           "profile_timestamp": 1747956588.700634,
           "protocol_multiplexor": "8080",
@@ -222,11 +222,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-reliable-manager",
           "profile_timestamp": 1747956588.760257,
           "protocol_multiplexor": "8080",
@@ -308,11 +308,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-reliable-manager",
           "profile_timestamp": 1747956588.806076,
           "protocol_multiplexor": "8080",
@@ -448,11 +448,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-secure-handler",
           "profile_timestamp": 1747956588.879584,
           "protocol_multiplexor": "8080",
@@ -469,11 +469,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-secure-handler",
           "profile_timestamp": 1747956588.884683,
           "protocol_multiplexor": "8080",
@@ -523,11 +523,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-service",
           "profile_timestamp": 1747956588.906517,
           "protocol_multiplexor": "8080",
@@ -544,11 +544,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-service",
           "profile_timestamp": 1747956588.911512,
           "protocol_multiplexor": "8080",
@@ -609,11 +609,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-service",
           "profile_timestamp": 1747956588.949687,
           "protocol_multiplexor": "8080",
@@ -630,11 +630,11 @@
           "Compute"
         ],
         "properties": {
-          "platform": "k8s",
+          "platform": "ipv4",
           "profile_warnings": "{}",
           "protocol": "TCP",
           "public_ip": true,
-          "provider": "k8s",
+          "provider": "www",
           "app_name": "app-powerful-service",
           "profile_timestamp": 1747956588.954774,
           "protocol_multiplexor": "8080",
