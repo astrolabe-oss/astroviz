@@ -58,7 +58,7 @@
       <NetworkGraph
           ref="networkGraph"
           :graph-data="filteredGraphData"
-          :highlighted-node-ids="highlightedNodeIds"
+          :filtered-out-node-ids="filteredOutNodeIds"
           @node-clicked="onNodeClicked"
       />
 
@@ -168,37 +168,42 @@ export default {
     },
 
     /**
-     * Get set of node IDs that match current filters
+     * Get set of node IDs that should be dimmed (don't match current filters)
      */
-    highlightedNodeIds() {
-      // If no filters are applied, return empty set (no filter-based highlights)
+    filteredOutNodeIds() {
+      // If no filters are applied, return empty set (no dimming)
       if (!this.filters.appName && !this.filters.provider &&
-          !this.filters.protocolMux && !this.filters.address && 
+          !this.filters.protocolMux && !this.filters.address &&
           !this.filters.publicIp) {
         return new Set();
       }
-    
-      // Find vertices that match filters
-      const matchingNodeIds = new Set();
+
+      // Find vertices that DON'T match filters (to be dimmed)
+      const filteredOutNodeIds = new Set();
       Object.entries(this.rawGraphData.vertices).forEach(([id, vertex]) => {
         // Handle public IP filtering - "public" means has public_ip, "private" means no public_ip
-        const publicIpMatch = !this.filters.publicIp || 
-          (this.filters.publicIp === 'public' && vertex.public_ip) || 
+        const publicIpMatch = !this.filters.publicIp ||
+          (this.filters.publicIp === 'public' && vertex.public_ip) ||
           (this.filters.publicIp === 'private' && !vertex.public_ip);
-        
-        if (
+
+        const matchesFilters = (
             (!this.filters.appName || vertex.app_name === this.filters.appName) &&
             (!this.filters.provider || vertex.provider === this.filters.provider) &&
             (!this.filters.protocolMux || vertex.protocol_multiplexor === this.filters.protocolMux) &&
             (!this.filters.address || vertex.address === this.filters.address) &&
             publicIpMatch
-        ) {
-          matchingNodeIds.add(id);
+        );
+
+        // If it doesn't match filters, it should be dimmed
+        if (!matchesFilters) {
+          filteredOutNodeIds.add(id);
         }
       });
-    
-      console.log(`APP: Highlighted ${matchingNodeIds.size} of ${Object.keys(this.rawGraphData.vertices).length} vertices`);
-      return matchingNodeIds;
+
+      const totalNodes = Object.keys(this.rawGraphData.vertices).length;
+      const dimmingCount = filteredOutNodeIds.size;
+      console.log(`APP: Dimming ${dimmingCount} of ${totalNodes} vertices (${totalNodes - dimmingCount} visible)`);
+      return filteredOutNodeIds;
     },
 
     /**

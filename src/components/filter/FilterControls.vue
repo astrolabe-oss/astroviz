@@ -60,7 +60,7 @@
 
     <div class="filter-item reset-container">
       <label>&nbsp;</label>
-      <button @click="resetFilters" class="reset-button">Reset Highlights</button>
+      <button @click="resetFilters" class="reset-button">Clear Filters</button>
     </div>
   </div>
 </template>

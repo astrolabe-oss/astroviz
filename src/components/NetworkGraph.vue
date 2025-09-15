@@ -23,7 +23,7 @@
         ref="visualization"
         :graphData="graphData"
         :nodeColors="nodeColors"
-        :highlightedNodeIds="highlightedNodeIds"
+        :filteredOutNodeIds="filteredOutNodeIds"
         @node-clicked="onNodeClick"
         @rendering-start="onRenderingStart"
         @rendering-complete="onRenderingComplete"
@@ -66,8 +66,8 @@ export default {
       required: true,
       default: () => ({ vertices: {}, edges: [] })
     },
-    // Set of node IDs that should be highlighted (from filters)
-    highlightedNodeIds: {
+    // Set of node IDs that should be dimmed (don't match filters)
+    filteredOutNodeIds: {
       type: Set,
       default: () => new Set()
     }

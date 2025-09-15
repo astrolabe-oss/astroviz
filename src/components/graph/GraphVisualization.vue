@@ -24,8 +24,8 @@ export default {
       type: Object,
       required: true
     },
-    // Set of node IDs that should be highlighted (from filters)
-    highlightedNodeIds: {
+    // Set of node IDs that should be dimmed (don't match filters)
+    filteredOutNodeIds: {
       type: Set,
       default: () => new Set()
     }
@@ -61,11 +61,11 @@ export default {
       deep: true
     },
     
-    highlightedNodeIds: {
-      handler(newHighlighted) {
-        console.log('HighlightedNodeIds changed, updating filter highlights');
+    filteredOutNodeIds: {
+      handler(newFilteredOut) {
+        console.log('FilteredOutNodeIds changed, updating filter dimming');
         if (this.graph) {
-          this.graph.setFilterHighlights(newHighlighted);
+          this.graph.setFilterDimming(newFilteredOut);
         }
       },
       immediate: true
@@ -95,6 +95,10 @@ export default {
         onNodeClick: (node, event) => {
           // Emit node click event to parent
           this.$emit('node-clicked', node, event);
+        },
+        onZoomChange: (zoomLevel) => {
+          // Emit zoom change event to parent
+          this.$emit('zoom-change', zoomLevel);
         }
       });
 

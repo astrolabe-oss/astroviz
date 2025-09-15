@@ -54,7 +54,8 @@ export class GraphRenderer {
     
     // Selection and highlighting state
     this.selectedNodeIds = new Set();
-    this.filterHighlightedNodes = new Set(); // Track filter-based highlights
+    this.filterHighlightedNodes = new Set(); // Track filter-based highlights (deprecated - will be removed)
+    this.filteredOutNodes = new Set(); // Track nodes to be dimmed
     this.highlightedElements = {
       nodes: new Set(),
       edgeKeys: new Set() // Store "source-target" keys for persistence
@@ -110,6 +111,11 @@ export class GraphRenderer {
       .scaleExtent([0.1, 4])
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
+
+        // Emit zoom change event if callback is provided
+        if (this.options.onZoomChange) {
+          this.options.onZoomChange(event.transform.k);
+        }
       });
     
     this.svg.call(this.zoom);
@@ -781,8 +787,13 @@ renderEdges(packedRoot) {
         strokeWidth = 1.5;
       }
       
-      // Create single line with appropriate styling
-      this.edgeLayer
+      // Check if this edge should be dimmed (connected to filtered nodes)
+      const sourceFiltered = this.filteredOutNodes && this.filteredOutNodes.has(edge.source);
+      const targetFiltered = this.filteredOutNodes && this.filteredOutNodes.has(edge.target);
+      const shouldBeDimmed = sourceFiltered || targetFiltered;
+
+      // Create single line with appropriate styling including filtering state
+      const edgeElement = this.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
@@ -795,6 +806,13 @@ renderEdges(packedRoot) {
         .attr('stroke', strokeStyle)
         .attr('stroke-width', strokeWidth)
         .attr('marker-end', 'url(#arrow)');
+
+      // Apply dimming styles if needed (at creation time, no flashing)
+      if (shouldBeDimmed) {
+        edgeElement
+          .style('opacity', 0.4)
+          .style('stroke-dasharray', '6,6');
+      }
     });
   }
   
@@ -1103,23 +1121,38 @@ renderEdges(packedRoot) {
       });
 
     // Apply highlighting to connected edges
+    const filteredOutNodes = this.filteredOutNodes; // Capture for closure
     this.edgeLayer.selectAll('.edge')
       .each(function() {
         const edge = d3.select(this);
         const source = edge.attr('data-source');
         const target = edge.attr('data-target');
         const edgeKey = `${source}-${target}`;
-        
+
         if (allConnectedEdges.includes(edgeKey)) {
           // Store original stroke properties if not already stored
           if (!edge.attr('data-original-stroke')) {
             edge.attr('data-original-stroke', edge.attr('stroke'))
                 .attr('data-original-stroke-width', edge.attr('stroke-width'));
           }
-          
-          // Apply purple highlighting
-          edge.attr('stroke', '#4444ff')
-              .attr('stroke-width', 3);
+
+          // Check if this edge should remain dimmed (connected to filtered nodes)
+          const sourceFiltered = filteredOutNodes.has(source);
+          const targetFiltered = filteredOutNodes.has(target);
+
+          if (sourceFiltered || targetFiltered) {
+            // Apply purple highlighting but keep dimming
+            edge.attr('stroke', '#4444ff')
+                .attr('stroke-width', 3)
+                .style('opacity', 0.4)
+                .style('stroke-dasharray', '6,6');
+          } else {
+            // Apply normal purple highlighting
+            edge.attr('stroke', '#4444ff')
+                .attr('stroke-width', 3)
+                .style('opacity', null)
+                .style('stroke-dasharray', null);
+          }
         }
       });
 
@@ -1360,7 +1393,7 @@ renderEdges(packedRoot) {
     this.highlightedElements.nodes.clear();
     this.highlightedElements.edgeKeys.clear();
     
-    // Re-render edges
+    // Re-render edges (now includes filtering state from the start)
     if (this.hierarchyRoot) {
       this.renderEdges(this.hierarchyRoot);
     }
@@ -1486,6 +1519,123 @@ renderEdges(packedRoot) {
   }
 
   /**
+   * Set filter-based dimming for nodes (new approach - dims non-matching nodes)
+   * @param {Set} filteredOutNodeIds - Set of node IDs to dim (don't match filters)
+   */
+  setFilterDimming(filteredOutNodeIds) {
+    console.log("GraphRenderer: Setting filter dimming for", filteredOutNodeIds.size, "nodes");
+
+    // Clear previous dimming
+    const previousFilteredOutNodes = new Set(this.filteredOutNodes || []);
+    this.filteredOutNodes = new Set(filteredOutNodeIds);
+
+    // Remove dimming from nodes that are no longer filtered out
+    previousFilteredOutNodes.forEach(nodeId => {
+      if (!filteredOutNodeIds.has(nodeId)) {
+        this.removeNodeDimming(nodeId);
+      }
+    });
+
+    // Apply dimming to newly filtered out nodes
+    filteredOutNodeIds.forEach(nodeId => {
+      this.applyNodeDimming(nodeId);
+    });
+
+    // Apply edge dimming based on filtered out nodes
+    if (filteredOutNodeIds.size > 0) {
+      this.applyEdgeDimming();
+    } else {
+      this.removeEdgeDimming();
+    }
+
+    // Clean filter system - no animations or zoom effects
+  }
+
+  /**
+   * Apply dimming effect to a node
+   * @param {string} nodeId - ID of the node to dim
+   */
+  applyNodeDimming(nodeId) {
+    // Find the node element
+    this.nodeLayer.selectAll('.node')
+      .filter(d => d.id === nodeId)
+      .each(function(d) {
+        const node = d3.select(this);
+
+        // Add dimmed class and apply dimming styles
+        node.classed('dimmed', true)
+            .style('opacity', 0.3)
+            .style('filter', 'saturate(0.3)');
+      });
+  }
+
+  /**
+   * Remove dimming effect from a node
+   * @param {string} nodeId - ID of the node to undim
+   */
+  removeNodeDimming(nodeId) {
+    // Find the node element
+    this.nodeLayer.selectAll('.node')
+      .filter(d => d.id === nodeId)
+      .each(function(d) {
+        const node = d3.select(this);
+
+        // Remove dimmed class and restore normal styles
+        node.classed('dimmed', false)
+            .style('opacity', null)
+            .style('filter', null);
+      });
+  }
+
+  /**
+   * Apply dimming to edges connected to filtered-out nodes
+   */
+  applyEdgeDimming() {
+    if (!this.edgeLayer || !this.data.edges) return;
+
+    const filteredOutNodes = this.filteredOutNodes; // Capture in closure
+
+    // Apply dimming based on edge endpoints
+    this.edgeLayer.selectAll('line.edge')
+      .each(function(d, i) {
+        const edgeElement = d3.select(this);
+
+        // Get source and target from the edge data attributes
+        const source = edgeElement.attr('data-source');
+        const target = edgeElement.attr('data-target');
+
+        if (source && target) {
+          // Check if either endpoint is filtered out
+          const sourceFiltered = filteredOutNodes.has(source);
+          const targetFiltered = filteredOutNodes.has(target);
+
+          if (sourceFiltered || targetFiltered) {
+            // Apply dimming: moderate opacity, longer dashed stroke
+            edgeElement
+              .style('opacity', 0.4)
+              .style('stroke-dasharray', '6,6');
+          } else {
+            // Remove dimming if neither endpoint is filtered
+            edgeElement
+              .style('opacity', null)
+              .style('stroke-dasharray', null);
+          }
+        }
+      });
+  }
+
+  /**
+   * Remove dimming from all edges
+   */
+  removeEdgeDimming() {
+    if (!this.edgeLayer) return;
+
+    this.edgeLayer.selectAll('line.edge')
+      .style('opacity', null)
+      .style('stroke-dasharray', null);
+  }
+
+  /**
    * Zoom controls
    */
   zoomIn() {
@@ -1504,17 +1654,19 @@ renderEdges(packedRoot) {
   
   resetView() {
     if (!this.svg || !this.zoom) return;
-    
+
     // Reset zoom and pan
     this.svg.transition().duration(500).call(
       this.zoom.transform,
       d3.zoomIdentity
     );
-    
+
     // Reset all node positions to original
     this.resetNodePositions();
     this.fitToView(this.hierarchyRoot);
   }
+
+
   
   /**
    * Reset all nodes and groups to their original pack layout positions
