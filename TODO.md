@@ -5,7 +5,10 @@
 * [x] restrict repositioning private networks | Fri, September 12
 * [x] walk through timeout | Fri, September 12
 * [x] refact: d.data and displayed properties
-* [ ] filter actually filters
+* [x] fix: mock data public nodes should have provider='www'
+* [x] filter actually filters
+* [x] filter: zoom to filtered
+* [ ] filter: animate
 * [ ] bug: fix sizing/spacing per viewport aka nodeSize, padding do not work
 * [ ] highlight "trace mode"
 * [ ] version shown in demo

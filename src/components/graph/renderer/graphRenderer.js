@@ -1548,7 +1548,19 @@ renderEdges(packedRoot) {
       this.removeEdgeDimming();
     }
 
-    // Clean filter system - no animations or zoom effects
+    // Handle zoom behavior based on filter state
+    if (filteredOutNodeIds.size > 0) {
+      // Auto-zoom to visible nodes when filters are applied
+      // Small delay to ensure dimming is applied before zooming
+      setTimeout(() => {
+        this.zoomToVisibleNodes();
+      }, 100);
+    } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
+      // Filters were cleared - reset the zoom view
+      setTimeout(() => {
+        this.resetView();
+      }, 100);
+    }
   }
 
   /**
@@ -1666,8 +1678,79 @@ renderEdges(packedRoot) {
     this.fitToView(this.hierarchyRoot);
   }
 
+  /**
+   * Zoom to bounds of visible (non-dimmed) nodes
+   */
+  zoomToVisibleNodes() {
+    if (!this.svg || !this.zoom || !this.nodeLayer) return;
 
-  
+    // Get bounds of all non-dimmed nodes
+    const visibleNodes = [];
+    this.nodeLayer.selectAll('.node')
+      .filter(d => !this.filteredOutNodes.has(d.id))
+      .each(function(d) {
+        const node = d3.select(this);
+        const transform = node.attr('transform');
+        if (transform) {
+          const translate = transform.match(/translate\(([^)]+)\)/);
+          if (translate) {
+            const coords = translate[1].split(',');
+            const x = parseFloat(coords[0]);
+            const y = parseFloat(coords[1]);
+            visibleNodes.push({ x, y, r: d.r || 15 });
+          }
+        }
+      });
+
+    if (visibleNodes.length === 0) {
+      console.log('No visible nodes to zoom to');
+      return;
+    }
+
+    // Calculate bounds with padding
+    const padding = 50;
+    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
+
+    visibleNodes.forEach(node => {
+      minX = Math.min(minX, node.x - node.r);
+      maxX = Math.max(maxX, node.x + node.r);
+      minY = Math.min(minY, node.y - node.r);
+      maxY = Math.max(maxY, node.y + node.r);
+    });
+
+    const boundsWidth = maxX - minX + 2 * padding;
+    const boundsHeight = maxY - minY + 2 * padding;
+    const boundsX = minX - padding;
+    const boundsY = minY - padding;
+
+    // Get current SVG dimensions
+    const svgNode = this.svg.node();
+    const svgWidth = svgNode.clientWidth || svgNode.getBoundingClientRect().width;
+    const svgHeight = svgNode.clientHeight || svgNode.getBoundingClientRect().height;
+
+    // Calculate scale to fit bounds in view with maximum zoom limit
+    const fullScale = Math.min(svgWidth / boundsWidth, svgHeight / boundsHeight);
+
+    // Get current zoom level
+    const currentZoom = this.getZoom();
+    const maxZoom = currentZoom * 1.5; // Limit to 1.5x current zoom
+
+    // Apply maximum zoom limit
+    const scale = Math.min(fullScale, maxZoom);
+
+    // Calculate translation to center bounds
+    const translateX = svgWidth / 2 - scale * (boundsX + boundsWidth / 2);
+    const translateY = svgHeight / 2 - scale * (boundsY + boundsHeight / 2);
+
+    // Apply zoom transform
+    this.svg.transition().duration(750).call(
+      this.zoom.transform,
+      d3.zoomIdentity.translate(translateX, translateY).scale(scale)
+    );
+
+    console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)})`);
+  }
+
   /**
    * Reset all nodes and groups to their original pack layout positions
    */
