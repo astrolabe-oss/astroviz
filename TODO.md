@@ -8,7 +8,7 @@
 * [x] fix: mock data public nodes should have provider='www'
 * [x] filter actually filters
 * [x] filter: zoom to filtered
-* [ ] filter: animate
+* [x] filter: animate/bounce on filter
 * [ ] bug: fix sizing/spacing per viewport aka nodeSize, padding do not work
 * [ ] highlight "trace mode"
 * [ ] version shown in demo

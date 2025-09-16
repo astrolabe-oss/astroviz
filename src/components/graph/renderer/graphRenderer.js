@@ -105,7 +105,7 @@ export class GraphRenderer {
     
     // Main group for zooming/panning
     this.g = this.svg.append('g');
-    
+
     // Add zoom behavior
     this.zoom = d3.zoom()
       .scaleExtent([0.1, 4])
@@ -1550,10 +1550,14 @@ renderEdges(packedRoot) {
 
     // Handle zoom behavior based on filter state
     if (filteredOutNodeIds.size > 0) {
-      // Auto-zoom to visible nodes when filters are applied
-      // Small delay to ensure dimming is applied before zooming
+      // Auto-zoom to visible nodes first
       setTimeout(() => {
         this.zoomToVisibleNodes();
+
+        // Then trigger pulse animation after zoom completes
+        setTimeout(() => {
+          this.bounceAllNodes();
+        }, 850);
       }, 100);
     } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
       // Filters were cleared - reset the zoom view
@@ -1749,6 +1753,94 @@ renderEdges(packedRoot) {
     );
 
     console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)})`);
+  }
+
+  /**
+   * Animate all nodes with a bounce effect for dramatic filter feedback
+   */
+  bounceAllNodes() {
+    if (!this.nodeLayer) return;
+
+    console.log('Bouncing visible nodes with shared physics simulation');
+
+    // Collect only visible (non-filtered) nodes and their base transforms
+    const nodeData = [];
+    const self = this;
+    this.nodeLayer.selectAll('.node')
+      .each(function(d) {
+        // Skip filtered out nodes - they should stay dimmed and not bounce
+        if (self.filteredOutNodes && self.filteredOutNodes.has(d.id)) {
+          return;
+        }
+
+        const node = d3.select(this);
+        const currentTransform = node.attr('transform') || 'translate(0,0)';
+        const translate = currentTransform.match(/translate\(([^)]+)\)/);
+        let baseTransform = currentTransform;
+
+        if (translate) {
+          const coords = translate[1].split(',');
+          const x = parseFloat(coords[0]);
+          const y = parseFloat(coords[1]);
+          baseTransform = `translate(${x},${y})`;
+        }
+
+        nodeData.push({ node, baseTransform });
+      });
+
+    if (nodeData.length === 0) return;
+
+    // Pulse animation - time-based for consistency
+    let currentPulse = 0;
+    const totalPulses = 2;
+    const pulseDuration = 500; // milliseconds per pulse
+    const pauseBetweenPulses = 150; // milliseconds
+    let pulseStartTime = null;
+
+    const pulseStep = (timestamp) => {
+      if (!pulseStartTime) pulseStartTime = timestamp;
+
+      const elapsed = timestamp - pulseStartTime;
+      const pulsePhase = Math.min(elapsed / pulseDuration, 1.0); // 0 to 1 progress
+
+      // Calculate scale using sine wave for smooth pulse
+      let scale;
+      if (pulsePhase < 1.0) {
+        // Smooth expansion and contraction using sine
+        const sineValue = Math.sin(pulsePhase * Math.PI);
+        scale = 1.0 + (sineValue * 0.3); // Pulse between 1.0 and 1.3
+      } else {
+        // Pulse complete
+        scale = 1.0;
+        currentPulse++;
+        pulseStartTime = null; // Reset for next pulse
+
+        // Check if all pulses are done
+        if (currentPulse >= totalPulses) {
+          // Final update to ensure scale is exactly 1.0
+          nodeData.forEach(({ node, baseTransform }) => {
+            node.attr('transform', baseTransform + ' scale(1)');
+          });
+          return;
+        }
+
+        // Small pause between pulses
+        setTimeout(() => {
+          requestAnimationFrame(pulseStep);
+        }, pauseBetweenPulses);
+        return;
+      }
+
+      // Apply current scale to all visible nodes simultaneously
+      nodeData.forEach(({ node, baseTransform }) => {
+        node.attr('transform', baseTransform + ` scale(${scale})`);
+      });
+
+      requestAnimationFrame(pulseStep);
+    };
+
+    // Start the pulse animation
+    requestAnimationFrame(pulseStep);
   }
 
   /**
