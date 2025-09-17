@@ -12,11 +12,11 @@
 * [x] bug: node size/padding not respect (looks bad on small viewport)
 * [x] group label: match color of group
 * [x] small: increase default zoom level
-* [ ] version shown in demo
+* [x] version shown in demo
+* [~] highlight "trace mode"
 * [ ] mobile: small viewport hide controls?
 
 ## 0.3.1
-* [ ] highlight "trace mode"
 * [ ] collapse expand groups
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
 * [ ] group by cluster/app <-> app/cluster

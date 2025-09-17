@@ -6,7 +6,7 @@
 <template>
   <footer class="app-footer" :class="{ collapsed: isCollapsed }">
     <div class="footer-header" v-show="isCollapsed">
-      <span class="footer-copyright">&copy; 2025 Lightwire, LLC. Licensed under Apache 2.0.</span>
+      <span class="footer-copyright">&copy; 2025 Lightwire, LLC. Licensed under Apache 2.0. | Version {{ versionDisplay }}</span>
     </div>
     
     <button @click="toggleFooter" class="footer-toggle-btn" :title="isCollapsed ? 'Show footer details' : 'Hide footer details'">
@@ -62,23 +62,31 @@
           .
         </p>
       </div>
-    </div>
     
       <div class="footer-bottom" v-show="!isCollapsed">
-        <p>&copy; 2025 Lightwire, LLC. Licensed under Apache 2.0.</p>
+        <p>&copy; 2025 Lightwire, LLC. Licensed under Apache 2.0. | Version {{ versionDisplay }}</p>
       </div>
     </div>
   </footer>
 </template>
 
 <script>
+import packageInfo from '../../package.json';
+
 export default {
   name: 'AppFooter',
   
   data() {
     return {
-      isCollapsed: localStorage.getItem('astroviz_footer_collapsed') === 'true'
+      isCollapsed: localStorage.getItem('astroviz_footer_collapsed') === 'true',
+      version: packageInfo.version
     };
+  },
+  
+  computed: {
+    versionDisplay() {
+      return this.version;
+    }
   },
   
   methods: {
@@ -100,7 +108,7 @@ export default {
   position: relative;
   transition: max-height 0.3s ease, padding 0.3s ease;
   overflow: hidden;
-  max-height: 200px;
+  max-height: 300px;
 }
 
 .app-footer.collapsed {
