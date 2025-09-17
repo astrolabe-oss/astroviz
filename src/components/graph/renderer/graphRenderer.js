@@ -1969,7 +1969,7 @@ renderEdges(packedRoot) {
     const viewportHeight = this.options.height;
     const scaleX = viewportWidth / contentWidth;
     const scaleY = viewportHeight / contentHeight;
-    const scale = Math.min(scaleX, scaleY, 1); // Don't scale up beyond 1x
+    const scale = Math.min(scaleX, scaleY, 1) * 1.33; // Zoom in 33% more than full fit for better readability
     
     // Calculate translation to center the content
     const viewportCenterX = viewportWidth / 2;

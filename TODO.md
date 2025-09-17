@@ -11,6 +11,7 @@
 * [x] filter: animate/bounce on filter
 * [x] bug: node size/padding not respect (looks bad on small viewport)
 * [x] group label: match color of group
+* [x] small: increase default zoom level
 * [ ] version shown in demo
 * [ ] mobile: small viewport hide controls?
 
