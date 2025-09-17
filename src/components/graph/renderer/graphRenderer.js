@@ -34,8 +34,9 @@ export class GraphRenderer {
     this.options = {
       width: options.width || 800,
       height: options.height || 600,
-      padding: options.padding || 10,
-      nodeRadius: options.nodeRadius || 15,
+      nodePadding: options.nodePadding || 0,
+      nodeRadius: options.nodeRadius || 25,
+      groupPadding: options.groupPadding || 50,
       ...options
     };
     
@@ -331,7 +332,7 @@ export class GraphRenderer {
     const groupFactor = Math.log10(groupNodes + 1) * 0.1;  // Use log for gentler scaling
     
     // Padding contributes to scale
-    const paddingFactor = this.options.padding / 200;  // Much smaller contribution
+    const paddingFactor = this.options.nodePadding / 200;  // Much smaller contribution
     
     // Calculate final scale (minimum 1x, typically 1.1-1.5x for complex graphs)
     const scale = Math.max(1, 1 + leafFactor + depthFactor + groupFactor + paddingFactor);
@@ -357,13 +358,42 @@ export class GraphRenderer {
     // Always do circle packing for the main hierarchy
     const root = d3.hierarchy(hierarchyRoot)
       .sum(d => {
-        // Only leaf nodes contribute to size
-        return d.children && d.children.length > 0 ? 0 : 100;
+        // Groups need a value for hierarchy, leaf nodes will use explicit radius
+        return d.children && d.children.length > 0 ? 0 : 1;
       });
-    
+
     const pack = d3.pack()
       .size([width - 50, height - 50])
-      .padding(this.options.padding);
+      .padding(d => {
+        // D3 padding function is called for PARENT nodes to set spacing between their CHILDREN
+        // Check what type of children this parent has
+        if (d.children && d.children.length > 0) {
+          // Check if children are leaf nodes or groups
+          const firstChild = d.children[0];
+          const childrenAreLeafNodes = !firstChild.children || firstChild.children.length === 0;
+
+          if (childrenAreLeafNodes) {
+            // This parent's children are leaf nodes - use nodePadding
+            console.log('Parent', d.data.id, 'spacing leaf children with nodePadding:', this.options.nodePadding);
+            return this.options.nodePadding;
+          } else {
+            // This parent's children are groups - use groupPadding
+            console.log('Parent', d.data.id, 'spacing group children with groupPadding:', this.options.groupPadding);
+            return this.options.groupPadding;
+          }
+        }
+
+        // Fallback (shouldn't happen since padding is only called for parents)
+        return this.options.nodePadding;
+      })
+      .radius(d => {
+        // Set explicit radius for leaf nodes based on nodeRadius setting
+        if (!d.children || d.children.length === 0) {
+          return this.options.nodeRadius;
+        }
+        // Let D3 calculate radius for group nodes (parents)
+        return null;
+      });
     
     const packedRoot = pack(root);
     
@@ -418,7 +448,7 @@ export class GraphRenderer {
           data: leafNode,
           x: x,
           y: y,
-          r: this.options.nodeRadius || 25,
+          r: this.options.nodeRadius, // Use consistent radius (no fallback)
           children: null,
           parent: packedRoot,
           depth: 1,

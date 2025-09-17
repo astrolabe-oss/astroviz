@@ -9,9 +9,10 @@
 * [x] filter actually filters
 * [x] filter: zoom to filtered
 * [x] filter: animate/bounce on filter
-* [ ] bug: fix sizing/spacing per viewport aka nodeSize, padding do not work
+* [x] bug: node size/padding not respect (looks bad on small viewport)
 * [ ] highlight "trace mode"
 * [ ] version shown in demo
+* [ ] group label: match color of group
 
 ## 0.3.1
 * [ ] collapse expand groups
