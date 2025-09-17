@@ -545,36 +545,46 @@ export class GraphRenderer {
     // Add label backgrounds
     groupLabelElements.each(function(d) {
       const group = d3.select(this);
-      const labelText = d.label || d.id;
-      
+
+      // Remove prefixes from label text
+      let labelText = d.label || d.id;
+      if (labelText.startsWith('App: ')) {
+        labelText = labelText.substring(5);
+      } else if (labelText.startsWith('Cluster: ')) {
+        labelText = labelText.substring(9);
+      }
+
+      // Get the group's fill color (same logic as group rendering)
+      const groupFillColor = d.style?.fill ?? d.data?.fill ?? 'none';
+
       // Create temporary text to measure width
       const tempText = group.append('text')
-        .attr('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' : 
+        .attr('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' :
                           d.id.startsWith('cluster') ? '14px' : '12px')
         .attr('font-weight', 'bold')
         .text(labelText)
         .style('visibility', 'hidden');
-      
+
       const bbox = tempText.node().getBBox();
       tempText.remove();
-      
-      // Add background rectangle
+
+      // Add background rectangle with group's fill color
       group.append('rect')
         .attr('x', -bbox.width/2 - 4)
         .attr('y', -bbox.height/2 - 2)
         .attr('width', bbox.width + 8)
         .attr('height', bbox.height + 4)
         .attr('rx', 3)
-        .attr('fill', 'rgba(240, 240, 245, 0.85)')
+        .attr('fill', groupFillColor !== 'none' ? groupFillColor : 'rgba(240, 240, 245, 0.85)')
         .attr('stroke', '#999')
         .attr('stroke-width', 1);
-      
+
       // Add label text
       group.append('text')
         .attr('class', 'group-label')
         .attr('text-anchor', 'middle')
         .attr('dominant-baseline', 'middle')
-        .style('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' : 
+        .style('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' :
                            d.id.startsWith('cluster') ? '14px' : '12px')
         .style('font-weight', 'bold')
         .style('fill', d.id === 'internet-boundary' || d.id === 'private-network' ? '#333' : '#555')

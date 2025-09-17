@@ -10,11 +10,12 @@
 * [x] filter: zoom to filtered
 * [x] filter: animate/bounce on filter
 * [x] bug: node size/padding not respect (looks bad on small viewport)
-* [ ] highlight "trace mode"
+* [x] group label: match color of group
 * [ ] version shown in demo
-* [ ] group label: match color of group
+* [ ] mobile: small viewport hide controls?
 
 ## 0.3.1
+* [ ] highlight "trace mode"
 * [ ] collapse expand groups
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
 * [ ] group by cluster/app <-> app/cluster
