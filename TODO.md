@@ -1,6 +1,4 @@
-# APP VIEW
-## New Section 1
-
+# WIP
 ## 0.2.2
 * [x] restrict repositioning private networks | Fri, September 12
 * [x] walk through timeout | Fri, September 12
@@ -13,9 +11,11 @@
 * [x] group label: match color of group
 * [x] small: increase default zoom level
 * [x] version shown in demo
-* [~] highlight "trace mode"
+* [x] highlight "trace mode"
+* [ ] refactor - break out graphRenderer to encpasulate highlighting/etc
 * [ ] mobile: small viewport hide controls?
 
+# BACKLOG
 ## 0.3.1
 * [ ] collapse expand groups
 * [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)

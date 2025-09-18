@@ -39,32 +39,271 @@ export class GraphRenderer {
       groupPadding: options.groupPadding || 50,
       ...options
     };
-    
+
     this.data = null;
     this.svg = null;
     this.g = null;
-    
+
     // Track node positions for drag updates
     this.nodePositions = new Map(); // nodeId -> {x, y}
-    
+
     // Track group positions and their children
     this.groupPositions = new Map(); // groupId -> {x, y, r, children: []}
-    
+
     // Track async edge update for cancellation
     this.edgeUpdateController = null;
-    
-    // Selection and highlighting state
+
+    // Selection and highlighting state - Clean architecture
+    this.highlightState = {
+      // Current selection state
+      headNode: null,              // Most recently selected node (head of selection)
+      tracePath: {                 // Golden path being traced
+        nodes: new Set(),
+        edges: new Set()
+      },
+
+      // Visual state tracking
+      activeHighlights: {          // Currently highlighted elements
+        nodes: new Map(),         // nodeId -> {type: 'head'|'connected'|'path', originalColor}
+        edges: new Map()          // edgeKey -> {type: 'connected'|'path', originalStroke, originalWidth}
+      }
+    };
+
+    // Legacy state (to be phased out)
     this.selectedNodeIds = new Set();
-    this.filterHighlightedNodes = new Set(); // Track filter-based highlights (deprecated - will be removed)
-    this.filteredOutNodes = new Set(); // Track nodes to be dimmed
+    this.filterHighlightedNodes = new Set();
+    this.filteredOutNodes = new Set();
     this.highlightedElements = {
       nodes: new Set(),
-      edgeKeys: new Set() // Store "source-target" keys for persistence
+      edgeKeys: new Set()
     };
-    
+
+    // Centralized styling configuration - Single source of truth
+    this.styling = {
+      // Node type base colors
+      nodeColors: {
+        'Application': '#F9696E',
+        'Deployment': '#F2A3B3',
+        'Compute': '#5DCAD1',
+        'Resource': '#74B56D',
+        'TrafficController': '#4A98E3',
+        'Unknown': '#F9C96E'
+      },
+
+      // Highlight states styling
+      highlights: {
+        // Golden trace path
+        path: {
+          node: {
+            scale: 1.2,
+            color: '#FFA500',
+            glowSize: '8px',
+            glowColor: '#FFA500'
+          },
+          edge: {
+            stroke: '#FFA500',
+            strokeWidth: 5,
+            opacity: 1,
+            glow: 'drop-shadow(0 0 8px #FFA500)'
+          }
+        },
+        // Head node (current selection)
+        head: {
+          scale: 1.2,
+          color: '#8A4FBE',
+          glowSize: '5px',
+          glowColor: '#8A4FBE'
+        },
+        // Connected to head
+        connected: {
+          node: {
+            scale: 1.1,
+            color: '#A875D4',
+            glowSize: '5px',
+            glowColor: '#A875D4'
+          },
+          edge: {
+            stroke: '#4444ff',
+            strokeWidth: 3,
+            opacity: 1
+          }
+        },
+        // Dimmed (filtered out)
+        dimmed: {
+          opacity: 0.2
+        }
+      },
+
+      // Unknown node special text styling
+      unknownText: {
+        highlighted: {
+          fill: '#FFFFFF',
+          fontWeight: 'bolder'
+        },
+        normal: {
+          fill: '#333333',
+          fontWeight: 'normal'
+        }
+      }
+    };
+
     this.init();
   }
-  
+
+  /**
+   * Unified node styling function - Single source of truth for all node styling
+   * @param {d3.Selection} nodeSelection - D3 selection of node(s) to style
+   * @param {string} state - 'normal'|'path'|'head'|'connected'|'dimmed'
+   * @param {Object} nodeData - Node data for type-specific styling
+   */
+  applyNodeStyle(nodeSelection, state, nodeData = null) {
+    const styles = this.styling.highlights;
+
+    // Get current position from transform
+    const currentTransform = nodeSelection.attr('transform') || 'translate(0,0)';
+    const match = currentTransform.match(/translate\(([^,]+),([^)]+)\)/);
+    const x = match ? parseFloat(match[1]) : 0;
+    const y = match ? parseFloat(match[2]) : 0;
+
+    switch (state) {
+      case 'normal':
+        // Reset to normal state
+        nodeSelection
+          .attr('transform', `translate(${x},${y})`)
+          .style('filter', null)
+          .style('opacity', null)
+          .classed('highlighted', false);
+
+        // Reset icon color
+        const svgIcon = nodeSelection.select('svg');
+        if (!svgIcon.empty() && nodeData) {
+          const nodeType = nodeData.data?.type || nodeData.type || 'Unknown';
+          const defaultColor = nodeData.data?.color || nodeData.style?.fill || this.styling.nodeColors[nodeType];
+          svgIcon.style('color', defaultColor);
+
+          // Handle Unknown node text
+          if (nodeType === 'Unknown') {
+            svgIcon.select('circle').attr('fill', defaultColor);
+            svgIcon.select('text')
+              .attr('fill', this.styling.unknownText.normal.fill)
+              .attr('font-weight', this.styling.unknownText.normal.fontWeight);
+          }
+        }
+        break;
+
+      case 'path':
+        const pathStyle = styles.path.node;
+        nodeSelection
+          .attr('transform', `translate(${x},${y}) scale(${pathStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${pathStyle.glowSize} ${pathStyle.glowColor})`)
+          .style('opacity', null)
+          .classed('highlighted', true);
+
+        this.setNodeColor(nodeSelection, pathStyle.color, nodeData);
+        break;
+
+      case 'head':
+        const headStyle = styles.head;
+        nodeSelection
+          .attr('transform', `translate(${x},${y}) scale(${headStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${headStyle.glowSize} ${headStyle.glowColor})`)
+          .style('opacity', null)
+          .classed('highlighted', true);
+
+        this.setNodeColor(nodeSelection, headStyle.color, nodeData);
+        break;
+
+      case 'connected':
+        const connectedStyle = styles.connected.node;
+        nodeSelection
+          .attr('transform', `translate(${x},${y}) scale(${connectedStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${connectedStyle.glowSize} ${connectedStyle.glowColor})`)
+          .style('opacity', null)
+          .classed('highlighted', true);
+
+        this.setNodeColor(nodeSelection, connectedStyle.color, nodeData);
+        break;
+
+      case 'dimmed':
+        nodeSelection.style('opacity', styles.dimmed.opacity);
+        break;
+    }
+  }
+
+  /**
+   * Helper to set node icon color
+   */
+  setNodeColor(nodeSelection, color, nodeData) {
+    const svgIcon = nodeSelection.select('svg');
+    if (!svgIcon.empty()) {
+      svgIcon.style('color', color);
+
+      // Handle Unknown node special styling
+      if (nodeData && (nodeData.data?.type === 'Unknown' || nodeData.type === 'Unknown')) {
+        svgIcon.select('circle').attr('fill', color);
+        svgIcon.select('text')
+          .attr('fill', this.styling.unknownText.highlighted.fill)
+          .attr('font-weight', this.styling.unknownText.highlighted.fontWeight);
+      }
+    }
+  }
+
+  /**
+   * Unified edge styling function - Single source of truth for all edge styling
+   * @param {d3.Selection} edgeSelection - D3 selection of edge(s) to style
+   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'
+   */
+  applyEdgeStyle(edgeSelection, state) {
+    const styles = this.styling.highlights;
+
+    switch (state) {
+      case 'normal':
+        // Get stored original values or use defaults
+        const originalStroke = edgeSelection.attr('data-original-stroke') || '#999';
+        const originalWidth = edgeSelection.attr('data-original-stroke-width') || '1';
+
+        edgeSelection
+          .attr('stroke', originalStroke)
+          .attr('stroke-width', originalWidth)
+          .style('opacity', null)
+          .style('filter', null)
+          .style('stroke-dasharray', null);
+        break;
+
+      case 'path':
+        const pathStyle = styles.path.edge;
+        edgeSelection
+          .attr('stroke', pathStyle.stroke)
+          .attr('stroke-width', pathStyle.strokeWidth)
+          .style('opacity', pathStyle.opacity)
+          .style('filter', pathStyle.glow)
+          .style('stroke-dasharray', null);
+        break;
+
+      case 'connected':
+        const connectedStyle = styles.connected.edge;
+        edgeSelection
+          .attr('stroke', connectedStyle.stroke)
+          .attr('stroke-width', connectedStyle.strokeWidth)
+          .style('opacity', connectedStyle.opacity)
+          .style('filter', null)
+          .style('stroke-dasharray', null);
+        break;
+
+      case 'dimmed':
+        edgeSelection.style('opacity', styles.dimmed.opacity);
+        break;
+    }
+  }
+
+  /**
+   * Get the default color for a node type
+   */
+  getNodeDefaultColor(nodeData) {
+    const nodeType = nodeData?.data?.type || nodeData?.type || 'Unknown';
+    return nodeData?.data?.color || nodeData?.style?.fill || this.styling.nodeColors[nodeType] || this.styling.nodeColors['Unknown'];
+  }
+
   /**
    * Initialize SVG
    */
@@ -374,11 +613,9 @@ export class GraphRenderer {
 
           if (childrenAreLeafNodes) {
             // This parent's children are leaf nodes - use nodePadding
-            console.log('Parent', d.data.id, 'spacing leaf children with nodePadding:', this.options.nodePadding);
             return this.options.nodePadding;
           } else {
             // This parent's children are groups - use groupPadding
-            console.log('Parent', d.data.id, 'spacing group children with groupPadding:', this.options.groupPadding);
             return this.options.groupPadding;
           }
         }
@@ -592,13 +829,15 @@ export class GraphRenderer {
         .text(labelText);
     });
     
-    // Add drag behavior to groups
+    // Add drag behavior to groups with reasonable threshold
     const groupDragBehavior = d3.drag()
       .subject((event, d) => {
         // Initialize drag subject with current group position
         const pos = this.groupPositions.get(d.id);
         return pos ? { x: pos.x, y: pos.y } : { x: d.x, y: d.y };
       })
+      .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
+      .clickDistance(5) // Require 5 pixels of movement before starting drag
       .on('start', (event, d) => this.onGroupDragStart(event, d))
       .on('drag', (event, d) => this.onGroupDrag(event, d))
       .on('end', (event, d) => this.onGroupDragEnd(event, d));
@@ -704,13 +943,15 @@ export class GraphRenderer {
     });
 
     
-    // Add drag behavior
+    // Add drag behavior with reasonable threshold to prevent accidental drags during clicks
     const dragBehavior = d3.drag()
       .subject((event, d) => {
         // Initialize drag subject with current node position
         const pos = this.nodePositions.get(d.id);
         return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
       })
+      .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
+      .clickDistance(5) // Require 5 pixels of movement before starting drag
       .on('start', (event, d) => this.onDragStart(event, d))
       .on('drag', (event, d) => this.onDrag(event, d))
       .on('end', (event, d) => this.onDragEnd(event, d));
@@ -1028,14 +1269,20 @@ renderEdges(packedRoot) {
    */
   doAllEdgesUpdate() {
     if (!this.data.edges || !this.hierarchyRoot) return;
-    
+
     console.log(`EdgeUpdate: Re-rendering all edges with current positions`);
-    
+
     // Sync current drag positions back to hierarchyRoot before rendering
     this.syncCurrentPositionsToHierarchy();
-    
+
     // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
     this.renderEdges(this.hierarchyRoot);
+
+    // Reapply highlighting if we have active selections
+    if (this.highlightState.headNode) {
+      console.log("DEBUG: Reapplying clean highlighting after edge update");
+      this.applyCleanHighlighting();
+    }
   }
 
   /**
@@ -1087,127 +1334,270 @@ renderEdges(packedRoot) {
   }
 
   /**
-   * Highlight a node and its connected nodes/edges
+   * Find shortest path between two nodes using BFS
+   * @param {string} startNodeId - Starting node ID
+   * @param {string} endNodeId - Target node ID
+   * @returns {Object} - {nodes: Array, edges: Array} representing the path
+   */
+
+  /**
+   * Clean highlight system - handle node selection
    * @param {string} nodeId - ID of the node to highlight
-   * @param {boolean} appendToSelection - Whether to add to existing selection (for multi-select)
+   * @param {boolean} appendToSelection - Whether to add to existing selection (shift-click)
    */
   highlightNode(nodeId, appendToSelection = false) {
     console.log("GraphRenderer: Highlighting node", nodeId, "append =", appendToSelection);
 
-    // Only clear existing highlight if not appending
+    // Handle selection logic
     if (!appendToSelection) {
-      this.clearNodeHighlights();
+      // Fresh selection - clear everything
+      this.clearAllHighlights();
+      this.highlightState.headNode = nodeId;
+      this.highlightState.tracePath.nodes.clear();
+      this.highlightState.tracePath.edges.clear();
+
+    } else if (this.highlightState.headNode) {
+      // Shift-click with existing selection
+      const prevHead = this.highlightState.headNode;
+
+      // Check if directly connected to previous head
+      const directEdge = this.data.edges?.find(edge =>
+        (edge.source === prevHead && edge.target === nodeId) ||
+        (edge.source === nodeId && edge.target === prevHead)
+      );
+
+      if (directEdge) {
+        // Connected - add to trace path
+        const edgeKey = `${directEdge.source}-${directEdge.target}`;
+        this.highlightState.tracePath.nodes.add(prevHead);
+        this.highlightState.tracePath.nodes.add(nodeId);
+        this.highlightState.tracePath.edges.add(edgeKey);
+      }
+
+      // Update head regardless of connection
+      this.highlightState.headNode = nodeId;
+
+    } else {
+      // First selection
+      this.highlightState.headNode = nodeId;
     }
 
-    // Add the new node to the selection
+    // Apply the visual highlighting
+    this.applyCleanHighlighting();
+
+    // Update legacy state for compatibility
+    this.selectedNodeIds.clear();
     this.selectedNodeIds.add(nodeId);
+  }
 
-    // Get connected nodes and edges for ALL selected nodes (for multi-select traversal)
-    let allConnectedNodes = new Set();
-    let allConnectedEdges = [];
+  /**
+   * Clean visual application - apply all highlights in correct order
+   */
+  applyCleanHighlighting() {
+    // First, clear everything
+    this.resetAllVisuals();
 
-    this.selectedNodeIds.forEach(selectedId => {
-      const { nodes: connectedNodes, edges: connectedEdges } = this.getConnectedNodes(selectedId);
-      connectedNodes.forEach(id => allConnectedNodes.add(id));
-      allConnectedEdges.push(...connectedEdges);
-    });
+    // Apply in order: path -> head connections -> head
+    // This ensures proper layering
 
-    // Update highlighted elements tracking
-    allConnectedNodes.forEach(id => this.highlightedElements.nodes.add(id));
-    allConnectedEdges.forEach(edgeKey => this.highlightedElements.edgeKeys.add(edgeKey));
+    // 1. Apply golden trace path
+    this.applyPathHighlights();
 
-    // Apply visual highlighting to nodes
-    const selectedNodeIds = this.selectedNodeIds; // Capture context for use in .each()
-    this.nodeLayer.selectAll('.node')
-      .filter(d => allConnectedNodes.has(d.id))
-      .each(function(d) {
+    // 2. Apply purple head connections (excluding those in trace path)
+    this.applyConnectionHighlights();
+
+    // 3. Apply head node highlight (overwrites if needed)
+    if (this.highlightState.headNode) {
+      this.applyHeadHighlight(this.highlightState.headNode);
+    }
+  }
+
+  /**
+   * Reset all nodes and edges to their original visual state, preserving filter states
+   */
+  resetAllVisuals() {
+    // Reset all nodes but preserve filter dimming
+    if (this.nodeLayer) {
+      const self = this;
+      this.nodeLayer.selectAll('.node').each(function(d) {
         const node = d3.select(this);
-        
-        // Get current transform and apply scaling to it
-        const currentTransform = node.attr('transform') || 'translate(0,0)';
-        const translate = currentTransform.match(/translate\(([^)]+)\)/);
-        if (translate) {
-          const coords = translate[1].split(',');
-          const x = parseFloat(coords[0]);
-          const y = parseFloat(coords[1]);
 
-          // Apply scaling and styling - don't store transforms, just modify current
-          const isDirectlySelected = selectedNodeIds.has(d.id);
-          const scale = isDirectlySelected ? 1.2 : 1.1;
-          const color = isDirectlySelected ? '#8A4FBE' : '#A875D4'; // Less intense purple for selected, lighter purple for connected
-          
-          node.attr('transform', `translate(${x},${y}) scale(${scale})`)
-              .style('filter', 'drop-shadow(0 0 5px ' + color + ')')
-              .classed('highlighted', true); // Mark as highlighted
+        // Check if this node should stay dimmed due to filtering
+        const isFilteredOut = self.filteredOutNodes && self.filteredOutNodes.has(d.id);
 
-          // Update SVG icon color
-          const svgIcon = node.select('svg');
-          if (!svgIcon.empty()) {
-            // Store original color if not already stored
-            if (!node.attr('data-original-color')) {
-              const originalColor = svgIcon.style('color');
-              node.attr('data-original-color', originalColor);
-            }
-            
-            svgIcon.style('color', color);
-
-            // Handle Unknown node special styling
-            if (d.data?.type === 'Unknown') {
-              svgIcon.select('circle').attr('fill', color);
-              svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
-            }
-          }
+        if (isFilteredOut) {
+          // Reset to normal first, then apply dimming
+          self.applyNodeStyle(node, 'normal', d);
+          self.applyNodeStyle(node, 'dimmed', d);
+        } else {
+          self.applyNodeStyle(node, 'normal', d);
         }
       });
+    }
 
-    // Apply highlighting to connected edges
-    const filteredOutNodes = this.filteredOutNodes; // Capture for closure
-    this.edgeLayer.selectAll('.edge')
-      .each(function() {
+    // Reset all edges but preserve filter dimming
+    if (this.edgeLayer) {
+      const self = this;
+      this.edgeLayer.selectAll('.edge').each(function() {
+        const edge = d3.select(this);
+        // Store original values if not already stored
+        if (!edge.attr('data-original-stroke')) {
+          edge.attr('data-original-stroke', edge.attr('stroke'))
+              .attr('data-original-stroke-width', edge.attr('stroke-width'));
+        }
+
+        // Check if this edge should stay dimmed due to filtering
+        const source = edge.attr('data-source');
+        const target = edge.attr('data-target');
+        const sourceFiltered = self.filteredOutNodes && self.filteredOutNodes.has(source);
+        const targetFiltered = self.filteredOutNodes && self.filteredOutNodes.has(target);
+        const shouldBeDimmed = sourceFiltered || targetFiltered;
+
+        if (shouldBeDimmed) {
+          // Reset to normal first, then apply dimming
+          self.applyEdgeStyle(edge, 'normal');
+          self.applyEdgeStyle(edge, 'dimmed');
+        } else {
+          self.applyEdgeStyle(edge, 'normal');
+        }
+
+        // Clear stored values after reset
+        edge.attr('data-original-stroke', null)
+            .attr('data-original-stroke-width', null);
+      });
+    }
+
+    // Clear active highlights tracking
+    this.highlightState.activeHighlights.nodes.clear();
+    this.highlightState.activeHighlights.edges.clear();
+  }
+
+  /**
+   * Apply golden highlighting to trace path
+   */
+  applyPathHighlights() {
+    const tracePath = this.highlightState.tracePath;
+    const self = this;
+
+    // Highlight path nodes
+    tracePath.nodes.forEach(nodeId => {
+      const node = this.nodeLayer.select(`#node-${nodeId}`);
+      if (!node.empty()) {
+        node.each(function(d) {
+          self.applyNodeStyle(d3.select(this), 'path', d);
+        });
+        this.highlightState.activeHighlights.nodes.set(nodeId, { type: 'path' });
+      }
+    });
+
+    // Highlight path edges
+    tracePath.edges.forEach(edgeKey => {
+      this.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
         const source = edge.attr('data-source');
         const target = edge.attr('data-target');
-        const edgeKey = `${source}-${target}`;
+        const currentKey = `${source}-${target}`;
 
-        if (allConnectedEdges.includes(edgeKey)) {
-          // Store original stroke properties if not already stored
+        if (currentKey === edgeKey) {
+          // Store original values if not already stored
           if (!edge.attr('data-original-stroke')) {
             edge.attr('data-original-stroke', edge.attr('stroke'))
                 .attr('data-original-stroke-width', edge.attr('stroke-width'));
           }
-
-          // Check if this edge should remain dimmed (connected to filtered nodes)
-          const sourceFiltered = filteredOutNodes.has(source);
-          const targetFiltered = filteredOutNodes.has(target);
-
-          if (sourceFiltered || targetFiltered) {
-            // Apply purple highlighting but keep dimming
-            edge.attr('stroke', '#4444ff')
-                .attr('stroke-width', 3)
-                .style('opacity', 0.4)
-                .style('stroke-dasharray', '6,6');
-          } else {
-            // Apply normal purple highlighting
-            edge.attr('stroke', '#4444ff')
-                .attr('stroke-width', 3)
-                .style('opacity', null)
-                .style('stroke-dasharray', null);
-          }
+          self.applyEdgeStyle(edge, 'path');
+          self.highlightState.activeHighlights.edges.set(edgeKey, { type: 'path' });
         }
       });
-
-    console.log("GraphRenderer: Highlighted", allConnectedNodes.size, "nodes and", allConnectedEdges.length, "edges for", this.selectedNodeIds.size, "selected nodes");
+    });
   }
 
   /**
+   * Apply purple highlighting to head connections
+   */
+  applyConnectionHighlights() {
+    // Only apply if we have a head node
+    if (!this.highlightState.headNode) return;
+
+    const { nodes: connectedNodes, edges: connectedEdges } =
+      this.getConnectedNodes(this.highlightState.headNode);
+
+    // Filter out nodes/edges that are already in the trace path
+    const connections = {
+      nodes: new Set(),
+      edges: new Set()
+    };
+
+    connectedNodes.forEach(nodeId => {
+      if (!this.highlightState.tracePath.nodes.has(nodeId)) {
+        connections.nodes.add(nodeId);
+      }
+    });
+
+    connectedEdges.forEach(edgeKey => {
+      if (!this.highlightState.tracePath.edges.has(edgeKey)) {
+        connections.edges.add(edgeKey);
+      }
+    });
+
+    const self = this;
+
+    // Highlight connected nodes
+    connections.nodes.forEach(nodeId => {
+      const node = this.nodeLayer.select(`#node-${nodeId}`);
+      if (!node.empty()) {
+        node.each(function(d) {
+          self.applyNodeStyle(d3.select(this), 'connected', d);
+        });
+        this.highlightState.activeHighlights.nodes.set(nodeId, { type: 'connected' });
+      }
+    });
+
+    // Highlight connected edges
+    connections.edges.forEach(edgeKey => {
+      this.edgeLayer.selectAll('.edge').each(function() {
+        const edge = d3.select(this);
+        const source = edge.attr('data-source');
+        const target = edge.attr('data-target');
+        const currentKey = `${source}-${target}`;
+
+        if (currentKey === edgeKey) {
+          // Store original values if not already stored
+          if (!edge.attr('data-original-stroke')) {
+            edge.attr('data-original-stroke', edge.attr('stroke'))
+                .attr('data-original-stroke-width', edge.attr('stroke-width'));
+          }
+          self.applyEdgeStyle(edge, 'connected');
+          self.highlightState.activeHighlights.edges.set(edgeKey, { type: 'connected' });
+        }
+      });
+    });
+  }
+
+  /**
+   * Apply highlighting to the head node
+   */
+  applyHeadHighlight(nodeId) {
+    const node = this.nodeLayer.select(`#node-${nodeId}`);
+    if (!node.empty()) {
+      const isInPath = this.highlightState.tracePath.nodes.has(nodeId);
+      const self = this;
+      node.each(function(d) {
+        // Use 'path' style if node is in path, otherwise 'head'
+        self.applyNodeStyle(d3.select(this), isInPath ? 'path' : 'head', d);
+      });
+      this.highlightState.activeHighlights.nodes.set(nodeId, { type: 'head' });
+    }
+  }
+
+/**
    * Clear all manual selection highlighting (preserve filter highlights)
    */
   clearHighlight() {
     console.log("GraphRenderer: Clearing all manual selection highlights");
 
-    // Clear node highlights
+    // Clear node highlights using the clean system
     this.clearNodeHighlights();
-    
+
     // Clear application group highlights
     this.clearApplicationHighlights();
   }
@@ -1420,23 +1810,61 @@ renderEdges(packedRoot) {
   /**
    * Clear only node highlights (not application highlights)
    */
-  clearNodeHighlights() {
-    // Clear ALL highlighted nodes from manual selection (including connected ones)
-    this.highlightedElements.nodes.forEach(nodeId => {
-      if (!this.filterHighlightedNodes.has(nodeId)) {
-        this.unhighlightNode(nodeId);
-      }
-    });
+  clearAllHighlights() {
+    // Clear ALL node highlights - restore everything to default
+    if (this.nodeLayer) {
+      const self = this;
+      this.nodeLayer.selectAll('.node').each(function(d) {
+        const node = d3.select(this);
 
-    // Clear node selection state
+        // Clear original color storage
+        node.attr('data-original-color', null);
+
+        // Use unified styling - but ignore filter states (this is a complete clear)
+        self.applyNodeStyle(node, 'normal', d);
+      });
+    }
+
+    // Clear ALL edge highlights - restore everything to default
+    if (this.edgeLayer) {
+      const self = this;
+      this.edgeLayer.selectAll('.edge').each(function() {
+        const edge = d3.select(this);
+
+        // Store original values if not already stored
+        if (!edge.attr('data-original-stroke')) {
+          edge.attr('data-original-stroke', edge.attr('stroke'))
+              .attr('data-original-stroke-width', edge.attr('stroke-width'));
+        }
+
+        // Use unified styling
+        self.applyEdgeStyle(edge, 'normal');
+
+        // Clear stored values after reset
+        edge.attr('data-original-stroke', null)
+            .attr('data-original-stroke-width', null);
+      });
+    }
+  }
+
+  /**
+   * Clean clear functionality - reset everything to normal
+   */
+  clearNodeHighlights() {
+    // Clear state
+    this.highlightState.headNode = null;
+    this.highlightState.tracePath.nodes.clear();
+    this.highlightState.tracePath.edges.clear();
+    this.highlightState.activeHighlights.nodes.clear();
+    this.highlightState.activeHighlights.edges.clear();
+
+    // Clear legacy state
     this.selectedNodeIds.clear();
     this.highlightedElements.nodes.clear();
     this.highlightedElements.edgeKeys.clear();
-    
-    // Re-render edges (now includes filtering state from the start)
-    if (this.hierarchyRoot) {
-      this.renderEdges(this.hierarchyRoot);
-    }
+
+    // Reset all visuals
+    this.resetAllVisuals();
   }
 
   /**
@@ -1448,43 +1876,11 @@ renderEdges(packedRoot) {
     const nodeElement = this.nodeLayer.select(`#node-${nodeId}`);
     if (nodeElement.empty()) return;
 
+    const self = this;
     nodeElement.each(function(d) {
       const node = d3.select(this);
-      
-      // Get current transform and apply scaling to it
-      const currentTransform = node.attr('transform') || 'translate(0,0)';
-      const translate = currentTransform.match(/translate\(([^)]+)\)/);
-      if (translate) {
-        const coords = translate[1].split(',');
-        const x = parseFloat(coords[0]);
-        const y = parseFloat(coords[1]);
-
-        // Apply scaling and styling (less intense)
-        const scale = isDirectlySelected ? 1.2 : 1.1;
-        const color = isDirectlySelected ? '#8A4FBE' : '#A875D4';
-        
-        node.attr('transform', `translate(${x},${y}) scale(${scale})`)
-            .style('filter', 'drop-shadow(0 0 5px ' + color + ')')
-            .classed('highlighted', true);
-
-        // Update SVG icon color
-        const svgIcon = node.select('svg');
-        if (!svgIcon.empty()) {
-          // Store original color if not already stored
-          if (!node.attr('data-original-color')) {
-            const originalColor = svgIcon.style('color');
-            node.attr('data-original-color', originalColor);
-          }
-          
-          svgIcon.style('color', color);
-
-          // Handle Unknown node special styling
-          if (d.data.type === 'Unknown') {
-            svgIcon.select('circle').attr('fill', color);
-            svgIcon.select('text').attr('fill', '#FFFFFF').attr('font-weight', 'bolder');
-          }
-        }
-      }
+      // Use head style for directly selected, connected style otherwise
+      self.applyNodeStyle(node, isDirectlySelected ? 'head' : 'connected', d);
     });
   }
 
@@ -1496,39 +1892,10 @@ renderEdges(packedRoot) {
     const nodeElement = this.nodeLayer.select(`#node-${nodeId}`);
     if (nodeElement.empty()) return;
 
+    const self = this;
     nodeElement.each(function(d) {
       const node = d3.select(this);
-      
-      // Remove scaling from current transform but keep position
-      const currentTransform = node.attr('transform') || 'translate(0,0)';
-      const translate = currentTransform.match(/translate\(([^)]+)\)/);
-      if (translate) {
-        const coords = translate[1].split(',');
-        const x = parseFloat(coords[0]);
-        const y = parseFloat(coords[1]);
-        // Reset to scale(1)
-        node.attr('transform', `translate(${x},${y}) scale(1)`);
-      }
-
-      // Remove drop shadow and highlighting class
-      node.style('filter', null)
-          .classed('highlighted', false);
-
-      // Restore original color
-      const originalColor = node.attr('data-original-color');
-      if (originalColor) {
-        const svgIcon = node.select('svg');
-        svgIcon.style('color', originalColor);
-
-        // Restore Unknown node special styling
-        if (d.data?.type === 'Unknown') {
-          svgIcon.select('circle').attr('fill', '#F9C96E');
-          svgIcon.select('text').attr('fill', '#666666').attr('font-weight', 'bold');
-        }
-
-        // Clear stored color data
-        node.attr('data-original-color', null);
-      }
+      self.applyNodeStyle(node, 'normal', d);
     });
   }
 
@@ -1612,16 +1979,14 @@ renderEdges(packedRoot) {
    * @param {string} nodeId - ID of the node to dim
    */
   applyNodeDimming(nodeId) {
+    const self = this;
     // Find the node element
     this.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
-
-        // Add dimmed class and apply dimming styles
-        node.classed('dimmed', true)
-            .style('opacity', 0.3)
-            .style('filter', 'saturate(0.3)');
+        node.classed('dimmed', true);
+        self.applyNodeStyle(node, 'dimmed', d);
       });
   }
 
@@ -1630,16 +1995,14 @@ renderEdges(packedRoot) {
    * @param {string} nodeId - ID of the node to undim
    */
   removeNodeDimming(nodeId) {
+    const self = this;
     // Find the node element
     this.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
-
-        // Remove dimmed class and restore normal styles
-        node.classed('dimmed', false)
-            .style('opacity', null)
-            .style('filter', null);
+        node.classed('dimmed', false);
+        self.applyNodeStyle(node, 'normal', d);
       });
   }
 
