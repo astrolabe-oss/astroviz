@@ -4,6 +4,7 @@ import { EdgeUtils } from './edgeUtils.js';
 import { NodeUtils } from './nodeUtils.js';
 import { LayoutUtils } from './layoutUtils.js';
 import { InteractionUtils } from './interactionUtils.js';
+import { FilteringUtils } from './filteringUtils.js';
 
 /**
  * Supported style properties for graph elements
@@ -1159,135 +1160,6 @@ export class GraphRenderer {
     });
   }
 
-  /**
-   * Set filter-based dimming for nodes (new approach - dims non-matching nodes)
-   * @param {Set} filteredOutNodeIds - Set of node IDs to dim (don't match filters)
-   */
-  setFilterDimming(filteredOutNodeIds) {
-    console.log("GraphRenderer: Setting filter dimming for", filteredOutNodeIds.size, "nodes");
-
-    // Clear previous dimming
-    const previousFilteredOutNodes = new Set(this.filteredOutNodes || []);
-    this.filteredOutNodes = new Set(filteredOutNodeIds);
-
-    // Remove dimming from nodes that are no longer filtered out
-    previousFilteredOutNodes.forEach(nodeId => {
-      if (!filteredOutNodeIds.has(nodeId)) {
-        this.removeNodeDimming(nodeId);
-      }
-    });
-
-    // Apply dimming to newly filtered out nodes
-    filteredOutNodeIds.forEach(nodeId => {
-      this.applyNodeDimming(nodeId);
-    });
-
-    // Apply edge dimming based on filtered out nodes
-    if (filteredOutNodeIds.size > 0) {
-      this.applyEdgeDimming();
-    } else {
-      this.removeEdgeDimming();
-    }
-
-    // Handle zoom behavior based on filter state
-    if (filteredOutNodeIds.size > 0) {
-      // Auto-zoom to visible nodes first
-      setTimeout(() => {
-        InteractionUtils.zoomToVisibleNodes(this);
-
-        // Then trigger pulse animation after zoom completes
-        setTimeout(() => {
-          InteractionUtils.bounceAllNodes(this);
-        }, 850);
-      }, 100);
-    } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
-      // Filters were cleared - reset the zoom view
-      setTimeout(() => {
-        InteractionUtils.resetView(this);
-      }, 100);
-    }
-  }
-
-  /**
-   * Apply dimming effect to a node
-   * @param {string} nodeId - ID of the node to dim
-   */
-  applyNodeDimming(nodeId) {
-    const self = this;
-    // Find the node element
-    this.nodeLayer.selectAll('.node')
-      .filter(d => d.id === nodeId)
-      .each(function(d) {
-        const node = d3.select(this);
-        node.classed('dimmed', true);
-        self.applyNodeStyle(node, 'dimmed', d);
-      });
-  }
-
-  /**
-   * Remove dimming effect from a node
-   * @param {string} nodeId - ID of the node to undim
-   */
-  removeNodeDimming(nodeId) {
-    const self = this;
-    // Find the node element
-    this.nodeLayer.selectAll('.node')
-      .filter(d => d.id === nodeId)
-      .each(function(d) {
-        const node = d3.select(this);
-        node.classed('dimmed', false);
-        self.applyNodeStyle(node, 'normal', d);
-      });
-  }
-
-  /**
-   * Apply dimming to edges connected to filtered-out nodes
-   */
-  applyEdgeDimming() {
-    if (!this.edgeLayer || !this.data.edges) return;
-
-    const filteredOutNodes = this.filteredOutNodes; // Capture in closure
-
-    // Apply dimming based on edge endpoints
-    this.edgeLayer.selectAll('line.edge')
-      .each(function(d, i) {
-        const edgeElement = d3.select(this);
-
-        // Get source and target from the edge data attributes
-        const source = edgeElement.attr('data-source');
-        const target = edgeElement.attr('data-target');
-
-        if (source && target) {
-          // Check if either endpoint is filtered out
-          const sourceFiltered = filteredOutNodes.has(source);
-          const targetFiltered = filteredOutNodes.has(target);
-
-          if (sourceFiltered || targetFiltered) {
-            // Apply dimming: moderate opacity, longer dashed stroke
-            edgeElement
-              .style('opacity', 0.4)
-              .style('stroke-dasharray', '6,6');
-          } else {
-            // Remove dimming if neither endpoint is filtered
-            edgeElement
-              .style('opacity', null)
-              .style('stroke-dasharray', null);
-          }
-        }
-      });
-  }
-
-  /**
-   * Remove dimming from all edges
-   */
-  removeEdgeDimming() {
-    if (!this.edgeLayer) return;
-
-    this.edgeLayer.selectAll('line.edge')
-      .style('opacity', null)
-      .style('stroke-dasharray', null);
-  }
-
 
   /**
    * Show tooltip on node hover
@@ -1363,15 +1235,8 @@ export class GraphRenderer {
     InteractionUtils.zoomOut(this);
   }
 
-  zoomToVisibleNodes() {
-    InteractionUtils.zoomToVisibleNodes(this);
-  }
 
-  bounceAllNodes() {
-    InteractionUtils.bounceAllNodes(this);
-  }
-
-  getZoom() {
-    return InteractionUtils.getZoom(this);
+  setFilterDimming(filteredOutNodeIds) {
+    FilteringUtils.setFilterDimming(this, filteredOutNodeIds);
   }
 }
