@@ -12,6 +12,103 @@ import { InteractionUtils } from './interactionUtils.js';
 
 export class NodeUtils {
   /**
+   * Get the image filename for a person based on their name
+   */
+  static getPersonImagePath(name) {
+    if (!name) return null;
+
+    // Map full names to image filenames
+    const nameToImage = {
+      'Patrick Kennel': 'patrick.png',
+      'Brian Abent': 'brian.jpeg',
+      'Chris Robertson': 'chris.jpeg',
+      'Eric Monti': 'eric.png',
+      'Kent Hoxsey': 'kent.jpeg',
+      'Michael Lanning': 'michael.jpeg',
+      'Noah Brickman': 'noah.jpeg',
+      'Prateek Gupta': 'prateek.jpeg',
+      'Ryan Scheuermann': 'ryan.jpeg',
+      'Justin Poole': 'justin.jpeg',
+      'Viktoria Shox Poniatina': 'shox.jpeg'
+    };
+
+    const imageFile = nameToImage[name];
+    return imageFile ? require(`@/data/${imageFile}`) : null;
+  }
+
+  /**
+   * Render name labels for ALL nodes
+   */
+  static renderPersonLabels(renderer, nodes) {
+    // Show labels for ALL nodes now (not just Person nodes)
+    if (nodes.length === 0) return;
+
+    // Create label containers for all nodes
+    const nodeLabelElements = renderer.labelLayer
+      .selectAll('g.node-label-container')
+      .data(nodes, vertex => vertex.id)
+      .join('g')
+      .attr('class', 'node-label-container')
+      .attr('id', vertex => `node-label-container-${vertex.id}`)
+      .attr('transform', vertex => {
+        const iconSize = renderer.options.nodeRadius * 1.6;
+        const labelOffset = iconSize / 2 + 15; // Position below the circular image
+        return `translate(${vertex.x}, ${vertex.y + labelOffset})`;
+      });
+
+    // Add label backgrounds and text
+    nodeLabelElements.each(function(d) {
+      const group = d3.select(this);
+
+      // Get the node's name
+      const nodeName = d.data?.properties?.name || d.data?.name || 'Unknown';
+
+      // Create temporary text to measure width
+      const tempText = group.append('text')
+        .attr('font-size', '11px')
+        .attr('font-weight', 'normal')
+        .text(nodeName)
+        .style('visibility', 'hidden');
+
+      const bbox = tempText.node().getBBox();
+      tempText.remove();
+
+      // Add background rectangle
+      group.append('rect')
+        .attr('x', -bbox.width/2 - 3)
+        .attr('y', -bbox.height/2 - 1)
+        .attr('width', bbox.width + 6)
+        .attr('height', bbox.height + 2)
+        .attr('rx', 2)
+        .attr('fill', 'rgba(255, 255, 255, 0.9)')
+        .attr('stroke', '#ccc')
+        .attr('stroke-width', 1);
+
+      // Add label text
+      group.append('text')
+        .attr('class', 'node-label')
+        .attr('text-anchor', 'middle')
+        .attr('dominant-baseline', 'middle')
+        .style('font-size', '11px')
+        .style('font-weight', 'normal')
+        .style('fill', '#333')
+        .style('pointer-events', 'none')
+        .text(nodeName);
+    });
+  }
+
+  /**
+   * Update person label position when node moves
+   */
+  static updatePersonLabelPosition(renderer, nodeId, x, y) {
+    const labelContainer = d3.select(`#person-label-container-${nodeId}`);
+    if (!labelContainer.empty()) {
+      const iconSize = renderer.options.nodeRadius * 1.6;
+      const labelOffset = iconSize / 2 + 15;
+      labelContainer.attr('transform', `translate(${x}, ${y + labelOffset})`);
+    }
+  }
+  /**
    * Store node positions from pack layout
    */
   static storeNodePositions(renderer, packedRoot) {
@@ -166,73 +263,131 @@ export class NodeUtils {
         renderer.hideTooltip();
       });
 
-    // Add icons to node elements (like the old GraphVisualization.vue)
+    // Add icons/images to node elements
     const self = renderer;
     nodeElements.each(function(d) {
       const group = d3.select(this);
+      const iconSize = self.options.nodeRadius * 1.6; // Make icons bigger for visibility
 
-      // Node type is now directly accessible on d.data
-      const nodeType = d.data?.type || 'Unknown';
+      // Get node type from labels (Resource, Deployment, Compute) or fallback
+      const nodeType = d.data?.labels?.[0] || d.data?.type || 'Unknown';
 
-      // Get the appropriate icon SVG (matching the old code exactly)
+      // Always add background SVG icon first
       const iconSvg = networkIcons[nodeType] || networkIcons.default;
-
-      // Create temporary div to parse the SVG (same approach as old code)
       const tempDiv = document.createElement('div');
       tempDiv.innerHTML = iconSvg;
       const svgElement = tempDiv.querySelector('svg');
 
       if (svgElement) {
-        // Create SVG icon with appropriate size and color
-        const iconSize = self.options.nodeRadius * 1.6; // Make icons bigger for visibility
-
-        const iconSvg = group.append('svg')
-          .attr('class', 'node-icon')
+        const backgroundIcon = group.append('svg')
+          .attr('class', 'node-icon-background')
           .attr('width', iconSize)
           .attr('height', iconSize)
           .attr('x', -iconSize / 2)
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
           .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.style?.fill ?? '#5B8FF9'); // Use node color from style object
+          .style('color', d.style?.fill ?? '#5B8FF9')
+          .style('opacity', 0.3); // Make background icon subtle
 
-        // Insert the icon content
-        iconSvg.html(svgElement.innerHTML);
+        backgroundIcon.html(svgElement.innerHTML);
+      }
 
-        // Add public IP annotation if node has public IP
-        if (d.data?.public_ip === true || d.data?.public_ip === 'true') {
-          // Get the PublicIP icon SVG
-          const publicIpIconSvg = networkIcons.PublicIP || networkIcons.default;
+      // Try to get person's image for overlay
+      const personName = d.data?.properties?.name || d.data?.name;
+      const imagePath = NodeUtils.getPersonImagePath(personName);
 
-          // Create temporary div to parse the public IP icon SVG
-          const publicIpTempDiv = document.createElement('div');
-          publicIpTempDiv.innerHTML = publicIpIconSvg;
-          const publicIpSvgElement = publicIpTempDiv.querySelector('svg');
+      if (imagePath) {
+        // Create circular image overlay
+        const clipId = `clip-${d.id}`;
 
-          if (publicIpSvgElement) {
-            // Create small cloud annotation in upper right corner
-            const annotationSize = iconSize * 0.6; // Make annotation 50% of node icon size (bigger)
-            const offsetX = iconSize * 0.05; // Position further left
-            const offsetY = -iconSize * 0.5; // Position further to the top
+        // Add a clipping path for the circular image
+        const defs = group.append('defs');
+        defs.append('clipPath')
+          .attr('id', clipId)
+          .append('circle')
+          .attr('cx', 0)
+          .attr('cy', 0)
+          .attr('r', iconSize / 2);
 
-            const publicIpAnnotation = group.append('svg')
-              .attr('class', 'public-ip-annotation')
-              .attr('width', annotationSize)
-              .attr('height', annotationSize)
-              .attr('x', offsetX)
-              .attr('y', offsetY)
-              .attr('viewBox', publicIpSvgElement.getAttribute('viewBox') || '0 0 24 24')
-              .attr('preserveAspectRatio', 'xMidYMid meet')
-              .style('color', '#E0E0E0') // Light gray for the cloud
-              .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))'); // Add subtle shadow
+        // Add the image with circular clipping (overlaid on top)
+        group.append('image')
+          .attr('class', 'person-avatar')
+          .attr('x', -iconSize / 2)
+          .attr('y', -iconSize / 2)
+          .attr('width', iconSize)
+          .attr('height', iconSize)
+          .attr('href', imagePath)
+          .attr('clip-path', `url(#${clipId})`)
+          .style('cursor', 'pointer');
 
-            // Insert the public IP icon content
-            publicIpAnnotation.html(publicIpSvgElement.innerHTML);
-          }
+        // Add a circular border around the image
+        group.append('circle')
+          .attr('class', 'avatar-border')
+          .attr('cx', 0)
+          .attr('cy', 0)
+          .attr('r', iconSize / 2)
+          .attr('fill', 'none')
+          .attr('stroke', '#333')
+          .attr('stroke-width', 2);
+      }
+
+      // Add label/type icon overlay (in the same style as public IP cloud)
+      const labelTypeIconSvg = networkIcons[nodeType] || networkIcons.default;
+      const labelTypeTempDiv = document.createElement('div');
+      labelTypeTempDiv.innerHTML = labelTypeIconSvg;
+      const labelTypeSvgElement = labelTypeTempDiv.querySelector('svg');
+
+      if (labelTypeSvgElement) {
+        const annotationSize = iconSize * 0.5;
+        const offsetX = iconSize * 0.3;
+        const offsetY = iconSize * 0.3;
+
+        const labelTypeAnnotation = group.append('svg')
+          .attr('class', 'label-type-annotation')
+          .attr('width', annotationSize)
+          .attr('height', annotationSize)
+          .attr('x', offsetX)
+          .attr('y', offsetY)
+          .attr('viewBox', labelTypeSvgElement.getAttribute('viewBox') || '0 0 24 24')
+          .attr('preserveAspectRatio', 'xMidYMid meet')
+          .style('color', d.style?.fill ?? '#5B8FF9')
+          .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))')
+          .style('opacity', 0.9);
+
+        labelTypeAnnotation.html(labelTypeSvgElement.innerHTML);
+      }
+
+      // Add public IP annotation if node has public IP
+      if (d.data?.public_ip === true || d.data?.public_ip === 'true') {
+        const publicIpIconSvg = networkIcons.PublicIP || networkIcons.default;
+        const publicIpTempDiv = document.createElement('div');
+        publicIpTempDiv.innerHTML = publicIpIconSvg;
+        const publicIpSvgElement = publicIpTempDiv.querySelector('svg');
+
+        if (publicIpSvgElement) {
+          const annotationSize = iconSize * 0.6;
+          const offsetX = iconSize * 0.05;
+          const offsetY = -iconSize * 0.5;
+
+          const publicIpAnnotation = group.append('svg')
+            .attr('class', 'public-ip-annotation')
+            .attr('width', annotationSize)
+            .attr('height', annotationSize)
+            .attr('x', offsetX)
+            .attr('y', offsetY)
+            .attr('viewBox', publicIpSvgElement.getAttribute('viewBox') || '0 0 24 24')
+            .attr('preserveAspectRatio', 'xMidYMid meet')
+            .style('color', '#E0E0E0')
+            .style('filter', 'drop-shadow(0 1px 2px rgba(0,0,0,0.3))');
+
+          publicIpAnnotation.html(publicIpSvgElement.innerHTML);
         }
       }
     });
 
+    // Add name labels for Person nodes
+    NodeUtils.renderPersonLabels(renderer, nodes);
 
     // Add drag behavior with reasonable threshold to prevent accidental drags during clicks
     const dragBehavior = d3.drag()
@@ -286,6 +441,9 @@ export class NodeUtils {
         d3.select(`#node-${childId}`)
           .attr('transform', `translate(${childNodePos.x}, ${childNodePos.y})`);
 
+        // Update person label position if it exists
+        NodeUtils.updatePersonLabelPosition(renderer, childId, childNodePos.x, childNodePos.y);
+
 
       } else if (childGroupPos) {
         // Recursively move child group
@@ -334,6 +492,9 @@ export class NodeUtils {
           .transition()
           .duration(500)
           .attr('transform', `translate(${pos.originalX}, ${pos.originalY})`);
+
+        // Update person label position if it exists
+        NodeUtils.updatePersonLabelPosition(renderer, nodeId, pos.originalX, pos.originalY);
 
       }
     });

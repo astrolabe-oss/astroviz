@@ -242,7 +242,7 @@ export class LayoutUtils {
     const viewportHeight = renderer.options.height;
     const scaleX = viewportWidth / contentWidth;
     const scaleY = viewportHeight / contentHeight;
-    const scale = Math.min(scaleX, scaleY, 1) * 1.33; // Zoom in 33% more than full fit for better readability
+    const scale = Math.min(scaleX, scaleY, 1);// * 1.33; // Zoom in 33% more than full fit for better readability
 
     // Calculate translation to center the content
     const viewportCenterX = viewportWidth / 2;

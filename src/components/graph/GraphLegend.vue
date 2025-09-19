@@ -8,10 +8,10 @@
   <div class="legend">
     <!-- Node Types Section -->
     <div class="legend-section">
-      <div class="legend-heading">Node Types</div>
+      <div class="legend-heading">Nerd Types</div>
       <div v-for="type in nodeTypes" :key="type" class="legend-item">
         <div class="legend-icon" v-html="getLegendIcon(type)"></div>
-        <div class="legend-label">{{ type }}</div>
+        <div class="legend-label">{{ getDisplayName(type) }}</div>
       </div>
     </div>
 
@@ -20,7 +20,7 @@
       <div class="legend-heading">Annotations</div>
       <div v-for="type in annotationTypes" :key="type" class="legend-item">
         <div class="legend-icon" v-html="getLegendIcon(type)"></div>
-        <div class="legend-label">{{ type }}</div>
+        <div class="legend-label">{{ getAnnotationDisplayName(type) }}</div>
       </div>
     </div>
   </div>
@@ -55,11 +55,42 @@ export default {
      * @returns {Array} Array of annotation type names
      */
     annotationTypes() {
-      return ['Public IP', 'Internet\nBoundary', 'Private\nNetwork', 'Cluster', 'Application'];
+      return ['Internet\nBoundary', 'Private\nNetwork', 'Cluster', 'Application'];
     }
   },
 
   methods: {
+    /**
+     * Get display name for node types
+     * @param {string} type The technical node type
+     * @returns {string} Display name for the legend
+     */
+    getDisplayName(type) {
+      const displayNames = {
+        'Deployment': 'Pointy Haired Boss',
+        'Compute': 'IC',
+        'Resource': 'Contractor',
+        'TrafficController': 'Basically A Big Wig',
+        'Unknown': 'Too Cool for School'
+      };
+      return displayNames[type] || type;
+    },
+
+    /**
+     * Get display name for annotation types
+     * @param {string} type The technical annotation type
+     * @returns {string} Display name for the legend
+     */
+    getAnnotationDisplayName(type) {
+      const displayNames = {
+        'Application': 'Company',
+        'Cluster': 'Mid Life Crisis Type',
+        'Private\nNetwork': 'Industry',
+        'Internet\nBoundary': 'Delusion Type'
+      };
+      return displayNames[type] || type;
+    },
+
     /**
      * Get a small version of the icon for the legend
      * @param {string} type The node type

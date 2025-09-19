@@ -6,6 +6,15 @@
 // src/components/graph/graphTransformUtils.js
 
 /**
+ * Sanitize a string to be used as a valid CSS selector ID
+ * @param {string} str - String to sanitize
+ * @returns {string} - Sanitized string safe for CSS selectors
+ */
+function sanitizeId(str) {
+  return str.replace(/[^a-zA-Z0-9-_]/g, '-');
+}
+
+/**
  * Transform Neo4j graph data into hierarchical structure for visualization
  * @param {Object} data - Raw graph data from Neo4j with vertices and edges
  * @param {Object} nodeColors - Map of node types to colors
@@ -69,7 +78,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
   // Create Internet Boundary as the root container for private network
   if (privateNodes.length > 0) {
     vertices['internet-boundary'] = {
-      label: 'Internet Boundary',
+      label: 'The Real World',
       type: 'group',
       parentId: null,
       style: {
@@ -82,7 +91,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
 
     // Create private network group inside Internet Boundary
     vertices['private-network'] = {
-      label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
+      label: `Techy Nerds (${totalApps} nerds)`,
       type: 'group',
       parentId: 'internet-boundary',
       style: {
@@ -96,11 +105,11 @@ export function transformGraphDataForVisualization(data, nodeColors) {
 
   // Create cluster groups within private network
   Object.entries(clusterGroups).forEach(([clusterName, clusterApps]) => {
-    const clusterGroupId = `cluster-${clusterName}`;
+    const clusterGroupId = `cluster-${sanitizeId(clusterName)}`;
     const appCount = Object.keys(clusterApps).length;
     
     vertices[clusterGroupId] = {
-      label: `Cluster: ${clusterName} (${appCount} apps)`,
+      label: `${clusterName}`,
       type: 'group',
       parentId: 'private-network',
       style: {
@@ -113,10 +122,10 @@ export function transformGraphDataForVisualization(data, nodeColors) {
 
     // Create application groups within clusters
     Object.entries(clusterApps).forEach(([appName, appNodes]) => {
-      const appGroupId = `app-${clusterName}-${appName}`;
+      const appGroupId = `app-${sanitizeId(clusterName)}-${sanitizeId(appName)}`;
       
       vertices[appGroupId] = {
-        label: `App: ${appName} (${appNodes.length} nodes)`,
+        label: `${appName} (${appNodes.length} nerds)`,
         type: 'group',
         name: appName,
         parentId: clusterGroupId,

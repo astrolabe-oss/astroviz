@@ -7,7 +7,7 @@
 <template>
   <div class="filters">
     <div class="filter-item">
-      <label for="app-name">App Name:</label>
+      <label for="app-name">Company Name:</label>
       <select id="app-name" v-model="localFilters.appName" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="app in uniqueValues.appNames" :key="app" :value="app" :title="app">{{ app }}</option>
@@ -15,48 +15,48 @@
     </div>
 
     <div class="filter-item">
-      <label for="provider">Compute Platform:</label>
+      <label for="provider">Type of Nerd:</label>
       <select id="provider" v-model="localFilters.provider" @change="emitFilterChange">
         <option value="">All</option>
         <option v-for="provider in uniqueValues.providers" :key="provider" :value="provider" :title="provider">{{ provider }}</option>
       </select>
     </div>
 
-    <div class="filter-item" v-if="uniqueValues.addresses.length > 0">
-      <label for="address">Address:</label>
-      <select id="address" v-model="localFilters.address" @change="emitFilterChange">
-        <option value="">All</option>
-        <option v-for="addr in uniqueValues.addresses" :key="addr" :value="addr" :title="addr">{{ addr }}</option>
-      </select>
-    </div>
+<!--    <div class="filter-item" v-if="uniqueValues.addresses.length > 0">-->
+<!--      <label for="address">Address:</label>-->
+<!--      <select id="address" v-model="localFilters.address" @change="emitFilterChange">-->
+<!--        <option value="">All</option>-->
+<!--        <option v-for="addr in uniqueValues.addresses" :key="addr" :value="addr" :title="addr">{{ addr }}</option>-->
+<!--      </select>-->
+<!--    </div>-->
 
-    <div class="filter-item">
-      <label for="protocol-mux">TCP Port:</label>
-      <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">
-        <option value="">All</option>
-        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux" :title="mux">{{ mux }}</option>
-      </select>
-    </div>
+<!--    <div class="filter-item">-->
+<!--      <label for="protocol-mux">TCP Port:</label>-->
+<!--      <select id="protocol-mux" v-model="localFilters.protocolMux" @change="emitFilterChange">-->
+<!--        <option value="">All</option>-->
+<!--        <option v-for="mux in sortedProtocolMuxes" :key="mux" :value="mux" :title="mux">{{ mux }}</option>-->
+<!--      </select>-->
+<!--    </div>-->
 
 
-    <div class="filter-item">
-      <label for="public-ip">Public/Private IP:</label>
-      <select id="public-ip" v-model="localFilters.publicIp" @change="emitFilterChange">
-        <option value="">All</option>
-        <option value="public">Public</option>
-        <option value="private">Private</option>
-      </select>
-    </div>
+<!--    <div class="filter-item">-->
+<!--      <label for="public-ip">Public/Private IP:</label>-->
+<!--      <select id="public-ip" v-model="localFilters.publicIp" @change="emitFilterChange">-->
+<!--        <option value="">All</option>-->
+<!--        <option value="public">Public</option>-->
+<!--        <option value="private">Private</option>-->
+<!--      </select>-->
+<!--    </div>-->
 
-    <div class="filter-item checkbox-container">
-      <label class="checkbox-label">
-        <span class="checkbox-text">Public Traffic</span>
-        <div class="styled-checkbox-wrapper">
-          <input type="checkbox" id="hide-public-traffic" v-model="localFilters.hidePublicTraffic" @change="emitFilterChange">
-          <span class="checkmark"></span>
-        </div>
-      </label>
-    </div>
+<!--    <div class="filter-item checkbox-container">-->
+<!--      <label class="checkbox-label">-->
+<!--        <span class="checkbox-text">Public Traffic</span>-->
+<!--        <div class="styled-checkbox-wrapper">-->
+<!--          <input type="checkbox" id="hide-public-traffic" v-model="localFilters.hidePublicTraffic" @change="emitFilterChange">-->
+<!--          <span class="checkmark"></span>-->
+<!--        </div>-->
+<!--      </label>-->
+<!--    </div>-->
 
     <div class="filter-item reset-container">
       <label>&nbsp;</label>

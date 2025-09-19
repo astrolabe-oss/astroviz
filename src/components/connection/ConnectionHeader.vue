@@ -7,7 +7,7 @@
 <template>
   <div class="logo-wrapper">
     <a href="https://github.com/astrolabe-oss/astroviz" target="_blank" rel="noopener" class="logo-link">
-      <img :src="logoUrl" alt="AstroViz Logo" class="logo" />
+      <img :src="logoUrl" alt="ChAIDev Logo" class="logo" />
     </a>
   </div>
 </template>
@@ -25,7 +25,7 @@ export default {
 
   computed: {
     logoUrl() {
-      return `${process.env.BASE_URL}logo.svg`;
+      return require('@/data/ChAIDevLogo.png');
     }
   },
 

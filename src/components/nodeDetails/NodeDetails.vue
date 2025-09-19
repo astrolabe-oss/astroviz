@@ -6,7 +6,7 @@
 
 
   <div v-if="node" class="node-details">
-    <h3>Node: <span class="node-type-header-badge" :style="{ backgroundColor: getNodeTypeColor(node.type) }">{{ node.type }}</span></h3>
+    <h3>Node: <span class="node-type-header-badge" :style="{ backgroundColor: getNodeTypeColor(node.type) }">{{ getDisplayName(node.type) }}</span></h3>
     <button class="close-button" @click="closeDetails">×</button>
 
     <!-- Profile Timestamp Section -->
@@ -22,7 +22,7 @@
     <div class="detail-section">
       <div class="node-main-properties">
         <div class="important-property">
-          <label>App:</label>
+          <label>Company:</label>
           <span>{{ node.app_name || 'Unknown' }}</span>
         </div>
 
@@ -32,8 +32,8 @@
         </div>
 
         <div class="important-property">
-          <label>Address:</label>
-          <span>{{ node.address || 'Unknown' }}</span>
+          <label>Role:</label>
+          <span>{{ node.provider || 'Unknown' }}</span>
         </div>
       </div>
     </div>
@@ -79,7 +79,7 @@
                     @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
-                    {{ rel.nodeType }}
+                    {{ getDisplayName(rel.nodeType) }}
                   </span>
                   <span class="connection-details" :title="getNodeTooltip(rel)">
                     {{ formatConnectionDetails(rel) }}
@@ -106,7 +106,7 @@
                     @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
-                    {{ rel.nodeType }}
+                    {{ getDisplayName(rel.nodeType) }}
                   </span>
                   <span class="connection-details" :title="getNodeTooltip(rel)">
                     {{ formatConnectionDetails(rel) }}
@@ -281,6 +281,22 @@ export default {
      * Get color for node type badge
      */
     getNodeTypeColor,
+
+    /**
+     * Get display name for node types (same as in GraphLegend)
+     * @param {string} type The technical node type
+     * @returns {string} Display name
+     */
+    getDisplayName(type) {
+      const displayNames = {
+        'Deployment': 'Pointy Haired Boss',
+        'Compute': 'IC',
+        'Resource': 'Contractor',
+        'TrafficController': 'Basically A Big Wig',
+        'Unknown': 'Too Cool for School'
+      };
+      return displayNames[type] || type;
+    },
 
     /**
      * Generate tooltip text for a node relationship

@@ -6,7 +6,7 @@
 // src/services/neo4jService.js
 import neo4j from 'neo4j-driver';
 import config from '@/config';
-import mockGraphData from '@/data/mockGraphData.json';
+import meetingAttendees from '@/data/meetingAttendees.json';
 
 /**
  * Service to handle Neo4j database connection and queries
@@ -184,8 +184,8 @@ class Neo4jService {
                 result = {
                     records: [{
                         get: (field) => {
-                            if (field === 'nodes') return mockGraphData[0].nodes;
-                            if (field === 'relationships') return mockGraphData[0].relationships;
+                            if (field === 'nodes') return meetingAttendees[0].nodes;
+                            if (field === 'relationships') return meetingAttendees[0].links;
                             return null;
                         }
                     }]
