@@ -3,6 +3,7 @@ import networkIcons from '../../networkIcons';
 import { EdgeUtils } from './edgeUtils.js';
 import { NodeUtils } from './nodeUtils.js';
 import { LayoutUtils } from './layoutUtils.js';
+import { InteractionUtils } from './interactionUtils.js';
 
 /**
  * Supported style properties for graph elements
@@ -524,9 +525,9 @@ export class GraphRenderer {
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => this.onGroupDragStart(event, d))
-      .on('drag', (event, d) => this.onGroupDrag(event, d))
-      .on('end', (event, d) => this.onGroupDragEnd(event, d));
+      .on('start', (event, d) => InteractionUtils.onGroupDragStart(this, event, d))
+      .on('drag', (event, d) => InteractionUtils.onGroupDrag(this, event, d))
+      .on('end', (event, d) => InteractionUtils.onGroupDragEnd(this, event, d));
     
     groupElements.call(groupDragBehavior);
   }
@@ -535,99 +536,8 @@ export class GraphRenderer {
 
 
   
-  /**
-   * Unified cursor management for drag operations
-   */
-  setCursor(event, cursor) {
-    d3.select(event.sourceEvent.target).style('cursor', cursor);
-  }
 
-  /**
-   * Drag handlers
-   */
-  onDragStart(event, d) {
-    console.log('=== onDragStart called ===', d.id);
-    this.setCursor(event, 'grabbing');
-  }
   
-  onDrag(event, d) {
-    const nodeId = d.id;
-    const nodePos = this.nodePositions.get(nodeId);
-    if (!nodePos) return;
-    
-    // Update the subject position and use it for consistent coordinates
-    event.subject.x = event.x;
-    event.subject.y = event.y;
-    
-    // Update position tracking
-    nodePos.x = event.x;
-    nodePos.y = event.y;
-    
-    // Move the node group visually
-    d3.select(`#node-${nodeId}`)
-      .attr('transform', `translate(${event.x}, ${event.y})`);
-    
-    // Update all non-highlighted edges
-    EdgeUtils.updateAllEdgesAsync(this);
-  }
-  
-  onDragEnd(event, d) {
-    console.log('=== onDragEnd called ===');
-    this.setCursor(event, 'grab');
-    
-    // Use unified pipeline like group drag end
-    EdgeUtils.updateAllEdgesAsync(this);
-  }
-  
-  /**
-   * Group drag handlers
-   */
-  onGroupDragStart(event, d) {
-    console.log('=== onGroupDragStart called ===', d.id);
-    
-    // Prevent dragging the private network
-    if (d.id === 'private-network') {
-      event.sourceEvent.preventDefault();
-      return;
-    }
-    
-    this.setCursor(event, 'grabbing');
-  }
-  
-  onGroupDrag(event, d) {
-    const groupId = d.id;
-    
-    // Prevent dragging the private network
-    if (groupId === 'private-network') {
-      return;
-    }
-    
-    const groupPos = this.groupPositions.get(groupId);
-    if (!groupPos) return;
-    
-    // Calculate movement delta
-    const deltaX = event.x - groupPos.x;
-    const deltaY = event.y - groupPos.y;
-    
-    // Update the group position and move all children
-    NodeUtils.moveGroupAndChildren(this, groupId, deltaX, deltaY);
-    EdgeUtils.updateAllEdgesAsync(this);
-  }
-  
-  onGroupDragEnd(event, d) {
-    console.log('=== onGroupDragEnd called ===', d.id);
-    this.setCursor(event, 'grab');
-    
-    // Cancel any in-progress async update and do a final synchronous update
-    if (this.edgeUpdateController) {
-      this.edgeUpdateController.cancelled = true;
-      this.edgeUpdateController = null;
-    }
-    
-    
-    // Do a final edge update to ensure everything is accurate
-    EdgeUtils.updateAllEdgesAsync(this);
-  }
   
   
 
@@ -1283,17 +1193,17 @@ export class GraphRenderer {
     if (filteredOutNodeIds.size > 0) {
       // Auto-zoom to visible nodes first
       setTimeout(() => {
-        this.zoomToVisibleNodes();
+        InteractionUtils.zoomToVisibleNodes(this);
 
         // Then trigger pulse animation after zoom completes
         setTimeout(() => {
-          this.bounceAllNodes();
+          InteractionUtils.bounceAllNodes(this);
         }, 850);
       }, 100);
     } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
       // Filters were cleared - reset the zoom view
       setTimeout(() => {
-        this.resetView();
+        InteractionUtils.resetView(this);
       }, 100);
     }
   }
@@ -1378,208 +1288,6 @@ export class GraphRenderer {
       .style('stroke-dasharray', null);
   }
 
-  /**
-   * Zoom controls
-   */
-  zoomIn() {
-    if (!this.svg || !this.zoom) return;
-    this.svg.transition().duration(300).call(
-      this.zoom.scaleBy, 1.5
-    );
-  }
-  
-  zoomOut() {
-    if (!this.svg || !this.zoom) return;
-    this.svg.transition().duration(300).call(
-      this.zoom.scaleBy, 0.67
-    );
-  }
-  
-  resetView() {
-    if (!this.svg || !this.zoom) return;
-
-    // Reset zoom and pan
-    this.svg.transition().duration(500).call(
-      this.zoom.transform,
-      d3.zoomIdentity
-    );
-
-    // Reset all node positions to original
-    NodeUtils.resetNodePositions(this);
-    LayoutUtils.fitToView(this, this.hierarchyRoot);
-  }
-
-  /**
-   * Zoom to bounds of visible (non-dimmed) nodes
-   */
-  zoomToVisibleNodes() {
-    if (!this.svg || !this.zoom || !this.nodeLayer) return;
-
-    // Get bounds of all non-dimmed nodes
-    const visibleNodes = [];
-    this.nodeLayer.selectAll('.node')
-      .filter(d => !this.filteredOutNodes.has(d.id))
-      .each(function(d) {
-        const node = d3.select(this);
-        const transform = node.attr('transform');
-        if (transform) {
-          const translate = transform.match(/translate\(([^)]+)\)/);
-          if (translate) {
-            const coords = translate[1].split(',');
-            const x = parseFloat(coords[0]);
-            const y = parseFloat(coords[1]);
-            visibleNodes.push({ x, y, r: d.r || 15 });
-          }
-        }
-      });
-
-    if (visibleNodes.length === 0) {
-      console.log('No visible nodes to zoom to');
-      return;
-    }
-
-    // Calculate bounds with padding
-    const padding = 50;
-    let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
-
-    visibleNodes.forEach(node => {
-      minX = Math.min(minX, node.x - node.r);
-      maxX = Math.max(maxX, node.x + node.r);
-      minY = Math.min(minY, node.y - node.r);
-      maxY = Math.max(maxY, node.y + node.r);
-    });
-
-    const boundsWidth = maxX - minX + 2 * padding;
-    const boundsHeight = maxY - minY + 2 * padding;
-    const boundsX = minX - padding;
-    const boundsY = minY - padding;
-
-    // Get current SVG dimensions
-    const svgNode = this.svg.node();
-    const svgWidth = svgNode.clientWidth || svgNode.getBoundingClientRect().width;
-    const svgHeight = svgNode.clientHeight || svgNode.getBoundingClientRect().height;
-
-    // Calculate scale to fit bounds in view with maximum zoom limit
-    const fullScale = Math.min(svgWidth / boundsWidth, svgHeight / boundsHeight);
-
-    // Get current zoom level
-    const currentZoom = this.getZoom();
-    const maxZoom = currentZoom * 1.5; // Limit to 1.5x current zoom
-
-    // Apply maximum zoom limit
-    const scale = Math.min(fullScale, maxZoom);
-
-    // Calculate translation to center bounds
-    const translateX = svgWidth / 2 - scale * (boundsX + boundsWidth / 2);
-    const translateY = svgHeight / 2 - scale * (boundsY + boundsHeight / 2);
-
-    // Apply zoom transform
-    this.svg.transition().duration(750).call(
-      this.zoom.transform,
-      d3.zoomIdentity.translate(translateX, translateY).scale(scale)
-    );
-
-    console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)})`);
-  }
-
-  /**
-   * Animate all nodes with a bounce effect for dramatic filter feedback
-   */
-  bounceAllNodes() {
-    if (!this.nodeLayer) return;
-
-    console.log('Bouncing visible nodes with shared physics simulation');
-
-    // Collect only visible (non-filtered) nodes and their base transforms
-    const nodeData = [];
-    const self = this;
-    this.nodeLayer.selectAll('.node')
-      .each(function(d) {
-        // Skip filtered out nodes - they should stay dimmed and not bounce
-        if (self.filteredOutNodes && self.filteredOutNodes.has(d.id)) {
-          return;
-        }
-
-        const node = d3.select(this);
-        const currentTransform = node.attr('transform') || 'translate(0,0)';
-        const translate = currentTransform.match(/translate\(([^)]+)\)/);
-        let baseTransform = currentTransform;
-
-        if (translate) {
-          const coords = translate[1].split(',');
-          const x = parseFloat(coords[0]);
-          const y = parseFloat(coords[1]);
-          baseTransform = `translate(${x},${y})`;
-        }
-
-        nodeData.push({ node, baseTransform });
-      });
-
-    if (nodeData.length === 0) return;
-
-    // Pulse animation - time-based for consistency
-    let currentPulse = 0;
-    const totalPulses = 2;
-    const pulseDuration = 500; // milliseconds per pulse
-    const pauseBetweenPulses = 150; // milliseconds
-    let pulseStartTime = null;
-
-    const pulseStep = (timestamp) => {
-      if (!pulseStartTime) pulseStartTime = timestamp;
-
-      const elapsed = timestamp - pulseStartTime;
-      const pulsePhase = Math.min(elapsed / pulseDuration, 1.0); // 0 to 1 progress
-
-      // Calculate scale using sine wave for smooth pulse
-      let scale;
-      if (pulsePhase < 1.0) {
-        // Smooth expansion and contraction using sine
-        const sineValue = Math.sin(pulsePhase * Math.PI);
-        scale = 1.0 + (sineValue * 0.3); // Pulse between 1.0 and 1.3
-      } else {
-        // Pulse complete
-        scale = 1.0;
-        currentPulse++;
-        pulseStartTime = null; // Reset for next pulse
-
-        // Check if all pulses are done
-        if (currentPulse >= totalPulses) {
-          // Final update to ensure scale is exactly 1.0
-          nodeData.forEach(({ node, baseTransform }) => {
-            node.attr('transform', baseTransform + ' scale(1)');
-          });
-          return;
-        }
-
-        // Small pause between pulses
-        setTimeout(() => {
-          requestAnimationFrame(pulseStep);
-        }, pauseBetweenPulses);
-        return;
-      }
-
-      // Apply current scale to all visible nodes simultaneously
-      nodeData.forEach(({ node, baseTransform }) => {
-        node.attr('transform', baseTransform + ` scale(${scale})`);
-      });
-
-      requestAnimationFrame(pulseStep);
-    };
-
-    // Start the pulse animation
-    requestAnimationFrame(pulseStep);
-  }
-
-  
-
-
-  /**
-   * Get current zoom level
-   */
-  getZoom() {
-    if (!this.svg) return 1;
-    return d3.zoomTransform(this.svg.node()).k;
-  }
 
   /**
    * Show tooltip on node hover
@@ -1640,5 +1348,30 @@ export class GraphRenderer {
       this.tooltip.remove();
       this.tooltip = null;
     }
+  }
+
+  // Public API methods that delegate to utility classes
+  resetView() {
+    InteractionUtils.resetView(this);
+  }
+
+  zoomIn() {
+    InteractionUtils.zoomIn(this);
+  }
+
+  zoomOut() {
+    InteractionUtils.zoomOut(this);
+  }
+
+  zoomToVisibleNodes() {
+    InteractionUtils.zoomToVisibleNodes(this);
+  }
+
+  bounceAllNodes() {
+    InteractionUtils.bounceAllNodes(this);
+  }
+
+  getZoom() {
+    return InteractionUtils.getZoom(this);
   }
 }

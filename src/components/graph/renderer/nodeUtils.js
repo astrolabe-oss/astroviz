@@ -8,6 +8,7 @@
 
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
+import { InteractionUtils } from './interactionUtils.js';
 
 export class NodeUtils {
   /**
@@ -242,9 +243,9 @@ export class NodeUtils {
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => renderer.onDragStart(event, d))
-      .on('drag', (event, d) => renderer.onDrag(event, d))
-      .on('end', (event, d) => renderer.onDragEnd(event, d));
+      .on('start', (event, d) => InteractionUtils.onDragStart(renderer, event, d))
+      .on('drag', (event, d) => InteractionUtils.onDrag(renderer, event, d))
+      .on('end', (event, d) => InteractionUtils.onDragEnd(renderer, event, d));
 
     console.log('Attaching drag behavior to', nodeElements.size(), 'node elements');
     nodeElements.call(dragBehavior);
