@@ -8,6 +8,215 @@
 
 export class EdgeUtils {
   /**
+   * Create or update gradient for an edge
+   */
+  static createEdgeGradient(defs, edgeId, stops, x1, y1, x2, y2) {
+    const gradientId = `edge-gradient-${edgeId}`;
+
+    // Remove existing gradient
+    defs.select(`#${gradientId}`).remove();
+
+    // Create new gradient aligned with the line
+    const gradient = defs.append('linearGradient')
+      .attr('id', gradientId)
+      .attr('gradientUnits', 'userSpaceOnUse')
+      .attr('x1', x1)
+      .attr('y1', y1)
+      .attr('x2', x2)
+      .attr('y2', y2);
+
+    // Add stops
+    stops.forEach(stop => {
+      gradient.append('stop')
+        .attr('offset', stop.offset)
+        .attr('stop-color', stop.color)
+        .attr('stop-opacity', stop.opacity);
+    });
+
+    return `url(#${gradientId})`;
+  }
+
+  /**
+   * Render edges using hierarchical data and edge list
+   */
+  static renderEdges(renderer, packedRoot) {
+    if (!renderer.data.edges) return;
+
+    // Extract rendering data using utility method
+    const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
+      EdgeUtils.extractRenderingData(packedRoot);
+
+    // Filter edges to only those with both endpoints visible
+    const visibleEdges = renderer.data.edges.filter(edge => {
+      return positionMap.has(edge.source) && positionMap.has(edge.target);
+    });
+
+    // Clear existing edges
+    renderer.edgeLayer.selectAll('line.edge').remove();
+
+    // Create single gradient edges using segment data
+    visibleEdges.forEach((edge, edgeIndex) => {
+      // Get source and target positions
+      const sourcePos = positionMap.get(edge.source);
+      const targetPos = positionMap.get(edge.target);
+
+      // Calculate adjusted endpoint using utility method
+      const shortenBy = renderer.options.nodeRadius * 0.7;
+      const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
+
+      // Check if this edge is highlighted
+      const edgeKey = `${edge.source}-${edge.target}`;
+      const isHighlighted = renderer.highlightedElements.edgeKeys.has(edgeKey);
+
+      let strokeStyle, strokeWidth;
+
+      if (isHighlighted) {
+        // Use solid purple for highlighted edges
+        strokeStyle = '#4444ff';
+        strokeWidth = 3;
+      } else {
+        // Use gradient segments for non-highlighted edges
+        // Find home groups using utility method
+        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
+
+        // Create adjusted position map for segment calculation
+        const adjustedPositionMap = new Map(positionMap);
+        adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+
+        // Create filter function using utility method
+        const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
+          homeApps, homeClusters, applicationGroups, clusterGroups
+        );
+
+        const segments = EdgeUtils.calculateEdgeSegments(
+          edge,
+          adjustedPositionMap,
+          [...applicationGroups, ...clusterGroups],
+          isUnrelatedGroupFilter
+        );
+
+        // Convert segments to gradient stops
+        const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
+
+        // Create unique edge ID
+        const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
+
+        // Create gradient for this edge (use adjusted coordinates)
+        strokeStyle = EdgeUtils.createEdgeGradient(
+          renderer.defs,
+          edgeId,
+          gradientStops,
+          sourcePos.x,
+          sourcePos.y,
+          adjustedTargetX,
+          adjustedTargetY
+        );
+        strokeWidth = 1.5;
+      }
+
+      // Check if this edge should be dimmed (connected to filtered nodes)
+      const sourceFiltered = renderer.filteredOutNodes && renderer.filteredOutNodes.has(edge.source);
+      const targetFiltered = renderer.filteredOutNodes && renderer.filteredOutNodes.has(edge.target);
+      const shouldBeDimmed = sourceFiltered || targetFiltered;
+
+      // Create single line with appropriate styling including filtering state
+      const edgeElement = renderer.edgeLayer
+        .append('line')
+        .attr('class', 'edge')
+        .attr('data-source', edge.source)
+        .attr('data-target', edge.target)
+        .attr('data-edge-id', `${edge.source}-${edge.target}-${edgeIndex}`)
+        .attr('x1', sourcePos.x)
+        .attr('y1', sourcePos.y)
+        .attr('x2', adjustedTargetX)
+        .attr('y2', adjustedTargetY)
+        .attr('stroke', strokeStyle)
+        .attr('stroke-width', strokeWidth)
+        .attr('marker-end', 'url(#arrow)');
+
+      // Apply dimming styles if needed (at creation time, no flashing)
+      if (shouldBeDimmed) {
+        edgeElement
+          .style('opacity', 0.4)
+          .style('stroke-dasharray', '6,6');
+      }
+    });
+  }
+
+  /**
+   * Update all edges asynchronously with cancellation support
+   */
+  static async updateAllEdgesAsync(renderer) {
+    // Cancel any in-progress update
+    if (renderer.edgeUpdateController) {
+      renderer.edgeUpdateController.cancelled = true;
+    }
+
+    // Create new controller for this update
+    const controller = { cancelled: false };
+    renderer.edgeUpdateController = controller;
+
+    // Yield to browser to keep UI responsive
+    await new Promise(resolve => setTimeout(resolve, 0));
+
+    // Check if cancelled
+    if (controller.cancelled) return;
+
+    // Now do the actual update
+    await EdgeUtils.doAllEdgesUpdate(renderer);
+
+    // Clear controller if this update completed
+    if (renderer.edgeUpdateController === controller) {
+      renderer.edgeUpdateController = null;
+    }
+  }
+
+  /**
+   * Internal method to do the actual edge updates
+   */
+  static doAllEdgesUpdate(renderer) {
+    if (!renderer.data.edges || !renderer.hierarchyRoot) return;
+
+    console.log(`EdgeUpdate: Re-rendering all edges with current positions`);
+
+    // Sync current drag positions back to hierarchyRoot before rendering
+    EdgeUtils.syncCurrentPositionsToHierarchy(renderer);
+
+    // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
+    EdgeUtils.renderEdges(renderer, renderer.hierarchyRoot);
+
+    // Reapply highlighting if we have active selections
+    if (renderer.highlightState.headNode) {
+      console.log("DEBUG: Reapplying clean highlighting after edge update");
+      renderer.applyCleanHighlighting();
+    }
+  }
+
+  /**
+   * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
+   */
+  static syncCurrentPositionsToHierarchy(renderer) {
+    if (!renderer.hierarchyRoot) return;
+
+    renderer.hierarchyRoot.descendants().forEach(node => {
+      if (node.data.isGroup && !node.data.isVirtual) {
+        const groupPos = renderer.groupPositions.get(node.data.id);
+        if (groupPos) {
+          node.x = groupPos.x - 25; // Remove offset used in rendering
+          node.y = groupPos.y - 25;
+          node.r = groupPos.r;
+        }
+      } else if (!node.data.isGroup && !node.data.isVirtual) {
+        const nodePos = renderer.nodePositions.get(node.data.id);
+        if (nodePos) {
+          node.x = nodePos.x - 25; // Remove offset used in rendering
+          node.y = nodePos.y - 25;
+        }
+      }
+    });
+  }
+
+  /**
    * Calculate edge segments with flexible group filtering
    * Consolidated function to replace multiple duplicate segment calculators
    * @param {Object} edge - Edge with source and target
