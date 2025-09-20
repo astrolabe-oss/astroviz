@@ -22,14 +22,13 @@ export class InteractionUtils {
   /**
    * Node drag handlers
    */
-  static onDragStart(renderer, event, d) {
-    console.log('=== onDragStart called ===', d.id);
+  static onDragStart(context, event, d) {
     InteractionUtils.setCursor(event, 'grabbing');
   }
 
-  static onDrag(renderer, event, d) {
+  static onDrag(context, event, d) {
     const nodeId = d.id;
-    const nodePos = renderer.nodePositions.get(nodeId);
+    const nodePos = context.state.nodePositions.get(nodeId);
     if (!nodePos) return;
 
     // Update the subject position and use it for consistent coordinates
@@ -44,24 +43,21 @@ export class InteractionUtils {
     d3.select(`#node-${nodeId}`)
       .attr('transform', `translate(${event.x}, ${event.y})`);
 
-    // Update all non-highlighted edges
-    EdgeUtils.updateAllEdgesAsync(renderer);
+    // Update all non-highlighted edges (async with cancellation)
+    EdgeUtils.updateAllEdgesAsync(context);
   }
 
-  static onDragEnd(renderer, event, d) {
-    console.log('=== onDragEnd called ===');
+  static onDragEnd(context, event, d) {
     InteractionUtils.setCursor(event, 'grab');
 
     // Use unified pipeline like group drag end
-    EdgeUtils.updateAllEdgesAsync(renderer);
+    EdgeUtils.updateAllEdgesAsync(context);
   }
 
   /**
    * Group drag handlers
    */
-  static onGroupDragStart(renderer, event, d) {
-    console.log('=== onGroupDragStart called ===', d.id);
-
+  static onGroupDragStart(context, event, d) {
     // Prevent dragging the private network
     if (d.id === 'private-network') {
       event.sourceEvent.preventDefault();
@@ -71,7 +67,7 @@ export class InteractionUtils {
     InteractionUtils.setCursor(event, 'grabbing');
   }
 
-  static onGroupDrag(renderer, event, d) {
+  static onGroupDrag(context, event, d) {
     const groupId = d.id;
 
     // Prevent dragging the private network
@@ -79,7 +75,7 @@ export class InteractionUtils {
       return;
     }
 
-    const groupPos = renderer.groupPositions.get(groupId);
+    const groupPos = context.state.groupPositions.get(groupId);
     if (!groupPos) return;
 
     // Calculate movement delta
@@ -87,73 +83,76 @@ export class InteractionUtils {
     const deltaY = event.y - groupPos.y;
 
     // Update the group position and move all children
-    NodeUtils.moveGroupAndChildren(renderer, groupId, deltaX, deltaY);
-    EdgeUtils.updateAllEdgesAsync(renderer);
+    NodeUtils.moveGroupAndChildren(context, groupId, deltaX, deltaY);
+    
+    // Update all non-highlighted edges (async with cancellation)
+    EdgeUtils.updateAllEdgesAsync(context);
   }
 
-  static onGroupDragEnd(renderer, event, d) {
-    console.log('=== onGroupDragEnd called ===', d.id);
+  static onGroupDragEnd(context, event, d) {
     InteractionUtils.setCursor(event, 'grab');
 
     // Cancel any in-progress async update and do a final synchronous update
-    if (renderer.edgeUpdateController) {
-      renderer.edgeUpdateController.cancelled = true;
-      renderer.edgeUpdateController = null;
+    if (context.interaction.edgeUpdateController) {
+      context.interaction.edgeUpdateController.cancelled = true;
+      context.interaction.edgeUpdateController = null;
     }
 
     // Do a final edge update to ensure everything is accurate
-    EdgeUtils.updateAllEdgesAsync(renderer);
+    EdgeUtils.updateAllEdgesAsync(context);
   }
 
   /**
    * Zoom controls
    */
-  static zoomIn(renderer) {
-    if (!renderer.svg || !renderer.zoom) return;
-    renderer.svg.transition().duration(300).call(
-      renderer.zoom.scaleBy, 1.5
+  static zoomIn(context) {
+    if (!context.interaction.svg || !context.interaction.zoom) return;
+    context.interaction.svg.transition().duration(300).call(
+      context.interaction.zoom.scaleBy, 1.5
     );
   }
 
-  static zoomOut(renderer) {
-    if (!renderer.svg || !renderer.zoom) return;
-    renderer.svg.transition().duration(300).call(
-      renderer.zoom.scaleBy, 0.67
+  static zoomOut(context) {
+    if (!context.interaction.svg || !context.interaction.zoom) return;
+    context.interaction.svg.transition().duration(300).call(
+      context.interaction.zoom.scaleBy, 0.67
     );
   }
 
-  static resetView(renderer) {
-    if (!renderer.svg || !renderer.zoom) return;
+  static resetView(context, renderer) {
+    if (!context.interaction.svg || !context.interaction.zoom) return;
 
     // Reset zoom and pan
-    renderer.svg.transition().duration(500).call(
-      renderer.zoom.transform,
+    context.interaction.svg.transition().duration(500).call(
+      context.interaction.zoom.transform,
       d3.zoomIdentity
     );
 
     // Reset all node positions to original
-    NodeUtils.resetNodePositions(renderer);
+    NodeUtils.resetNodePositions(context);
     LayoutUtils.fitToView(renderer, renderer.hierarchyRoot);
   }
 
   /**
    * Get current zoom level
    */
-  static getZoom(renderer) {
-    if (!renderer.svg) return 1;
-    return d3.zoomTransform(renderer.svg.node()).k;
+  static getZoom(context) {
+    if (!context.interaction.svg) return 1;
+    return d3.zoomTransform(context.interaction.svg.node()).k;
   }
 
   /**
    * Zoom to bounds of visible (non-dimmed) nodes
    */
-  static zoomToVisibleNodes(renderer) {
-    if (!renderer.svg || !renderer.zoom || !renderer.nodeLayer) return;
+  static zoomToVisibleNodes(context) {
+    if (!context.interaction.svg || !context.interaction.zoom || !context.layers.nodeLayer) return;
+
+    console.log('DEBUG: filteredOutNodes:', context.state.filteredOutNodes?.size, Array.from(context.state.filteredOutNodes || []));
 
     // Get bounds of all non-dimmed nodes
     const visibleNodes = [];
-    renderer.nodeLayer.selectAll('.node')
-      .filter(d => !renderer.filteredOutNodes.has(d.id))
+    context.layers.nodeLayer.selectAll('.node')
+      .filter(d => !context.state.filteredOutNodes || !context.state.filteredOutNodes.has(d.id))
       .each(function(d) {
         const node = d3.select(this);
         const transform = node.attr('transform');
@@ -190,7 +189,7 @@ export class InteractionUtils {
     const boundsY = minY - padding;
 
     // Get current SVG dimensions
-    const svgNode = renderer.svg.node();
+    const svgNode = context.interaction.svg.node();
     const svgWidth = svgNode.clientWidth || svgNode.getBoundingClientRect().width;
     const svgHeight = svgNode.clientHeight || svgNode.getBoundingClientRect().height;
 
@@ -198,7 +197,7 @@ export class InteractionUtils {
     const fullScale = Math.min(svgWidth / boundsWidth, svgHeight / boundsHeight);
 
     // Get current zoom level
-    const currentZoom = InteractionUtils.getZoom(renderer);
+    const currentZoom = InteractionUtils.getZoom(context);
     const maxZoom = currentZoom * 1.5; // Limit to 1.5x current zoom
 
     // Apply maximum zoom limit
@@ -209,29 +208,30 @@ export class InteractionUtils {
     const translateY = svgHeight / 2 - scale * (boundsY + boundsHeight / 2);
 
     // Apply zoom transform
-    renderer.svg.transition().duration(750).call(
-      renderer.zoom.transform,
+    context.interaction.svg.transition().duration(750).call(
+      context.interaction.zoom.transform,
       d3.zoomIdentity.translate(translateX, translateY).scale(scale)
     );
 
-    console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)})`);
+    console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)}):`);
+    console.log(`  Bounds: ${boundsWidth.toFixed(0)}x${boundsHeight.toFixed(0)} at (${boundsX.toFixed(0)}, ${boundsY.toFixed(0)})`);
+    console.log(`  SVG: ${svgWidth.toFixed(0)}x${svgHeight.toFixed(0)}, fullScale: ${fullScale.toFixed(2)}, currentZoom: ${currentZoom.toFixed(2)}`);
   }
 
   /**
    * Animate all nodes with a bounce effect for dramatic filter feedback
    */
-  static bounceAllNodes(renderer) {
-    if (!renderer.nodeLayer) return;
+  static bounceAllNodes(context) {
+    if (!context.layers.nodeLayer) return;
 
     console.log('Bouncing visible nodes with shared physics simulation');
 
     // Collect only visible (non-filtered) nodes and their base transforms
     const nodeData = [];
-    const self = renderer;
-    renderer.nodeLayer.selectAll('.node')
+    context.layers.nodeLayer.selectAll('.node')
       .each(function(d) {
         // Skip filtered out nodes - they should stay dimmed and not bounce
-        if (self.filteredOutNodes && self.filteredOutNodes.has(d.id)) {
+        if (context.state.filteredOutNodes && context.state.filteredOutNodes.has(d.id)) {
           return;
         }
 

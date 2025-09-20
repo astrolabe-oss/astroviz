@@ -159,16 +159,9 @@ export default {
       }
     },
 
-    // Node highlighting methods
     selectNodeById(nodeId, appendToSelection = false) {
-      if (this.graph && this.graph.selectNodeById) {
+      if (this.graph) {
         this.graph.selectNodeById(nodeId, appendToSelection);
-      }
-    },
-
-    clearHighlight() {
-      if (this.graph && this.graph.clearHighlight) {
-        this.graph.clearHighlight();
       }
     }
   }

@@ -139,14 +139,12 @@ export class NodeUtils {
   /**
    * Render node icons
    */
-  static renderNodes(renderer, packedRoot) {
-    console.log('=== renderNodes called ===');
-    const nodes = Array.from(renderer.vertexMap.values())
+  static renderNodes(context, packedRoot) {
+    const nodes = Array.from(context.state.vertexMap.values())
       .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
-    console.log('Found nodes:', nodes.length);
 
     // Create node elements to hold icons
-    const nodeElements = renderer.nodeLayer
+    const nodeElements = context.layers.nodeLayer
       .selectAll('g.node')
       .data(nodes, vertex => vertex.id)
       .join('g')
@@ -155,19 +153,18 @@ export class NodeUtils {
       .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y})`)
       .style('cursor', 'grab')
       .on('click', (event, vertex) => {
-        renderer.handleNodeClick(event, vertex);
+        context.ui.handleNodeClick(event, vertex);
       })
       .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
-        renderer.showTooltip(event, vertex.data);
+        context.ui.showTooltip(event, vertex.data);
       })
       .on('mouseout', () => {
         // Hide tooltip
-        renderer.hideTooltip();
+        context.ui.hideTooltip();
       });
 
     // Add icons to node elements (like the old GraphVisualization.vue)
-    const self = renderer;
     nodeElements.each(function(d) {
       const group = d3.select(this);
 
@@ -184,7 +181,7 @@ export class NodeUtils {
 
       if (svgElement) {
         // Create SVG icon with appropriate size and color
-        const iconSize = self.options.nodeRadius * 1.6; // Make icons bigger for visibility
+        const iconSize = context.options.nodeRadius * 1.6; // Make icons bigger for visibility
 
         const iconSvg = group.append('svg')
           .attr('class', 'node-icon')
@@ -238,25 +235,23 @@ export class NodeUtils {
     const dragBehavior = d3.drag()
       .subject((event, d) => {
         // Initialize drag subject with current node position
-        const pos = renderer.nodePositions.get(d.id);
+        const pos = context.state.nodePositions.get(d.id);
         return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => InteractionUtils.onDragStart(renderer, event, d))
-      .on('drag', (event, d) => InteractionUtils.onDrag(renderer, event, d))
-      .on('end', (event, d) => InteractionUtils.onDragEnd(renderer, event, d));
+      .on('start', (event, d) => InteractionUtils.onDragStart(context, event, d))
+      .on('drag', (event, d) => InteractionUtils.onDrag(context, event, d))
+      .on('end', (event, d) => InteractionUtils.onDragEnd(context, event, d));
 
-    console.log('Attaching drag behavior to', nodeElements.size(), 'node elements');
     nodeElements.call(dragBehavior);
-    console.log('Drag behavior attached');
   }
 
   /**
    * Move a group and all its children by the given offset
    */
-  static moveGroupAndChildren(renderer, groupId, deltaX, deltaY) {
-    const groupPos = renderer.groupPositions.get(groupId);
+  static moveGroupAndChildren(context, groupId, deltaX, deltaY) {
+    const groupPos = context.state.groupPositions.get(groupId);
     if (!groupPos) return;
 
     // Move the group itself
@@ -274,8 +269,8 @@ export class NodeUtils {
 
     // Move all child nodes and subgroups recursively
     groupPos.children.forEach(childId => {
-      const childNodePos = renderer.nodePositions.get(childId);
-      const childGroupPos = renderer.groupPositions.get(childId);
+      const childNodePos = context.state.nodePositions.get(childId);
+      const childGroupPos = context.state.groupPositions.get(childId);
 
       if (childNodePos) {
         // Move child node
@@ -289,7 +284,7 @@ export class NodeUtils {
 
       } else if (childGroupPos) {
         // Recursively move child group
-        NodeUtils.moveGroupAndChildren(renderer, childId, deltaX, deltaY);
+        NodeUtils.moveGroupAndChildren(context, childId, deltaX, deltaY);
       }
     });
   }
@@ -297,11 +292,11 @@ export class NodeUtils {
   /**
    * Reset all nodes and groups to their original pack layout positions
    */
-  static resetNodePositions(renderer) {
-    if (!renderer.nodePositions.size && !renderer.groupPositions.size) return;
+  static resetNodePositions(context) {
+    if (!context.state.nodePositions.size && !context.state.groupPositions.size) return;
 
     // Animate groups back to original positions
-    renderer.groupPositions.forEach((pos, groupId) => {
+    context.state.groupPositions.forEach((pos, groupId) => {
       if (pos.originalX !== undefined && pos.originalY !== undefined) {
         // Update tracking position
         pos.x = pos.originalX;
@@ -323,7 +318,7 @@ export class NodeUtils {
     });
 
     // Animate nodes back to original positions
-    renderer.nodePositions.forEach((pos, nodeId) => {
+    context.state.nodePositions.forEach((pos, nodeId) => {
       if (pos.originalX !== undefined && pos.originalY !== undefined) {
         // Update tracking position
         pos.x = pos.originalX;
@@ -341,7 +336,7 @@ export class NodeUtils {
     // Update all edges after a brief delay to let nodes animate
     setTimeout(() => {
       import('./edgeUtils.js').then(({ EdgeUtils }) => {
-        EdgeUtils.updateAllEdgesAsync(renderer);
+        EdgeUtils.updateAllEdgesAsync(context);
       });
     }, 100);
   }

@@ -22,91 +22,92 @@ export class FilteringUtils {
     const previousFilteredOutNodes = new Set(renderer.filteredOutNodes || []);
     renderer.filteredOutNodes = new Set(filteredOutNodeIds);
 
+    // Update context to reflect the new filteredOutNodes
+    if (renderer.context) {
+      renderer.context.state.filteredOutNodes = renderer.filteredOutNodes;
+    }
+
     // Remove dimming from nodes that are no longer filtered out
     previousFilteredOutNodes.forEach(nodeId => {
       if (!filteredOutNodeIds.has(nodeId)) {
-        FilteringUtils.removeNodeDimming(renderer, nodeId);
+        FilteringUtils.removeNodeDimming(renderer.context, nodeId);
       }
     });
 
     // Apply dimming to newly filtered out nodes
     filteredOutNodeIds.forEach(nodeId => {
-      FilteringUtils.applyNodeDimming(renderer, nodeId);
+      FilteringUtils.applyNodeDimming(renderer.context, nodeId);
     });
 
     // Apply edge dimming based on filtered out nodes
     if (filteredOutNodeIds.size > 0) {
-      FilteringUtils.applyEdgeDimming(renderer);
+      FilteringUtils.applyEdgeDimming(renderer.context);
     } else {
-      FilteringUtils.removeEdgeDimming(renderer);
+      FilteringUtils.removeEdgeDimming(renderer.context);
     }
 
     // Handle zoom behavior based on filter state
     if (filteredOutNodeIds.size > 0) {
       // Auto-zoom to visible nodes first
       setTimeout(() => {
-        InteractionUtils.zoomToVisibleNodes(renderer);
+        InteractionUtils.zoomToVisibleNodes(renderer.context);
 
         // Then trigger pulse animation after zoom completes
         setTimeout(() => {
-          InteractionUtils.bounceAllNodes(renderer);
+          InteractionUtils.bounceAllNodes(renderer.context);
         }, 850);
       }, 100);
     } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
       // Filters were cleared - reset the zoom view
       setTimeout(() => {
-        InteractionUtils.resetView(renderer);
+        InteractionUtils.resetView(renderer.context, renderer);
       }, 100);
     }
   }
 
   /**
    * Apply dimming effect to a node
-   * @param {Object} renderer - GraphRenderer instance
+   * @param {Object} context - GraphRenderer context
    * @param {string} nodeId - ID of the node to dim
    */
-  static applyNodeDimming(renderer, nodeId) {
-    const self = renderer;
-
+  static applyNodeDimming(context, nodeId) {
     // Find the node element
-    renderer.nodeLayer.selectAll('.node')
+    context.layers.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
         node.classed('dimmed', true);
-        self.applyNodeStyle(node, 'dimmed', d);
+        context.styling.applyNodeStyle(node, 'dimmed', d);
       });
   }
 
   /**
    * Remove dimming effect from a node
-   * @param {Object} renderer - GraphRenderer instance
+   * @param {Object} context - GraphRenderer context
    * @param {string} nodeId - ID of the node to un-dim
    */
-  static removeNodeDimming(renderer, nodeId) {
-    const self = renderer;
-
+  static removeNodeDimming(context, nodeId) {
     // Find the node element
-    renderer.nodeLayer.selectAll('.node')
+    context.layers.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
         node.classed('dimmed', false);
-        self.applyNodeStyle(node, 'normal', d);
+        context.styling.applyNodeStyle(node, 'normal', d);
       });
   }
 
   /**
    * Apply dimming to edges connected to filtered out nodes
-   * @param {Object} renderer - GraphRenderer instance
+   * @param {Object} context - GraphRenderer context
    */
-  static applyEdgeDimming(renderer) {
-    if (!renderer.edgeLayer) return;
+  static applyEdgeDimming(context) {
+    if (!context.layers.edgeLayer) return;
 
-    const filteredOutNodes = renderer.filteredOutNodes; // Capture in closure
+    const filteredOutNodes = context.state.filteredOutNodes; // Capture in closure
 
     // Apply dimming to edges where either endpoint is filtered out
-    renderer.edgeLayer.selectAll('line.edge')
+    context.layers.edgeLayer.selectAll('line.edge')
       .each(function(d) {
         const element = d3.select(this);
 
@@ -129,12 +130,12 @@ export class FilteringUtils {
 
   /**
    * Remove dimming from all edges
-   * @param {Object} renderer - GraphRenderer instance
+   * @param {Object} context - GraphRenderer context
    */
-  static removeEdgeDimming(renderer) {
-    if (!renderer.edgeLayer) return;
+  static removeEdgeDimming(context) {
+    if (!context.layers.edgeLayer) return;
 
-    renderer.edgeLayer.selectAll('line.edge')
+    context.layers.edgeLayer.selectAll('line.edge')
       .style('opacity', null)
       .style('stroke-dasharray', null);
   }

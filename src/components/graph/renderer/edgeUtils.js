@@ -1,10 +1,13 @@
 /**
  * edgeUtils.js - Geometry and edge styling utilities for GraphRenderer
- * 
+ *
  * Contains mathematical utilities for 2D geometry operations and advanced edge styling
  * used in network graph visualization. Includes line-circle intersections, point containment,
  * and gradient generation for sophisticated edge styling.
  */
+
+import * as d3 from 'd3';
+import { HighlightingUtils } from './highlightingUtils.js';
 
 export class EdgeUtils {
   /**
@@ -39,20 +42,20 @@ export class EdgeUtils {
   /**
    * Render edges using hierarchical data and edge list
    */
-  static renderEdges(renderer, packedRoot) {
-    if (!renderer.data.edges) return;
+  static renderEdges(context, packedRoot) {
+    if (!context.data.edges) return;
 
     // Extract rendering data using utility method
     const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
       EdgeUtils.extractRenderingData(packedRoot);
 
     // Filter edges to only those with both endpoints visible
-    const visibleEdges = renderer.data.edges.filter(edge => {
+    const visibleEdges = context.data.edges.filter(edge => {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
 
     // Clear existing edges
-    renderer.edgeLayer.selectAll('line.edge').remove();
+    context.layers.edgeLayer.selectAll('line.edge').remove();
 
     // Create single gradient edges using segment data
     visibleEdges.forEach((edge, edgeIndex) => {
@@ -61,12 +64,12 @@ export class EdgeUtils {
       const targetPos = positionMap.get(edge.target);
 
       // Calculate adjusted endpoint using utility method
-      const shortenBy = renderer.options.nodeRadius * 0.7;
+      const shortenBy = context.options.nodeRadius * 0.7;
       const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
 
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
-      const isHighlighted = renderer.highlightedElements.edgeKeys.has(edgeKey);
+      const isHighlighted = HighlightingUtils.state.highlightedElements.edgeKeys.has(edgeKey);
 
       let strokeStyle, strokeWidth;
 
@@ -103,7 +106,7 @@ export class EdgeUtils {
 
         // Create gradient for this edge (use adjusted coordinates)
         strokeStyle = EdgeUtils.createEdgeGradient(
-          renderer.defs,
+          context.defs,
           edgeId,
           gradientStops,
           sourcePos.x,
@@ -115,12 +118,12 @@ export class EdgeUtils {
       }
 
       // Check if this edge should be dimmed (connected to filtered nodes)
-      const sourceFiltered = renderer.filteredOutNodes && renderer.filteredOutNodes.has(edge.source);
-      const targetFiltered = renderer.filteredOutNodes && renderer.filteredOutNodes.has(edge.target);
+      const sourceFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.source);
+      const targetFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.target);
       const shouldBeDimmed = sourceFiltered || targetFiltered;
 
       // Create single line with appropriate styling including filtering state
-      const edgeElement = renderer.edgeLayer
+      const edgeElement = context.layers.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
@@ -146,68 +149,69 @@ export class EdgeUtils {
   /**
    * Update all edges asynchronously with cancellation support
    */
-  static async updateAllEdgesAsync(renderer) {
+  static async updateAllEdgesAsync(context) {
     // Cancel any in-progress update
-    if (renderer.edgeUpdateController) {
-      renderer.edgeUpdateController.cancelled = true;
+    if (context.interaction.edgeUpdateController) {
+      context.interaction.edgeUpdateController.cancelled = true;
     }
 
     // Create new controller for this update
     const controller = { cancelled: false };
-    renderer.edgeUpdateController = controller;
+    context.interaction.edgeUpdateController = controller;
 
     // Yield to browser to keep UI responsive
     await new Promise(resolve => setTimeout(resolve, 0));
 
     // Check if cancelled
-    if (controller.cancelled) return;
+    if (controller.cancelled) {
+      return;
+    }
 
     // Now do the actual update
-    await EdgeUtils.doAllEdgesUpdate(renderer);
+    await EdgeUtils.doAllEdgesUpdate(context);
 
     // Clear controller if this update completed
-    if (renderer.edgeUpdateController === controller) {
-      renderer.edgeUpdateController = null;
+    if (context.interaction.edgeUpdateController === controller) {
+      context.interaction.edgeUpdateController = null;
     }
   }
 
   /**
    * Internal method to do the actual edge updates
    */
-  static doAllEdgesUpdate(renderer) {
-    if (!renderer.data.edges || !renderer.hierarchyRoot) return;
-
-    console.log(`EdgeUpdate: Re-rendering all edges with current positions`);
-
+  static doAllEdgesUpdate(context) {
+    if (!context.data.edges || !context.state.hierarchyRoot) {
+      return;
+    }
+    
     // Sync current drag positions back to hierarchyRoot before rendering
-    EdgeUtils.syncCurrentPositionsToHierarchy(renderer);
+    EdgeUtils.syncCurrentPositionsToHierarchy(context);
 
     // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
-    EdgeUtils.renderEdges(renderer, renderer.hierarchyRoot);
+    EdgeUtils.renderEdges(context, context.state.hierarchyRoot);
 
     // Reapply highlighting if we have active selections
-    if (renderer.highlightState.headNode) {
-      console.log("DEBUG: Reapplying clean highlighting after edge update");
-      renderer.applyCleanHighlighting();
+    if (HighlightingUtils.state.headNode) {
+      HighlightingUtils.applyCleanHighlighting(context);
     }
   }
 
   /**
    * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
    */
-  static syncCurrentPositionsToHierarchy(renderer) {
-    if (!renderer.hierarchyRoot) return;
+  static syncCurrentPositionsToHierarchy(context) {
+    if (!context.state.hierarchyRoot) return;
 
-    renderer.hierarchyRoot.descendants().forEach(node => {
+    context.state.hierarchyRoot.descendants().forEach(node => {
       if (node.data.isGroup && !node.data.isVirtual) {
-        const groupPos = renderer.groupPositions.get(node.data.id);
+        const groupPos = context.state.groupPositions.get(node.data.id);
         if (groupPos) {
           node.x = groupPos.x - 25; // Remove offset used in rendering
           node.y = groupPos.y - 25;
           node.r = groupPos.r;
         }
       } else if (!node.data.isGroup && !node.data.isVirtual) {
-        const nodePos = renderer.nodePositions.get(node.data.id);
+        const nodePos = context.state.nodePositions.get(node.data.id);
         if (nodePos) {
           node.x = nodePos.x - 25; // Remove offset used in rendering
           node.y = nodePos.y - 25;
