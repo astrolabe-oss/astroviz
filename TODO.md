@@ -13,8 +13,7 @@
 * [x] version shown in demo
 * [x] highlight "trace mode"
 * [x] refactor - break out graphRenderer to encpasulate highlighting/etc
-* [ ] mobile: small viewport hide controls?
-* [ ] highlight: differentiate outbound/inbound
+* [x] highlight: differentiate outbound/inbound
 
 # BACKLOG
 ## 0.3.1
@@ -25,6 +24,7 @@
 
 ## 0.3.2
 * [ ] tests and CI/CD
+* [ ] mobile: small viewport hide controls?
 
 ## Not sure
 * [x] sub-connections missing in app view
