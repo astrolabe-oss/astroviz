@@ -12,8 +12,9 @@
 * [x] small: increase default zoom level
 * [x] version shown in demo
 * [x] highlight "trace mode"
-* [ ] refactor - break out graphRenderer to encpasulate highlighting/etc
+* [x] refactor - break out graphRenderer to encpasulate highlighting/etc
 * [ ] mobile: small viewport hide controls?
+* [ ] highlight: differentiate outbound/inbound
 
 # BACKLOG
 ## 0.3.1

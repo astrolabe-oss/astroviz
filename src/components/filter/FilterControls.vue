@@ -48,16 +48,6 @@
       </select>
     </div>
 
-    <div class="filter-item checkbox-container">
-      <label class="checkbox-label">
-        <span class="checkbox-text">Public Traffic</span>
-        <div class="styled-checkbox-wrapper">
-          <input type="checkbox" id="hide-public-traffic" v-model="localFilters.hidePublicTraffic" @change="emitFilterChange">
-          <span class="checkmark"></span>
-        </div>
-      </label>
-    </div>
-
     <div class="filter-item reset-container">
       <label>&nbsp;</label>
       <button @click="resetFilters" class="reset-button">Clear Filters</button>
@@ -143,8 +133,7 @@ export default {
         provider: '',
         protocolMux: '',
         address: '',
-        publicIp: '',
-        hidePublicTraffic: true
+        publicIp: ''
       };
       this.emitFilterChange();
     }

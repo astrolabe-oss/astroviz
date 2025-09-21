@@ -147,8 +147,7 @@ export default {
         provider: '',
         protocolMux: '',
         address: '',
-        publicIp: '',
-        hidePublicTraffic: true
+        publicIp: ''
       },
       selectedNode: null,
       selectedNodes: [], // Array to track multiple selected nodes
