@@ -6,7 +6,6 @@
  * and gradient generation for sophisticated edge styling.
  */
 
-import * as d3 from 'd3';
 import { HighlightingUtils } from './highlightingUtils.js';
 
 export class EdgeUtils {
@@ -136,13 +135,6 @@ export class EdgeUtils {
         .attr('stroke', strokeStyle)
         .attr('stroke-width', strokeWidth)
         .attr('marker-end', 'url(#arrow)');
-
-      // Apply dimming styles if needed (at creation time, no flashing)
-      if (shouldBeDimmed) {
-        edgeElement
-          .style('opacity', 0.4)
-          .style('stroke-dasharray', '6,6');
-      }
     });
   }
 

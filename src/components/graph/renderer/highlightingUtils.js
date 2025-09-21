@@ -12,6 +12,150 @@ import * as d3 from 'd3';
  * edges, and groups in the graph visualization.
  */
 export class HighlightingUtils {
+  /**
+   * Apply highlight-based styling to an edge (stroke, stroke-width, stroke-dasharray)
+   * @param {d3.Selection} edge - D3 selection of the edge
+   * @param {string} state - Highlight state ('normal'|'path'|'connected'|'connected-inbound')
+   * @param {Object} styles - Styling configuration object
+   */
+  static applyHighlightStyleToEdge(edge, state, styles) {
+    const highlights = styles.highlights;
+
+    switch (state) {
+      case 'normal':
+        // Get stored original values or use defaults
+        const originalStroke = edge.attr('data-original-stroke') || '#999';
+        const originalWidth = edge.attr('data-original-stroke-width') || '1';
+
+        edge
+          .attr('stroke', originalStroke)
+          .attr('stroke-width', originalWidth)
+          .style('filter', null)
+          .style('stroke-dasharray', null);  // No dashes for normal state
+        break;
+
+      case 'path':
+        const pathStyle = highlights.path.edge;
+        edge
+          .attr('stroke', pathStyle.stroke)
+          .attr('stroke-width', pathStyle.strokeWidth)
+          .style('filter', pathStyle.glow)
+          .style('stroke-dasharray', null);  // No dashes
+        break;
+
+      case 'connected':
+        const connectedStyle = highlights.connected.edge;
+        edge
+          .attr('stroke', connectedStyle.stroke)
+          .attr('stroke-width', connectedStyle.strokeWidth)
+          .style('filter', null)
+          .style('stroke-dasharray', null);  // No dashes for outbound
+        break;
+
+      case 'connected-inbound':
+        // Inbound edges to head node - thinner and dashed
+        const inboundStyle = highlights.connected.edge;
+        edge
+          .attr('stroke', inboundStyle.stroke)
+          .attr('stroke-width', inboundStyle.strokeWidth)
+          .style('filter', null)
+          .style('stroke-dasharray', '10,5');  // Dashed for inbound
+        break;
+    }
+  }
+
+  /**
+   * Apply highlight-based styling to a node (color, scale, glow)
+   * @param {d3.Selection} node - D3 selection of the node
+   * @param {string} state - Highlight state ('normal'|'path'|'head'|'connected')
+   * @param {Object} nodeData - Node data for type-specific styling
+   * @param {Object} styles - Styling configuration object
+   */
+  static applyHighlightStyleToNode(node, state, nodeData, styles) {
+    const highlights = styles.highlights;
+    const nodeColors = styles.nodeColors;
+    const unknownText = styles.unknownText;
+
+    // Get current position from transform
+    const currentTransform = node.attr('transform') || 'translate(0,0)';
+    const match = currentTransform.match(/translate\(([^,]+),([^)]+)\)/);
+    const x = match ? parseFloat(match[1]) : 0;
+    const y = match ? parseFloat(match[2]) : 0;
+
+    switch (state) {
+      case 'normal':
+        // Reset to normal state
+        node
+          .attr('transform', `translate(${x},${y})`)
+          .style('filter', null)
+          .classed('highlighted', false);
+
+        // Reset icon color
+        const svgIcon = node.select('svg');
+        if (!svgIcon.empty() && nodeData) {
+          const nodeType = nodeData.data?.type || nodeData.type || 'Unknown';
+          const defaultColor = nodeData.data?.color || nodeData.style?.fill || nodeColors[nodeType];
+          svgIcon.style('color', defaultColor);
+
+          // Handle Unknown node text
+          if (nodeType === 'Unknown') {
+            svgIcon.select('circle').attr('fill', defaultColor);
+            svgIcon.select('text')
+              .attr('fill', unknownText.normal.fill)
+              .attr('font-weight', unknownText.normal.fontWeight);
+          }
+        }
+        break;
+
+      case 'path':
+        const pathStyle = highlights.path.node;
+        node
+          .attr('transform', `translate(${x},${y}) scale(${pathStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${pathStyle.glowSize} ${pathStyle.glowColor})`)
+          .classed('highlighted', true);
+
+        HighlightingUtils.setNodeColor(node, pathStyle.color, nodeData, styles);
+        break;
+
+      case 'head':
+        const headStyle = highlights.head;
+        node
+          .attr('transform', `translate(${x},${y}) scale(${headStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${headStyle.glowSize} ${headStyle.glowColor})`)
+          .classed('highlighted', true);
+
+        HighlightingUtils.setNodeColor(node, headStyle.color, nodeData, styles);
+        break;
+
+      case 'connected':
+        const connectedStyle = highlights.connected.node;
+        node
+          .attr('transform', `translate(${x},${y}) scale(${connectedStyle.scale})`)
+          .style('filter', `drop-shadow(0 0 ${connectedStyle.glowSize} ${connectedStyle.glowColor})`)
+          .classed('highlighted', true);
+
+        HighlightingUtils.setNodeColor(node, connectedStyle.color, nodeData, styles);
+        break;
+    }
+  }
+
+  /**
+   * Helper to set node icon color
+   */
+  static setNodeColor(nodeSelection, color, nodeData, styles) {
+    const svgIcon = nodeSelection.select('svg');
+    if (!svgIcon.empty()) {
+      svgIcon.style('color', color);
+
+      // Handle Unknown node special styling
+      if (nodeData && (nodeData.data?.type === 'Unknown' || nodeData.type === 'Unknown')) {
+        svgIcon.select('circle').attr('fill', color);
+        svgIcon.select('text')
+          .attr('fill', styles.unknownText.highlighted.fill)
+          .attr('font-weight', styles.unknownText.highlighted.fontWeight);
+      }
+    }
+  }
 
 
   // ========================================================================
@@ -323,8 +467,13 @@ export class HighlightingUtils {
             edge.attr('data-original-stroke', edge.attr('stroke'))
                 .attr('data-original-stroke-width', edge.attr('stroke-width'));
           }
-          context.styling.applyEdgeStyle(edge, 'connected');
-          HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: 'connected' });
+          
+          // Check if edge is inbound to the head node (target is head) or outbound (source is head)
+          const isInbound = target === HighlightingUtils.state.headNode;
+          const edgeType = isInbound ? 'connected-inbound' : 'connected';
+          
+          context.styling.applyEdgeStyle(edge, edgeType);
+          HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: edgeType });
         }
       });
     });

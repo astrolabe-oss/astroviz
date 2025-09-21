@@ -8,8 +8,60 @@
 
 import * as d3 from 'd3';
 import { InteractionUtils } from './interactionUtils.js';
+import { HighlightingUtils } from './highlightingUtils.js';
 
 export class FilteringUtils {
+  /**
+   * Apply filter-based opacity to an edge
+   * @param {d3.Selection} edge - D3 selection of the edge
+   * @param {Set} filteredOutNodes - Set of filtered node IDs
+   */
+  static applyFilterStyleToEdge(edge, filteredOutNodes) {
+    if (!filteredOutNodes || filteredOutNodes.size === 0) {
+      // No filtering - ensure opacity is not set
+      edge.style('opacity', null);
+      return;
+    }
+
+    // Get source and target from data attributes
+    const source = edge.attr('data-source');
+    const target = edge.attr('data-target');
+
+    if (source && target) {
+      const sourceFiltered = filteredOutNodes.has(source);
+      const targetFiltered = filteredOutNodes.has(target);
+
+      if (sourceFiltered || targetFiltered) {
+        // Apply dimmed opacity
+        edge.style('opacity', 0.2);
+      } else {
+        // Not filtered - ensure opacity is not set
+        edge.style('opacity', null);
+      }
+    }
+  }
+
+  /**
+   * Apply filter-based opacity to a node
+   * @param {d3.Selection} node - D3 selection of the node
+   * @param {string} nodeId - ID of the node
+   * @param {Set} filteredOutNodes - Set of filtered node IDs
+   */
+  static applyFilterStyleToNode(node, nodeId, filteredOutNodes) {
+    if (!nodeId || !filteredOutNodes || filteredOutNodes.size === 0) {
+      // No filtering - ensure opacity is not set
+      node.style('opacity', null);
+      return;
+    }
+
+    if (filteredOutNodes.has(nodeId)) {
+      // Apply dimmed opacity
+      node.style('opacity', 0.2);
+    } else {
+      // Not filtered - ensure opacity is not set
+      node.style('opacity', null);
+    }
+  }
   /**
    * Set filter-based dimming for nodes (dims non-matching nodes)
    * @param {Object} renderer - GraphRenderer instance
@@ -77,7 +129,7 @@ export class FilteringUtils {
       .each(function(d) {
         const node = d3.select(this);
         node.classed('dimmed', true);
-        context.styling.applyNodeStyle(node, 'dimmed', d);
+        FilteringUtils.applyFilterStyleToNode(node, nodeId, context.state.filteredOutNodes);
       });
   }
 
@@ -93,7 +145,7 @@ export class FilteringUtils {
       .each(function(d) {
         const node = d3.select(this);
         node.classed('dimmed', false);
-        context.styling.applyNodeStyle(node, 'normal', d);
+        FilteringUtils.applyFilterStyleToNode(node, nodeId, new Set());
       });
   }
 
@@ -104,28 +156,11 @@ export class FilteringUtils {
   static applyEdgeDimming(context) {
     if (!context.layers.edgeLayer) return;
 
-    const filteredOutNodes = context.state.filteredOutNodes; // Capture in closure
-
-    // Apply dimming to edges where either endpoint is filtered out
-    context.layers.edgeLayer.selectAll('line.edge')
-      .each(function(d) {
-        const element = d3.select(this);
-
-        // Get source and target from data attributes (more reliable)
-        const source = element.attr('data-source');
-        const target = element.attr('data-target');
-
-        if (source && target) {
-          const sourceFiltered = filteredOutNodes.has(source);
-          const targetFiltered = filteredOutNodes.has(target);
-
-          if (sourceFiltered || targetFiltered) {
-            element
-              .style('opacity', 0.4)
-              .style('stroke-dasharray', '6,6');
-          }
-        }
-      });
+    // Apply filter styling to all edges
+    context.layers.edgeLayer.selectAll('.edge').each(function() {
+      const edge = d3.select(this);
+      FilteringUtils.applyFilterStyleToEdge(edge, context.state.filteredOutNodes);
+    });
   }
 
   /**
@@ -135,8 +170,10 @@ export class FilteringUtils {
   static removeEdgeDimming(context) {
     if (!context.layers.edgeLayer) return;
 
-    context.layers.edgeLayer.selectAll('line.edge')
-      .style('opacity', null)
-      .style('stroke-dasharray', null);
+    // Remove filter styling from all edges (same as applying with empty filter set)
+    context.layers.edgeLayer.selectAll('.edge').each(function() {
+      const edge = d3.select(this);
+      FilteringUtils.applyFilterStyleToEdge(edge, new Set());
+    });
   }
 }

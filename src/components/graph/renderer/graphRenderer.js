@@ -195,173 +195,50 @@ export class GraphRenderer {
   }
 
   /**
-   * Unified node styling function - Single source of truth for all node styling
+   * Unified node styling function - Orchestrates highlight and filter styling
    * @param {d3.Selection} nodeSelection - D3 selection of node(s) to style
    * @param {string} state - 'normal'|'path'|'head'|'connected'|'dimmed'
    * @param {Object} nodeData - Node data for type-specific styling
    */
   applyNodeStyle(nodeSelection, state, nodeData = null) {
-    const styles = this.styling.highlights;
-
-    // Get current position from transform
-    const currentTransform = nodeSelection.attr('transform') || 'translate(0,0)';
-    const match = currentTransform.match(/translate\(([^,]+),([^)]+)\)/);
-    const x = match ? parseFloat(match[1]) : 0;
-    const y = match ? parseFloat(match[2]) : 0;
-
-    // Check if node is filtered - if so, maintain dimmed opacity
+    // Apply highlighting styles
+    HighlightingUtils.applyHighlightStyleToNode(
+      nodeSelection, 
+      state, 
+      nodeData, 
+      this.styling
+    );
+    
+    // Apply filtering styles
     const nodeId = nodeData?.id || nodeSelection.attr('id')?.replace('node-', '');
-    const isFiltered = nodeId && this.filteredOutNodes && this.filteredOutNodes.has(nodeId);
-    const opacity = isFiltered ? styles.dimmed.opacity : null;
-
-    switch (state) {
-      case 'normal':
-        // Reset to normal state
-        nodeSelection
-          .attr('transform', `translate(${x},${y})`)
-          .style('filter', null)
-          .style('opacity', opacity)  // Respect filter dimming
-          .classed('highlighted', false);
-
-        // Reset icon color
-        const svgIcon = nodeSelection.select('svg');
-        if (!svgIcon.empty() && nodeData) {
-          const nodeType = nodeData.data?.type || nodeData.type || 'Unknown';
-          const defaultColor = nodeData.data?.color || nodeData.style?.fill || this.styling.nodeColors[nodeType];
-          svgIcon.style('color', defaultColor);
-
-          // Handle Unknown node text
-          if (nodeType === 'Unknown') {
-            svgIcon.select('circle').attr('fill', defaultColor);
-            svgIcon.select('text')
-              .attr('fill', this.styling.unknownText.normal.fill)
-              .attr('font-weight', this.styling.unknownText.normal.fontWeight);
-          }
-        }
-        break;
-
-      case 'path':
-        const pathStyle = styles.path.node;
-        nodeSelection
-          .attr('transform', `translate(${x},${y}) scale(${pathStyle.scale})`)
-          .style('filter', `drop-shadow(0 0 ${pathStyle.glowSize} ${pathStyle.glowColor})`)
-          .style('opacity', opacity)  // Respect filter dimming
-          .classed('highlighted', true);
-
-        this.setNodeColor(nodeSelection, pathStyle.color, nodeData);
-        break;
-
-      case 'head':
-        const headStyle = styles.head;
-        nodeSelection
-          .attr('transform', `translate(${x},${y}) scale(${headStyle.scale})`)
-          .style('filter', `drop-shadow(0 0 ${headStyle.glowSize} ${headStyle.glowColor})`)
-          .style('opacity', opacity)  // Respect filter dimming
-          .classed('highlighted', true);
-
-        this.setNodeColor(nodeSelection, headStyle.color, nodeData);
-        break;
-
-      case 'connected':
-        const connectedStyle = styles.connected.node;
-        nodeSelection
-          .attr('transform', `translate(${x},${y}) scale(${connectedStyle.scale})`)
-          .style('filter', `drop-shadow(0 0 ${connectedStyle.glowSize} ${connectedStyle.glowColor})`)
-          .style('opacity', opacity)  // Respect filter dimming
-          .classed('highlighted', true);
-
-        this.setNodeColor(nodeSelection, connectedStyle.color, nodeData);
-        break;
-
-      case 'dimmed':
-        nodeSelection.style('opacity', styles.dimmed.opacity);
-        break;
-    }
+    FilteringUtils.applyFilterStyleToNode(
+      nodeSelection,
+      nodeId,
+      this.filteredOutNodes
+    );
   }
 
-  /**
-   * Helper to set node icon color
-   */
-  setNodeColor(nodeSelection, color, nodeData) {
-    const svgIcon = nodeSelection.select('svg');
-    if (!svgIcon.empty()) {
-      svgIcon.style('color', color);
-
-      // Handle Unknown node special styling
-      if (nodeData && (nodeData.data?.type === 'Unknown' || nodeData.type === 'Unknown')) {
-        svgIcon.select('circle').attr('fill', color);
-        svgIcon.select('text')
-          .attr('fill', this.styling.unknownText.highlighted.fill)
-          .attr('font-weight', this.styling.unknownText.highlighted.fontWeight);
-      }
-    }
-  }
 
   /**
-   * Unified edge styling function - Single source of truth for all edge styling
+   * Unified edge styling function - Orchestrates highlight and filter styling
    * @param {d3.Selection} edgeSelection - D3 selection of edge(s) to style
-   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'
+   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'|'connected-inbound'
    */
   applyEdgeStyle(edgeSelection, state) {
-    const styles = this.styling.highlights;
-
-    // Check if edge is filtered - if so, maintain dimmed opacity
-    const source = edgeSelection.attr('data-source');
-    const target = edgeSelection.attr('data-target');
-    const sourceFiltered = source && this.filteredOutNodes && this.filteredOutNodes.has(source);
-    const targetFiltered = target && this.filteredOutNodes && this.filteredOutNodes.has(target);
-    const isFiltered = sourceFiltered || targetFiltered;
-    const baseOpacity = isFiltered ? styles.dimmed.opacity : 1.0;
-
-    switch (state) {
-      case 'normal':
-        // Get stored original values or use defaults
-        const originalStroke = edgeSelection.attr('data-original-stroke') || '#999';
-        const originalWidth = edgeSelection.attr('data-original-stroke-width') || '1';
-
-        edgeSelection
-          .attr('stroke', originalStroke)
-          .attr('stroke-width', originalWidth)
-          .style('opacity', isFiltered ? styles.dimmed.opacity : null)  // Respect filter dimming
-          .style('filter', null)
-          .style('stroke-dasharray', isFiltered ? '6,6' : null);  // Add dashes if filtered
-        break;
-
-      case 'path':
-        const pathStyle = styles.path.edge;
-        edgeSelection
-          .attr('stroke', pathStyle.stroke)
-          .attr('stroke-width', pathStyle.strokeWidth)
-          .style('opacity', isFiltered ? styles.dimmed.opacity : pathStyle.opacity)  // Respect filter dimming
-          .style('filter', pathStyle.glow)
-          .style('stroke-dasharray', isFiltered ? '6,6' : null);  // Add dashes if filtered
-        break;
-
-      case 'connected':
-        const connectedStyle = styles.connected.edge;
-        edgeSelection
-          .attr('stroke', connectedStyle.stroke)
-          .attr('stroke-width', connectedStyle.strokeWidth)
-          .style('opacity', isFiltered ? styles.dimmed.opacity : connectedStyle.opacity)  // Respect filter dimming
-          .style('filter', null)
-          .style('stroke-dasharray', isFiltered ? '6,6' : null);  // Add dashes if filtered
-        break;
-
-      case 'dimmed':
-        edgeSelection
-          .style('opacity', styles.dimmed.opacity)
-          .style('stroke-dasharray', '6,6');  // Always add dashes for dimmed edges
-        break;
-    }
+    // Apply highlighting styles
+    HighlightingUtils.applyHighlightStyleToEdge(
+      edgeSelection, 
+      state, 
+      this.styling
+    );
+    
+    // Apply filtering styles
+    FilteringUtils.applyFilterStyleToEdge(
+      edgeSelection,
+      this.filteredOutNodes
+    );
   }
 
-  /**
-   * Get the default color for a node type
-   */
-  getNodeDefaultColor(nodeData) {
-    const nodeType = nodeData?.data?.type || nodeData?.type || 'Unknown';
-    return nodeData?.data?.color || nodeData?.style?.fill || this.styling.nodeColors[nodeType] || this.styling.nodeColors['Unknown'];
-  }
 
   /**
    * Initialize SVG
