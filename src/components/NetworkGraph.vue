@@ -103,40 +103,6 @@ export default {
       this.$emit('node-clicked', node, event?.shiftKey);
     },
 
-    /**
-     * Select a node in the visualization by ID
-     * @param {string} nodeId The ID of the node to select
-     * @param {boolean} appendToSelection Whether to add to existing selection
-     */
-    selectNodeById(nodeId, appendToSelection = false) {
-      if (this.$refs.visualization && this.$refs.visualization.selectNodeById) {
-        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
-      }
-    },
-
-    /**
-     * Select a node in the visualization by properties
-     * @param {Object} nodeData The node data to find and select
-     */
-    selectNodeByProperties(nodeData) {
-      // Find the node ID from the properties
-      const nodeId = findNodeIdByProperties(nodeData, this.graphData);
-
-      if (nodeId) {
-        this.selectNodeById(nodeId);
-      } else {
-        console.warn('D3NetworkGraph: Node not found with properties', nodeData);
-      }
-    },
-
-    /**
-     * Clear node highlighting
-     */
-    clearHighlight() {
-      if (this.$refs.visualization && this.$refs.visualization.clearHighlight) {
-        this.$refs.visualization.clearHighlight();
-      }
-    },
 
     /**
      * Handle rendering start event
@@ -189,6 +155,17 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
+      }
+    },
+
+    /**
+     * Select/highlight a node by its ID
+     * @param {string} nodeId The ID of the node to select
+     * @param {boolean} appendToSelection Whether to add to existing selection
+     */
+    selectNodeById(nodeId, appendToSelection = false) {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
       }
     }
   }
