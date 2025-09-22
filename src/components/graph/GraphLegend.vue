@@ -15,6 +15,15 @@
       </div>
     </div>
 
+    <!-- Connections Section -->
+    <div class="legend-section">
+      <div class="legend-heading">Connections</div>
+      <div v-for="connectionType in connectionTypes" :key="connectionType" class="legend-item">
+        <div class="legend-icon" v-html="getLegendIcon(connectionType)"></div>
+        <div class="legend-label">{{ connectionType }}</div>
+      </div>
+    </div>
+
     <!-- Annotations Section -->
     <div class="legend-section">
       <div class="legend-heading">Annotations</div>
@@ -51,6 +60,14 @@ export default {
     },
 
     /**
+     * Returns connection type icons for inbound and outbound edges
+     * @returns {Array} Array of connection type names
+     */
+    connectionTypes() {
+      return ['Outbound\nConnection', 'Inbound\nConnection', 'Trace Path'];
+    },
+
+    /**
      * Returns only annotation icons (currently just 'Public IP', 'Virtual Application', 'Private Network', and 'Internet Boundary')
      * @returns {Array} Array of annotation type names
      */
@@ -66,6 +83,52 @@ export default {
      * @returns {string} SVG HTML string
      */
     getLegendIcon(type) {
+      if (type === 'Outbound\nConnection') {
+        // Create a solid purple line with arrow for outbound connections
+        const strokeColor = '#4444ff'; // Purple color matching highlighted edges
+        
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <defs>
+                    <marker id="legend-arrow-outbound" viewBox="0 0 10 10" refX="7" refY="5" 
+                            markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+                      <path d="M 0 0 L 10 5 L 0 10 z" fill="${strokeColor}" />
+                    </marker>
+                  </defs>
+                  <line x1="2" y1="12" x2="22" y2="12" 
+                        stroke="${strokeColor}" stroke-width="2" 
+                        marker-end="url(#legend-arrow-outbound)" />
+                </svg>`;
+      }
+
+      if (type === 'Inbound\nConnection') {
+        // Create a dashed purple line with arrow for inbound connections (arrow pointing left)
+        const strokeColor = '#4444ff'; // Purple color matching highlighted edges
+        
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <defs>
+                    <marker id="legend-arrow-inbound" viewBox="0 0 10 10" refX="2" refY="5" 
+                            markerWidth="4" markerHeight="4" orient="auto">
+                      <path d="M 10 0 L 0 5 L 10 10 z" fill="${strokeColor}" />
+                    </marker>
+                  </defs>
+                  <line x1="1" y1="12" x2="22" y2="12"
+                        stroke="${strokeColor}" stroke-width="2" 
+                        stroke-dasharray="3,2"
+                        marker-start="url(#legend-arrow-inbound)" />
+                </svg>`;
+      }
+
+
+      if (type === 'Trace Path') {
+        // Create a dashed purple line with arrow for inbound connections (arrow pointing left)
+        const strokeColor = '#FFA500'; // Golden color matching trace "golden" path
+
+        return `<svg style="width: 24px; height: 24px;" viewBox="0 0 24 24">
+                  <line x1="0" y1="12" x2="22" y2="12"
+                        stroke="${strokeColor}" stroke-width="3"/>
+                </svg>`;
+      }
+
       if (type === 'Private\nNetwork') {
         // Create a special dashed circle for the private network matching graph styling
         const fillColor = '#f0f0f0'; // Match the actual graph fill
