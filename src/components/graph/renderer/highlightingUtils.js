@@ -30,6 +30,7 @@ export class HighlightingUtils {
         edge
           .attr('stroke', originalStroke)
           .attr('stroke-width', originalWidth)
+          .attr('marker-end', 'url(#arrow)')  // Default gray arrow
           .style('filter', null)
           .style('stroke-dasharray', null);  // No dashes for normal state
         break;
@@ -39,6 +40,7 @@ export class HighlightingUtils {
         edge
           .attr('stroke', pathStyle.stroke)
           .attr('stroke-width', pathStyle.strokeWidth)
+          .attr('marker-end', 'url(#arrow-path)')  // Gold arrow for path edges
           .style('filter', pathStyle.glow)
           .style('stroke-dasharray', null);  // No dashes
         break;
@@ -48,6 +50,7 @@ export class HighlightingUtils {
         edge
           .attr('stroke', connectedStyle.stroke)
           .attr('stroke-width', connectedStyle.strokeWidth)
+          .attr('marker-end', 'url(#arrow-connected)')  // Purple arrow for connected edges
           .style('filter', null)
           .style('stroke-dasharray', null);  // No dashes for outbound
         break;
@@ -58,6 +61,7 @@ export class HighlightingUtils {
         edge
           .attr('stroke', inboundStyle.stroke)
           .attr('stroke-width', inboundStyle.strokeWidth)
+          .attr('marker-end', 'url(#arrow-connected)')  // Purple arrow for inbound connected edges
           .style('filter', null)
           .style('stroke-dasharray', '10,5');  // Dashed for inbound
         break;

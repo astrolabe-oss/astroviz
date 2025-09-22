@@ -232,10 +232,11 @@ export class GraphRenderer {
       this.styling
     );
     
-    // Apply filtering styles
+    // Apply filtering styles with edge state information
     FilteringUtils.applyFilterStyleToEdge(
       edgeSelection,
-      this.filteredOutNodes
+      this.filteredOutNodes,
+      state
     );
   }
 
@@ -264,20 +265,31 @@ export class GraphRenderer {
     // Add definitions for gradients and markers
     this.defs = this.svg.append('defs');
     
-    // Create arrow marker definition (half size)
-    const marker = this.defs.append('marker')
-      .attr('id', 'arrow')
-      .attr('viewBox', '0 0 10 10')
-      .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
-      .attr('refY', 5)
-      .attr('markerWidth', 5)  // Half the original size
-      .attr('markerHeight', 5)  // Half the original size
-      .attr('orient', 'auto-start-reverse');
+    // Create arrow marker definitions for different states
+    const createArrowMarker = (id, color) => {
+      const marker = this.defs.append('marker')
+        .attr('id', id)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
+        .attr('refY', 5)
+        .attr('markerWidth', 5)  // Half the original size
+        .attr('markerHeight', 5)  // Half the original size
+        .attr('orient', 'auto-start-reverse');
+      
+      marker.append('path')
+        .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+        .attr('fill', color)
+        .attr('opacity', 1.0);
+    };
+
+    // Default gray arrow for normal edges
+    createArrowMarker('arrow', '#888');
     
-    marker.append('path')
-      .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-      .attr('fill', '#888')  // Match the solid gradient color
-      .attr('opacity', 1.0);  // Fully opaque to avoid double-darkness where it overlaps line
+    // Purple arrow for connected (highlighted) edges  
+    createArrowMarker('arrow-connected', '#4444ff');
+    
+    // Gold arrow for path (trace) edges
+    createArrowMarker('arrow-path', '#FFA500');
     
     // Main group for zooming/panning
     this.g = this.svg.append('g');
@@ -369,7 +381,7 @@ export class GraphRenderer {
     EdgeUtils.renderEdges(this.context, packedRoot);
     
     // Fit the drawing to viewport on initial render
-    LayoutUtils.fitToView(this, packedRoot);
+    LayoutUtils.fitToView(this.context, packedRoot);
   }
 
   /**
@@ -524,14 +536,8 @@ export class GraphRenderer {
     // Apply application-specific highlighting
     HighlightingUtils.selectApplicationGroups(this.context, appName, event.shiftKey);
     
-    // Look up and emit application data
-    if (this.data?.applicationDataMap?.has(appName)) {
-      const applicationData = this.data.applicationDataMap.get(appName);
-      this.emitClickEvent(applicationData, event, 'application');
-    } else {
-      console.warn('Application data not found for:', appName);
-      this.emitClickEvent(d, event, 'group');
-    }
+    // Note: We don't emit click events for application groups since they are purely
+    // visual highlighting within the graph and should not trigger App.vue's node selection logic
   }
 
   /**
@@ -540,11 +546,8 @@ export class GraphRenderer {
   handleNodeClick(event, d) {
     event.stopPropagation(); // Prevent background click
     
-    // Clear any existing highlights from other systems
-    HighlightingUtils.clearApplicationSelection(this.context);
-    
-    // Apply node-specific highlighting
-    HighlightingUtils.highlightNode(this.context, d.id, event.shiftKey);
+    // Use unified selection logic
+    this.selectNodeById(d.id, event.shiftKey);
     
     // Emit vertex data (includes both app and database properties)
     this.emitClickEvent(d, event, 'node');
@@ -640,7 +643,7 @@ export class GraphRenderer {
 
   // Public API methods that delegate to utility classes
   resetView() {
-    InteractionUtils.resetView(this.context, this);
+    InteractionUtils.resetView(this.context);
   }
 
   zoomIn() {
@@ -655,6 +658,10 @@ export class GraphRenderer {
     FilteringUtils.setFilterDimming(this, filteredOutNodeIds);
   }
   selectNodeById(nodeId, appendToSelection = false) {
+    // Clear any existing highlights from other systems
+    HighlightingUtils.clearApplicationSelection(this.context);
+    
+    // Apply node-specific highlighting
     HighlightingUtils.highlightNode(this.context, nodeId, appendToSelection);
   }
 }

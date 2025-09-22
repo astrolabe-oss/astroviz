@@ -208,12 +208,14 @@ export class LayoutUtils {
 
   /**
    * Fit the drawing to viewport on initial render
+   * @param {Object} context - GraphRenderer context
+   * @param {Object} packedRoot - D3 packed hierarchy root
    */
-  static fitToView(renderer, packedRoot) {
-    if (!packedRoot) return;
+  static fitToView(context, packedRoot) {
+    if (!packedRoot || !context.state.vertexMap || !context.options || !context.interaction.svg || !context.interaction.zoom) return;
 
     // Get the bounds of all visible elements using our vertex structure
-    const allElements = Array.from(renderer.vertexMap.values()).filter(vertex => !vertex.isVirtual);
+    const allElements = Array.from(context.state.vertexMap.values()).filter(vertex => !vertex.isVirtual);
     if (allElements.length === 0) return;
 
     // Calculate bounding box of all elements
@@ -222,7 +224,7 @@ export class LayoutUtils {
     allElements.forEach(vertex => {
       const x = vertex.x;
       const y = vertex.y;
-      const radius = vertex.isGroup ? vertex.r : renderer.options.nodeRadius;
+      const radius = vertex.isGroup ? vertex.r : context.options.nodeRadius;
 
       minX = Math.min(minX, x - radius);
       minY = Math.min(minY, y - radius);
@@ -238,8 +240,8 @@ export class LayoutUtils {
     const contentCenterY = (minY + maxY) / 2;
 
     // Calculate scale to fit content in viewport
-    const viewportWidth = renderer.options.width;
-    const viewportHeight = renderer.options.height;
+    const viewportWidth = context.options.width;
+    const viewportHeight = context.options.height;
     const scaleX = viewportWidth / contentWidth;
     const scaleY = viewportHeight / contentHeight;
     const scale = Math.min(scaleX, scaleY, 1) * 1.33; // Zoom in 33% more than full fit for better readability
@@ -255,7 +257,7 @@ export class LayoutUtils {
       .translate(translateX, translateY)
       .scale(scale);
 
-    renderer.svg.call(renderer.zoom.transform, transform);
+    context.interaction.svg.call(context.interaction.zoom.transform, transform);
 
     console.log(`Fit to view: scale=${scale.toFixed(2)}, translate=(${translateX.toFixed(0)}, ${translateY.toFixed(0)})`);
   }

@@ -119,7 +119,7 @@ export class InteractionUtils {
     );
   }
 
-  static resetView(context, renderer) {
+  static resetView(context) {
     if (!context.interaction.svg || !context.interaction.zoom) return;
 
     // Reset zoom and pan
@@ -130,7 +130,11 @@ export class InteractionUtils {
 
     // Reset all node positions to original
     NodeUtils.resetNodePositions(context);
-    LayoutUtils.fitToView(renderer, renderer.hierarchyRoot);
+    
+    // Fit to view using context pattern
+    if (context.state.hierarchyRoot) {
+      LayoutUtils.fitToView(context, context.state.hierarchyRoot);
+    }
   }
 
   /**
@@ -216,6 +220,31 @@ export class InteractionUtils {
     console.log(`Zoomed to ${visibleNodes.length} visible nodes at scale ${scale.toFixed(2)} (max: ${maxZoom.toFixed(2)}):`);
     console.log(`  Bounds: ${boundsWidth.toFixed(0)}x${boundsHeight.toFixed(0)} at (${boundsX.toFixed(0)}, ${boundsY.toFixed(0)})`);
     console.log(`  SVG: ${svgWidth.toFixed(0)}x${svgHeight.toFixed(0)}, fullScale: ${fullScale.toFixed(2)}, currentZoom: ${currentZoom.toFixed(2)}`);
+  }
+
+  /**
+   * Handle zoom and animation behavior when filters change
+   * @param {Object} context - GraphRenderer context
+   * @param {number} newFilterCount - Number of nodes now filtered
+   * @param {number} previousFilterCount - Number of nodes previously filtered
+   */
+  static handleFilterZoomBehavior(context, newFilterCount, previousFilterCount) {
+    if (newFilterCount > 0) {
+      // Auto-zoom to visible nodes first
+      setTimeout(() => {
+        InteractionUtils.zoomToVisibleNodes(context);
+
+        // Then trigger pulse animation after zoom completes
+        setTimeout(() => {
+          InteractionUtils.bounceAllNodes(context);
+        }, 850);
+      }, 100);
+    } else if (previousFilterCount > 0 && newFilterCount === 0) {
+      // Filters were cleared - reset the zoom view
+      setTimeout(() => {
+        InteractionUtils.resetView(context);
+      }, 100);
+    }
   }
 
   /**

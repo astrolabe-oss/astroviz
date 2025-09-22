@@ -15,8 +15,9 @@ export class FilteringUtils {
    * Apply filter-based opacity to an edge
    * @param {d3.Selection} edge - D3 selection of the edge
    * @param {Set} filteredOutNodes - Set of filtered node IDs
+   * @param {string} edgeState - Current edge state ('normal'|'path'|'connected'|'connected-inbound')
    */
-  static applyFilterStyleToEdge(edge, filteredOutNodes) {
+  static applyFilterStyleToEdge(edge, filteredOutNodes, edgeState = 'normal') {
     if (!filteredOutNodes || filteredOutNodes.size === 0) {
       // No filtering - ensure opacity is not set
       edge.style('opacity', null);
@@ -32,8 +33,10 @@ export class FilteringUtils {
       const targetFiltered = filteredOutNodes.has(target);
 
       if (sourceFiltered || targetFiltered) {
-        // Apply dimmed opacity
-        edge.style('opacity', 0.2);
+        // Apply different opacity based on edge state
+        // Path edges are less dimmed to preserve their importance
+        const dimmedOpacity = edgeState === 'path' ? 0.6 : 0.2;
+        edge.style('opacity', dimmedOpacity);
       } else {
         // Not filtered - ensure opacity is not set
         edge.style('opacity', null);
@@ -99,22 +102,11 @@ export class FilteringUtils {
     }
 
     // Handle zoom behavior based on filter state
-    if (filteredOutNodeIds.size > 0) {
-      // Auto-zoom to visible nodes first
-      setTimeout(() => {
-        InteractionUtils.zoomToVisibleNodes(renderer.context);
-
-        // Then trigger pulse animation after zoom completes
-        setTimeout(() => {
-          InteractionUtils.bounceAllNodes(renderer.context);
-        }, 850);
-      }, 100);
-    } else if (previousFilteredOutNodes.size > 0 && filteredOutNodeIds.size === 0) {
-      // Filters were cleared - reset the zoom view
-      setTimeout(() => {
-        InteractionUtils.resetView(renderer.context, renderer);
-      }, 100);
-    }
+    InteractionUtils.handleFilterZoomBehavior(
+      renderer.context, 
+      filteredOutNodeIds.size, 
+      previousFilteredOutNodes.size
+    );
   }
 
   /**
@@ -156,11 +148,17 @@ export class FilteringUtils {
   static applyEdgeDimming(context) {
     if (!context.layers.edgeLayer) return;
 
-    // Apply filter styling to all edges
-    context.layers.edgeLayer.selectAll('.edge').each(function() {
-      const edge = d3.select(this);
-      FilteringUtils.applyFilterStyleToEdge(edge, context.state.filteredOutNodes);
-    });
+    // Re-apply current highlighting to ensure correct edge states with filter awareness
+    // This ensures path edges maintain their 'path' state and get light dimming
+    if (HighlightingUtils.state.headNode) {
+      HighlightingUtils.applyCleanHighlighting(context);
+    } else {
+      // No active highlighting - apply filter styling to all edges as normal
+      context.layers.edgeLayer.selectAll('.edge').each(function() {
+        const edge = d3.select(this);
+        FilteringUtils.applyFilterStyleToEdge(edge, context.state.filteredOutNodes, 'normal');
+      });
+    }
   }
 
   /**
@@ -170,10 +168,16 @@ export class FilteringUtils {
   static removeEdgeDimming(context) {
     if (!context.layers.edgeLayer) return;
 
-    // Remove filter styling from all edges (same as applying with empty filter set)
-    context.layers.edgeLayer.selectAll('.edge').each(function() {
-      const edge = d3.select(this);
-      FilteringUtils.applyFilterStyleToEdge(edge, new Set());
-    });
+    // Re-apply current highlighting to ensure correct edge states without filter dimming
+    // This ensures path edges maintain their 'path' state and full opacity
+    if (HighlightingUtils.state.headNode) {
+      HighlightingUtils.applyCleanHighlighting(context);
+    } else {
+      // No active highlighting - remove filter styling from all edges
+      context.layers.edgeLayer.selectAll('.edge').each(function() {
+        const edge = d3.select(this);
+        FilteringUtils.applyFilterStyleToEdge(edge, new Set(), 'normal');
+      });
+    }
   }
 }
