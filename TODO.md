@@ -2,18 +2,20 @@
 ## 0.2.2
 * [x] restrict repositioning private networks | Fri, September 12
 * [x] walk through timeout | Fri, September 12
-* [x] refact: d.data and displayed properties
-* [x] fix: mock data public nodes should have provider='www'
-* [x] filter actually filters
-* [x] filter: zoom to filtered
-* [x] filter: animate/bounce on filter
-* [x] bug: node size/padding not respect (looks bad on small viewport)
-* [x] group label: match color of group
-* [x] small: increase default zoom level
-* [x] version shown in demo
-* [x] highlight "trace mode"
-* [x] refactor - break out graphRenderer to encpasulate highlighting/etc
-* [x] highlight: differentiate outbound/inbound
+* [x] refact: d.data and displayed properties | Mon, September 22
+* [x] fix: mock data public nodes should have provider='www' | Mon, September 22
+* [x] filter actually filters | Mon, September 22
+* [x] filter: zoom to filtered | Mon, September 22
+* [x] filter: animate/bounce on filter | Mon, September 22
+* [x] bug: node size/padding not respect (looks bad on small viewport) | Mon, September 22
+* [x] group label: match color of group | Mon, September 22
+* [x] small: increase default zoom level | Mon, September 22
+* [x] version shown in demo | Mon, September 22
+* [x] highlight "trace mode" | Mon, September 22
+* [x] refactor - break out graphRenderer to encpasulate highlighting/etc | Mon, September 22
+* [x] highlight: differentiate outbound/inbound | Mon, September 22
+* [x] refactor - separate concerns highlight/filter | Mon, September 22
+* [x] small - legend | Mon, September 22
 
 # BACKLOG
 ## 0.3.1
