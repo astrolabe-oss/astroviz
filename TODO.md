@@ -1,4 +1,33 @@
 # WIP
+## 0.3.1
+* [x] small: fix footer alignments
+* [ ] collapse expand groups
+* [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
+* [ ] group by cluster/app <-> app/cluster
+* [ ] pass through proxy
+
+# BACKLOG
+## 0.4.0
+* [ ] Chat interface
+
+## 0.5.0
+* [ ] MCP Server
+
+## 0.5.1
+* [ ] tests and CI/CD
+* [ ] mobile: small viewport hide controls?
+
+## Not sure
+* [x] sub-connections missing in app view
+* [x] node details: components sections (sub graph?)
+
+# BUGS
+* [ ] App View: highlighting broken
+* [x] Graph Pane (Highlight) - enlargement is only working sometimes during 'click to highlight from node details' - not during click on graph pane
+* [x] Graph Pane (Highlight) - node detail labels do not follow dragged node
+* [ ] Graph Pane (Reordering) - Dragging a node, all the connected nodes follow. We want to drag it away and not have them follow so aggresively  (Only happens with few nodes)
+
+# ARCHIVE
 ## 0.2.2
 * [x] restrict repositioning private networks | Fri, September 12
 * [x] walk through timeout | Fri, September 12
@@ -17,28 +46,6 @@
 * [x] refactor - separate concerns highlight/filter | Mon, September 22
 * [x] small - legend | Mon, September 22
 
-# BACKLOG
-## 0.3.1
-* [ ] collapse expand groups
-* [ ] group level agnostiscm (graphrenderer doens't care how many nested levels their are, no hard coded application/cluster/etc)
-* [ ] group by cluster/app <-> app/cluster
-* [ ] pass through proxy
-
-## 0.3.2
-* [ ] tests and CI/CD
-* [ ] mobile: small viewport hide controls?
-
-## Not sure
-* [x] sub-connections missing in app view
-* [x] node details: components sections (sub graph?)
-
-# BUGS
-* [ ] App View: highlighting broken
-* [x] Graph Pane (Highlight) - enlargement is only working sometimes during 'click to highlight from node details' - not during click on graph pane
-* [x] Graph Pane (Highlight) - node detail labels do not follow dragged node
-* [ ] Graph Pane (Reordering) - Dragging a node, all the connected nodes follow. We want to drag it away and not have them follow so aggresively  (Only happens with few nodes)
-
-# ARCHIVE
 ## 0.2.1
 * [x] demo for github pages | Thurs, September 11
 * [x] walk through helper? | Thurs, September 11

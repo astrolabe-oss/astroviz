@@ -103,7 +103,7 @@ export default {
 .app-footer {
   background: linear-gradient(135deg, #f8f9fa 0%, #e3f2fd 50%, #bbdefb 100%);
   color: #2c3e50;
-  padding: 10px 20px 20px;
+  padding: 10px 20px 10px;
   border-top: 3px solid #4A98E3;
   position: relative;
   transition: max-height 0.3s ease, padding 0.3s ease;
@@ -112,14 +112,16 @@ export default {
 }
 
 .app-footer.collapsed {
-  max-height: 35px;
-  padding-bottom: 8px;
+  max-height: 37px;
+  padding-top: 7px;
+  padding-bottom: 12px;
 }
 
 .footer-header {
   position: relative;
-  padding: 8px 0;
+  padding: 0;
   text-align: center;
+  margin-top: -4px;
 }
 
 .footer-copyright {
@@ -129,7 +131,7 @@ export default {
 
 .footer-toggle-btn {
   position: absolute;
-  top: 8px;
+  top: 2px;
   right: 20px;
   display: flex;
   align-items: center;
@@ -158,13 +160,18 @@ export default {
   transform: rotate(180deg);
 }
 
+.app-footer:not(.collapsed) .footer-toggle-btn {
+  top: auto;
+  bottom: 10px;
+}
+
 .footer-content {
   max-width: 1200px;
   margin: 0 auto;
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 20px;
-  padding: 20px;
+  padding: 20px 20px 0px 20px;
 }
 
 .footer-section h3 {
@@ -207,7 +214,9 @@ export default {
 
 .footer-bottom {
   text-align: center;
-  padding-top: 20px;
+  padding-top: 10px;
+  padding-bottom: 5px;
+  margin-top: 5px;
   border-top: 1px solid rgba(74, 152, 227, 0.3);
   color: #666;
   font-size: 14px;
