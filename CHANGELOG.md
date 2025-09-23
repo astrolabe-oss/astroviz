@@ -5,6 +5,32 @@ All notable changes to AstroViz will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.2] - 2025-09-23
+
+### Visual Enhancements
+- **Trace path highlighting**: Added golden path tracing with glow effect for network connections
+- **Directional edge styling**: Inbound edges are dashed, outbound edges are solid
+- **Enhanced legend**: Added connection types showing inbound/outbound/trace path styles
+
+### Filter Improvements  
+- **Dimming instead of hiding**: Filters now dim non-matching nodes (20% opacity) instead of removing them
+- **Auto-zoom on filter**: Automatically zooms to show remaining visible nodes
+- **Bounce animation**: Visible nodes bounce after filter zoom for better visibility
+
+### Architecture Refactor For GraphRenderer
+- **Modular renderer**: Split GraphRenderer into focused utility classes
+- **Context pattern**: All utilities use consistent context pattern
+
+### Bug Fixes
+- **Node sizing**: Fixed node size and padding calculations in layout
+- **Data separation**: Cleaned up application vs database data in node properties panel
+
+### UI Polish
+- **Version display**: Added package version to footer
+- **Default zoom**: Increased initial zoom level for better visibility
+- **Label styling**: Improved node label appearance
+- **Private network**: Restricted repositioning for stable layouts
+
 ## [0.2.1] - 2025-09-11
 
 ### Demo Mode
