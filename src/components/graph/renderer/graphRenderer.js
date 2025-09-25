@@ -6,6 +6,7 @@ import { LayoutUtils } from './layoutUtils.js';
 import { InteractionUtils } from './interactionUtils.js';
 import { FilteringUtils } from './filteringUtils.js';
 import { HighlightingUtils } from './highlightingUtils.js';
+import { GroupUtils } from './groupUtils.js';
 
 /**
  * Supported style properties for graph elements
@@ -62,6 +63,11 @@ export class GraphRenderer {
     // Legacy state (to be phased out)
     this.selectedNodeIds = new Set();
     this.filteredOutNodes = new Set();
+    
+    // Collapse/expand state
+    this.collapsedGroups = new Set();
+    this.clickTimer = null;
+    this.lastClickedGroup = null;
 
     // Centralized styling configuration - Single source of truth
     this.styling = {
@@ -163,7 +169,8 @@ export class GraphRenderer {
         groupPositions: this.groupPositions,
         vertexMap: this.vertexMap,
         hierarchyRoot: this.hierarchyRoot,
-        hybridLayout: this.hybridLayout
+        hybridLayout: this.hybridLayout,
+        collapsedGroups: this.collapsedGroups
       },
 
       // Interaction state
@@ -297,6 +304,11 @@ export class GraphRenderer {
     // Add zoom behavior
     this.zoom = d3.zoom()
       .scaleExtent([0.1, 4])
+      .filter(event => {
+        // Disable double-click zoom to allow group collapse/expand
+        if (event.type === 'dblclick') return false;
+        return true;
+      })
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
 
@@ -399,23 +411,43 @@ export class GraphRenderer {
       .attr('id', vertex => `group-${vertex.id}`)
       .attr('cx', vertex => vertex.x)
       .attr('cy', vertex => vertex.y)
-      .attr('r', vertex => vertex.r)
+      .attr('r', vertex => {
+        // Shrink collapsed groups with smart sizing (single-node groups keep original size)
+        const isCollapsed = this.collapsedGroups.has(vertex.id);
+        if (isCollapsed) {
+          const childCount = this.getGroupChildCount(vertex.id);
+          return GroupUtils.getCollapsedRadius(vertex.r, this.options.nodeRadius, childCount);
+        }
+        return vertex.r;
+      })
       .style('cursor', 'grab')
       .on('click', (event, vertex) => {
         this.handleGroupClick(event, vertex);
       });
     
     // Apply all supported styles from the style object
-    groupElements.each(function(d) {
-      const element = d3.select(this);
+    groupElements.each((d) => {
+      const element = d3.select(`#group-${d.id}`);
+      const isCollapsed = this.collapsedGroups.has(d.id);
       
       Object.entries(SUPPORTED_STYLES).forEach(([styleProp, config]) => {
         // Check for style in nested style object first, then fall back to legacy flat properties
         let value = d.style?.[styleProp] ?? d.data?.[styleProp] ?? config.default;
         
-        // Special handling for strokeDasharray - use type-based defaults if not specified
-        if (styleProp === 'strokeDasharray' && !value && !d.style?.strokeDasharray) {
-          value = getDefaultDashPattern(d);
+        // Override styles for collapsed groups
+        if (isCollapsed) {
+          if (styleProp === 'strokeDasharray') {
+            value = '5,3';  // Dashed border for collapsed groups
+          } else if (styleProp === 'strokeWidth') {
+            value = 3;      // Thicker border for collapsed groups
+          } else if (styleProp === 'opacity') {
+            value = 0.8;    // More opaque for collapsed groups
+          }
+        } else {
+          // Special handling for strokeDasharray - use type-based defaults if not specified
+          if (styleProp === 'strokeDasharray' && !value && !d.style?.strokeDasharray) {
+            value = getDefaultDashPattern(d);
+          }
         }
         
         if (value !== null && value !== undefined) {
@@ -431,7 +463,16 @@ export class GraphRenderer {
       .join('g')
       .attr('class', 'group-label-container')
       .attr('id', vertex => `group-label-container-${vertex.id}`)
-      .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y - vertex.r - 5})`);
+      .attr('transform', vertex => {
+        // Use actual displayed radius with smart sizing
+        const isCollapsed = this.collapsedGroups.has(vertex.id);
+        let displayRadius = vertex.r;
+        if (isCollapsed) {
+          const childCount = this.getGroupChildCount(vertex.id);
+          displayRadius = GroupUtils.getCollapsedRadius(vertex.r, this.options.nodeRadius, childCount);
+        }
+        return `translate(${vertex.x}, ${vertex.y - displayRadius - 5})`;
+      });
 
     // Add label backgrounds
     groupLabelElements.each(function(d) {
@@ -483,6 +524,9 @@ export class GraphRenderer {
         .text(labelText);
     });
     
+    // Add collapse badges for collapsed groups
+    this.renderCollapseBadges(groups);
+    
     // Add drag behavior to groups with reasonable threshold
     const groupDragBehavior = d3.drag()
       .subject((event, d) => {
@@ -499,14 +543,97 @@ export class GraphRenderer {
     groupElements.call(groupDragBehavior);
   }
   
+  /**
+   * Render collapse badges for collapsed groups
+   */
+  renderCollapseBadges(groups) {
+    // Clear existing badges
+    this.labelLayer.selectAll('.collapse-badge').remove();
+    
+    // Only render badges for collapsed groups
+    const collapsedGroups = groups.filter(group => this.collapsedGroups.has(group.id));
+    
+    collapsedGroups.forEach(group => {
+      const childCount = this.getGroupChildCount(group.id);
+      
+      if (childCount > 0) {
+        // Use collapsed radius with smart sizing for badge positioning
+        const collapsedRadius = GroupUtils.getCollapsedRadius(group.r, this.options.nodeRadius, childCount);
+        const badgeOffset = collapsedRadius * 0.7; // Position badge at 70% of collapsed radius
+        
+        const badgeGroup = this.labelLayer
+          .append('g')
+          .attr('class', 'collapse-badge')
+          .attr('id', `collapse-badge-${group.id}`)
+          .attr('transform', `translate(${group.x + badgeOffset}, ${group.y - badgeOffset})`);
+        
+        badgeGroup.append('circle')
+          .attr('r', 12)
+          .style('fill', '#ff6b6b')
+          .style('stroke', '#fff')
+          .style('stroke-width', 2);
+        
+        badgeGroup.append('text')
+          .attr('text-anchor', 'middle')
+          .attr('dy', '0.35em')
+          .style('fill', '#fff')
+          .style('font-size', '10px')
+          .style('font-weight', 'bold')
+          .text(childCount);
+      }
+    });
+  }
+  
+  /**
+   * Get the number of child nodes for a group
+   */
+  getGroupChildCount(groupId) {
+    let count = 0;
+    this.vertexMap.forEach((vertex, id) => {
+      if (!vertex.isGroup && !vertex.isVirtual && vertex.parentId === groupId) {
+        count++;
+      }
+    });
+    return count;
+  }
+
 
   /**
-   * Unified click handler for groups
-   * Determines group type and routes to appropriate handler
+   * Unified click handler for groups with double-click detection for collapse/expand
    */
   handleGroupClick(event, d) {
     event.stopPropagation(); // Prevent background click
-
+    
+    const isCollapsible = d.id.startsWith('app-') || d.id.startsWith('cluster-');
+    
+    if (!isCollapsible) {
+      // Non-collapsible groups (like boundaries) - handle normally
+      this.handleSingleGroupClick(event, d);
+      return;
+    }
+    
+    // Double-click detection for collapsible groups
+    if (this.clickTimer && this.lastClickedGroup === d.id) {
+      // Double-click detected
+      clearTimeout(this.clickTimer);
+      this.clickTimer = null;
+      this.lastClickedGroup = null;
+      this.handleGroupDoubleClick(event, d);
+    } else {
+      // Wait for potential second click
+      this.lastClickedGroup = d.id;
+      this.clickTimer = setTimeout(() => {
+        this.handleSingleGroupClick(event, d);
+        this.clickTimer = null;
+        this.lastClickedGroup = null;
+      }, 250);
+    }
+  }
+  
+  /**
+   * Handle single click on groups (original behavior)
+   */
+  handleSingleGroupClick(event, d) {
     // Clear any existing highlights from other systems
     HighlightingUtils.clearNodeHighlights(this.context);
 
@@ -517,6 +644,41 @@ export class GraphRenderer {
       // For cluster/boundary groups, do nothing (no details panel)
       console.log('Non-application group clicked, ignoring:', d.id);
     }
+  }
+  
+  /**
+   * Handle double-click on collapsible groups - toggle collapse state
+   */
+  handleGroupDoubleClick(event, d) {
+    console.log('Group double-clicked, toggling collapse:', d.id);
+    
+    // Toggle collapse state
+    if (this.collapsedGroups.has(d.id)) {
+      this.collapsedGroups.delete(d.id);
+      console.log('Expanding group:', d.id);
+    } else {
+      this.collapsedGroups.add(d.id);
+      console.log('Collapsing group:', d.id);
+    }
+    
+    // Update visual elements without full re-render to preserve zoom/pan
+    this.updateCollapseState();
+  }
+
+  /**
+   * Update visual elements for collapse state changes without full re-render
+   */
+  updateCollapseState() {
+    if (!this.hierarchyRoot) return;
+
+    // Update nodes visibility (filter out nodes with collapsed parents)
+    NodeUtils.renderNodes(this.context, this.hierarchyRoot);
+    
+    // Update group visual styling and badges
+    this.renderGroups(this.hierarchyRoot);
+    
+    // Update edges with new rollup logic
+    EdgeUtils.renderEdges(this.context, this.hierarchyRoot);
   }
 
   /**

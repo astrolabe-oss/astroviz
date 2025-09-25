@@ -9,8 +9,21 @@
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
 import { InteractionUtils } from './interactionUtils.js';
+import { GroupUtils } from './groupUtils.js';
 
 export class NodeUtils {
+  /**
+   * Get child count for a group from the vertex map
+   */
+  static getGroupChildCount(vertexMap, groupId) {
+    let count = 0;
+    vertexMap.forEach(vertex => {
+      if (!vertex.isGroup && !vertex.isVirtual && vertex.parentId === groupId) {
+        count++;
+      }
+    });
+    return count;
+  }
   /**
    * Store node positions from pack layout
    */
@@ -141,7 +154,12 @@ export class NodeUtils {
    */
   static renderNodes(context, packedRoot) {
     const nodes = Array.from(context.state.vertexMap.values())
-      .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
+      .filter(vertex => !vertex.isGroup && !vertex.isVirtual)
+      .filter(vertex => {
+        // Filter out nodes with collapsed parents
+        if (!vertex.parentId) return true;
+        return !context.state.collapsedGroups.has(vertex.parentId);
+      });
 
     // Create node elements to hold icons
     const nodeElements = context.layers.nodeLayer
@@ -263,9 +281,24 @@ export class NodeUtils {
       .attr('cx', groupPos.x)
       .attr('cy', groupPos.y);
 
-    // Update group label container
+    // Update group label container with proper radius for collapsed groups
+    const isCollapsed = context.state.collapsedGroups.has(groupId);
+    let displayRadius = groupPos.r;
+    if (isCollapsed) {
+      const childCount = NodeUtils.getGroupChildCount(context.state.vertexMap, groupId);
+      displayRadius = GroupUtils.getCollapsedRadius(groupPos.r, context.options.nodeRadius, childCount);
+    }
     d3.select(`#group-label-container-${groupId}`)
-      .attr('transform', `translate(${groupPos.x}, ${groupPos.y - groupPos.r - 5})`);
+      .attr('transform', `translate(${groupPos.x}, ${groupPos.y - displayRadius - 5})`);
+
+    // Update collapse badge position if it exists
+    const badgeElement = d3.select(`#collapse-badge-${groupId}`);
+    if (!badgeElement.empty() && isCollapsed) {
+      const childCount = NodeUtils.getGroupChildCount(context.state.vertexMap, groupId);
+      const collapsedRadius = GroupUtils.getCollapsedRadius(groupPos.r, context.options.nodeRadius, childCount);
+      const badgeOffset = collapsedRadius * 0.7;
+      badgeElement.attr('transform', `translate(${groupPos.x + badgeOffset}, ${groupPos.y - badgeOffset})`);
+    }
 
     // Move all child nodes and subgroups recursively
     groupPos.children.forEach(childId => {
@@ -309,11 +342,29 @@ export class NodeUtils {
           .attr('cx', pos.originalX)
           .attr('cy', pos.originalY);
 
-        // Animate group label container back to original position
+        // Animate group label container back to original position with proper radius
+        const isCollapsed = context.state.collapsedGroups.has(groupId);
+        let displayRadius = pos.r;
+        if (isCollapsed) {
+          const childCount = NodeUtils.getGroupChildCount(context.state.vertexMap, groupId);
+          displayRadius = GroupUtils.getCollapsedRadius(pos.r, context.options.nodeRadius, childCount);
+        }
         d3.select(`#group-label-container-${groupId}`)
           .transition()
           .duration(500)
-          .attr('transform', `translate(${pos.originalX}, ${pos.originalY - pos.r - 5})`);
+          .attr('transform', `translate(${pos.originalX}, ${pos.originalY - displayRadius - 5})`);
+
+        // Animate collapse badge back to original position if it exists
+        const badgeElement = d3.select(`#collapse-badge-${groupId}`);
+        if (!badgeElement.empty() && isCollapsed) {
+          const childCount = NodeUtils.getGroupChildCount(context.state.vertexMap, groupId);
+          const collapsedRadius = GroupUtils.getCollapsedRadius(pos.r, context.options.nodeRadius, childCount);
+          const badgeOffset = collapsedRadius * 0.7;
+          badgeElement
+            .transition()
+            .duration(500)
+            .attr('transform', `translate(${pos.originalX + badgeOffset}, ${pos.originalY - badgeOffset})`);
+        }
       }
     });
 

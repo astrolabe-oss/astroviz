@@ -7,6 +7,7 @@
  */
 
 import { HighlightingUtils } from './highlightingUtils.js';
+import { GroupUtils } from './groupUtils.js';
 
 export class EdgeUtils {
   /**
@@ -44,14 +45,40 @@ export class EdgeUtils {
   static renderEdges(context, packedRoot) {
     if (!context.data.edges) return;
 
-    // Extract rendering data using utility method
+    // Extract rendering data using utility method with collapse state, node radius, and vertex map
     const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
-      EdgeUtils.extractRenderingData(packedRoot);
+      EdgeUtils.extractRenderingData(packedRoot, context.state.collapsedGroups, context.options.nodeRadius, context.state.vertexMap);
 
-    // Filter edges to only those with both endpoints visible
-    const visibleEdges = context.data.edges.filter(edge => {
-      return positionMap.has(edge.source) && positionMap.has(edge.target);
-    });
+    // Process edges for collapse/expand - redirect endpoints, don't aggregate
+    const visibleEdges = context.data.edges
+      .map(edge => {
+        let sourceId = edge.source;
+        let targetId = edge.target;
+        
+        // Check if source is in collapsed group - redirect to group
+        const sourceVertex = context.state.vertexMap.get(edge.source);
+        if (sourceVertex?.parentId && context.state.collapsedGroups.has(sourceVertex.parentId)) {
+          sourceId = sourceVertex.parentId;
+        }
+        
+        // Check if target is in collapsed group - redirect to group  
+        const targetVertex = context.state.vertexMap.get(edge.target);
+        if (targetVertex?.parentId && context.state.collapsedGroups.has(targetVertex.parentId)) {
+          targetId = targetVertex.parentId;
+        }
+        
+        // Return redirected edge (same edge, potentially different endpoints)
+        return {
+          source: sourceId,
+          target: targetId,
+          originalSource: edge.source,
+          originalTarget: edge.target
+        };
+      })
+      .filter(edge => {
+        // Only keep edges with both endpoints visible and not self-loops
+        return positionMap.has(edge.source) && positionMap.has(edge.target) && edge.source !== edge.target;
+      });
 
     // Clear existing edges
     context.layers.edgeLayer.selectAll('line.edge').remove();
@@ -62,27 +89,53 @@ export class EdgeUtils {
       const sourcePos = positionMap.get(edge.source);
       const targetPos = positionMap.get(edge.target);
 
-      // Calculate adjusted endpoint using utility method
-      const shortenBy = context.options.nodeRadius * 0.7;
-      const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
+      // Calculate adjusted endpoint - use actual group radius for both source and target
+      let shortenBySource = 0;
+      let shortenByTarget = context.options.nodeRadius * 0.7;
+      
+      // Check if source is a group and get its actual radius
+      const sourceGroup = [...applicationGroups, ...clusterGroups].find(g => g.id === edge.source);
+      if (sourceGroup) {
+        shortenBySource = sourceGroup.r + 5; // Start 5px outside the source group circumference
+      }
+      
+      // Check if target is a group and get its actual radius
+      const targetGroup = [...applicationGroups, ...clusterGroups].find(g => g.id === edge.target);
+      if (targetGroup) {
+        shortenByTarget = targetGroup.r + 5; // Stop 5px outside the target group circumference
+      }
+      
+      // Apply both source and target adjustments
+      const { x1: adjustedSourceX, y1: adjustedSourceY, x2: adjustedTargetX, y2: adjustedTargetY } = 
+        EdgeUtils.shortenEdgeForBothEnds(sourcePos, targetPos, shortenBySource, shortenByTarget);
 
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
       const isHighlighted = HighlightingUtils.state.highlightedElements.edgeKeys.has(edgeKey);
 
-      let strokeStyle, strokeWidth;
+      let strokeStyle, strokeWidth, strokeDasharray = null;
 
       if (isHighlighted) {
         // Use solid purple for highlighted edges
         strokeStyle = '#4444ff';
         strokeWidth = 3;
+      } else if (edge.isRolledUp) {
+        // Special styling for rolled-up edges
+        strokeStyle = '#2196F3';    // Blue color
+        strokeWidth = 4;            // Thicker (4px vs normal 1.5px)
+        strokeDasharray = '8,4';    // Dashed pattern
       } else {
         // Use gradient segments for non-highlighted edges
-        // Find home groups using utility method
-        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
+        // Find home groups using original endpoints (before rollup) to preserve edge relationships
+        const originalEdge = {
+          source: edge.originalSource || edge.source,
+          target: edge.originalTarget || edge.target
+        };
+        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(originalEdge, nodeToAppMap, nodeToClusterMap);
 
         // Create adjusted position map for segment calculation
         const adjustedPositionMap = new Map(positionMap);
+        adjustedPositionMap.set(edge.source, { x: adjustedSourceX, y: adjustedSourceY });
         adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
 
         // Create filter function using utility method
@@ -108,8 +161,8 @@ export class EdgeUtils {
           context.defs,
           edgeId,
           gradientStops,
-          sourcePos.x,
-          sourcePos.y,
+          adjustedSourceX,
+          adjustedSourceY,
           adjustedTargetX,
           adjustedTargetY
         );
@@ -128,13 +181,18 @@ export class EdgeUtils {
         .attr('data-source', edge.source)
         .attr('data-target', edge.target)
         .attr('data-edge-id', `${edge.source}-${edge.target}-${edgeIndex}`)
-        .attr('x1', sourcePos.x)
-        .attr('y1', sourcePos.y)
+        .attr('x1', adjustedSourceX)
+        .attr('y1', adjustedSourceY)
         .attr('x2', adjustedTargetX)
         .attr('y2', adjustedTargetY)
         .attr('stroke', strokeStyle)
         .attr('stroke-width', strokeWidth)
         .attr('marker-end', 'url(#arrow)');
+      
+      // Apply dash pattern if needed for rolled-up edges
+      if (strokeDasharray) {
+        edgeElement.attr('stroke-dasharray', strokeDasharray);
+      }
     });
   }
 
@@ -405,12 +463,16 @@ export class EdgeUtils {
   }
 
 
+
   /**
    * Extract rendering data from D3 hierarchy for edge processing
    * @param {Object} packedRoot - D3 packed hierarchy root
+   * @param {Set} collapsedGroups - Set of collapsed group IDs
+   * @param {number} nodeRadius - Node radius from options for minimum size calculation
+   * @param {Map} vertexMap - Vertex map to calculate child counts
    * @returns {Object} Object with position maps and group data
    */
-  static extractRenderingData(packedRoot) {
+  static extractRenderingData(packedRoot, collapsedGroups = new Set(), nodeRadius = 25, vertexMap = null) {
     // Create position map for nodes
     const positionMap = new Map();
     packedRoot.descendants().forEach(d => {
@@ -428,11 +490,25 @@ export class EdgeUtils {
     // Build group data and node mappings
     packedRoot.descendants().forEach(d => {
       if (d.data.isGroup && !d.data.isVirtual) {
+        // Adjust radius for collapsed groups with smart sizing
+        const isCollapsed = collapsedGroups.has(d.data.id);
+        let adjustedRadius = d.r;
+        if (isCollapsed && vertexMap) {
+          // Calculate child count for this group
+          let childCount = 0;
+          vertexMap.forEach(vertex => {
+            if (!vertex.isGroup && !vertex.isVirtual && vertex.parentId === d.data.id) {
+              childCount++;
+            }
+          });
+          adjustedRadius = GroupUtils.getCollapsedRadius(d.r, nodeRadius, childCount);
+        }
+        
         const circle = {
           id: d.data.id,
           x: d.x + 25,
           y: d.y + 25,
-          r: d.r,
+          r: adjustedRadius,
           isApp: d.data.id.startsWith('app-'),
           isCluster: d.data.id.startsWith('cluster')
         };
@@ -502,6 +578,31 @@ export class EdgeUtils {
       y1: sourcePos.y,
       x2: sourcePos.x + dx * ratio,
       y2: sourcePos.y + dy * ratio
+    };
+  }
+
+  /**
+   * Shorten edge coordinates from both ends
+   * @param {Object} sourcePos - Source position {x, y}
+   * @param {Object} targetPos - Target position {x, y}
+   * @param {number} shortenBySource - Amount to shorten from source
+   * @param {number} shortenByTarget - Amount to shorten from target
+   * @returns {Object} Adjusted coordinates {x1, y1, x2, y2}
+   */
+  static shortenEdgeForBothEnds(sourcePos, targetPos, shortenBySource, shortenByTarget) {
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+    
+    // Calculate ratios for both ends
+    const sourceRatio = shortenBySource / length;
+    const targetRatio = (length - shortenByTarget) / length;
+    
+    return {
+      x1: sourcePos.x + dx * sourceRatio,
+      y1: sourcePos.y + dy * sourceRatio,
+      x2: sourcePos.x + dx * targetRatio,
+      y2: sourcePos.y + dy * targetRatio
     };
   }
 
