@@ -320,8 +320,8 @@ export class GraphRenderer {
     // Apply application-specific highlighting
     HighlightingUtils.selectApplicationGroups(this.context, appName, event.shiftKey);
     
-    // Note: We don't emit click events for application groups since they are purely
-    // visual highlighting within the graph and should not trigger App.vue's node selection logic
+    // Emit click event to show group details panel (matching tutorial expectations)
+    this.emitClickEvent(d, event, 'group');
   }
 
   /**
