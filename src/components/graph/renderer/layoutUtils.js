@@ -12,7 +12,7 @@ export class LayoutUtils {
   /**
    * Calculate optimal canvas size based on graph complexity
    */
-  static calculateOptimalCanvasSize(renderer, hierarchyRoot) {
+  static calculateOptimalCanvasSize(context, hierarchyRoot) {
     // Count nodes at each level
     let leafNodes = 0;
     let groupNodes = 0;
@@ -47,13 +47,13 @@ export class LayoutUtils {
     const groupFactor = Math.log10(groupNodes + 1) * 0.1;  // Use log for gentler scaling
 
     // Padding contributes to scale
-    const paddingFactor = renderer.options.nodePadding / 200;  // Much smaller contribution
+    const paddingFactor = context.options.nodePadding / 200;  // Much smaller contribution
 
     // Calculate final scale (minimum 1x, typically 1.1-1.5x for complex graphs)
     const scale = Math.max(1, 1 + leafFactor + depthFactor + groupFactor + paddingFactor);
 
-    const canvasWidth = renderer.options.width * scale;
-    const canvasHeight = renderer.options.height * scale;
+    const canvasWidth = context.options.width * scale;
+    const canvasHeight = context.options.height * scale;
 
     console.log(`Canvas scaling: leaf(${leafFactor.toFixed(2)}) + depth(${depthFactor.toFixed(2)}) + group(${groupFactor.toFixed(2)}) + padding(${paddingFactor.toFixed(2)}) = ${scale.toFixed(2)}x`);
     console.log(`Final canvas: ${canvasWidth.toFixed(0)}x${canvasHeight.toFixed(0)}`);
@@ -64,9 +64,9 @@ export class LayoutUtils {
   /**
    * Calculate circle packing layout with optional radial positioning for root leaf nodes
    */
-  static calculatePack(renderer, hierarchyRoot) {
+  static calculatePack(context, hierarchyRoot) {
     // Calculate optimal canvas size based on graph complexity
-    const { width, height } = LayoutUtils.calculateOptimalCanvasSize(renderer, hierarchyRoot);
+    const { width, height } = LayoutUtils.calculateOptimalCanvasSize(context, hierarchyRoot);
     const centerX = width / 2;
     const centerY = height / 2;
 
@@ -89,20 +89,20 @@ export class LayoutUtils {
 
           if (childrenAreLeafNodes) {
             // This parent's children are leaf nodes - use nodePadding
-            return renderer.options.nodePadding;
+            return context.options.nodePadding;
           } else {
             // This parent's children are groups - use groupPadding
-            return renderer.options.groupPadding;
+            return context.options.groupPadding;
           }
         }
 
         // Fallback (shouldn't happen since padding is only called for parents)
-        return renderer.options.nodePadding;
+        return context.options.nodePadding;
       })
       .radius(d => {
         // Set explicit radius for leaf nodes based on nodeRadius setting
         if (!d.children || d.children.length === 0) {
-          return renderer.options.nodeRadius;
+          return context.options.nodeRadius;
         }
         // Let D3 calculate radius for group nodes (parents)
         return null;
@@ -111,8 +111,8 @@ export class LayoutUtils {
     const packedRoot = pack(root);
 
     // If we have root leaf nodes to position radially, handle them specially
-    if (renderer.hybridLayout && renderer.hybridLayout.rootLeafNodes.length > 0) {
-      return LayoutUtils.addRadialLayout(renderer, packedRoot, centerX, centerY);
+    if (context.state.hybridLayout && context.state.hybridLayout.rootLeafNodes.length > 0) {
+      return LayoutUtils.addRadialLayout(context, packedRoot, centerX, centerY);
     }
 
     return packedRoot;
@@ -121,8 +121,8 @@ export class LayoutUtils {
   /**
    * Add radial positioning for root leaf nodes around the packed layout
    */
-  static addRadialLayout(renderer, packedRoot, centerX, centerY) {
-    const { rootLeafNodes, otherRootGroups } = renderer.hybridLayout;
+  static addRadialLayout(context, packedRoot, centerX, centerY) {
+    const { rootLeafNodes, otherRootGroups } = context.state.hybridLayout;
 
     console.log(`Adding radial layout: ${rootLeafNodes.length} root leaves, ${otherRootGroups.length} other groups`);
 
@@ -161,7 +161,7 @@ export class LayoutUtils {
           data: leafNode,
           x: x,
           y: y,
-          r: renderer.options.nodeRadius, // Use consistent radius (no fallback)
+          r: context.options.nodeRadius, // Use consistent radius (no fallback)
           children: null,
           parent: packedRoot,
           depth: 1,

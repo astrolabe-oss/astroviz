@@ -57,18 +57,18 @@ export class NodeUtils {
   /**
    * Build hierarchy from vertices data
    */
-  static buildHierarchy(renderer) {
-    const vertices = renderer.data.vertices;
+  static buildHierarchy(context, vertices) {
+    // Take vertices as parameter - initialization data only
     if (!vertices) return null;
 
     console.log('Raw vertices data:', vertices);
 
     // Create vertex map with clean separation between app and database properties
-    renderer.vertexMap = new Map();
+    const vertexMap = new Map();
 
     Object.entries(vertices).forEach(([id, vertex]) => {
       // Use the already properly structured data from graphTransformUtils
-      renderer.vertexMap.set(id, {
+      vertexMap.set(id, {
         // Application properties (for visualization/interaction)
         id: vertex.id || id,
         children: [],
@@ -86,16 +86,16 @@ export class NodeUtils {
 
     // Build parent-child relationships
     Object.entries(vertices).forEach(([id, vertex]) => {
-      if (vertex.parentId && renderer.vertexMap.has(vertex.parentId)) {
-        const parent = renderer.vertexMap.get(vertex.parentId);
-        const child = renderer.vertexMap.get(id);
+      if (vertex.parentId && vertexMap.has(vertex.parentId)) {
+        const parent = vertexMap.get(vertex.parentId);
+        const child = vertexMap.get(id);
         parent.children.push(child);
       }
     });
 
     // Find roots (nodes with no parentId)
     const roots = [];
-    renderer.vertexMap.forEach(vertex => {
+    vertexMap.forEach(vertex => {
       if (!vertex.parentId) {
         roots.push(vertex);
       }
@@ -109,14 +109,18 @@ export class NodeUtils {
     console.log(`Hierarchy separation: internet-boundary=${!!internetBoundaryGroup}, rootLeaves=${rootLeafNodes.length}, otherGroups=${otherRootGroups.length}`);
 
     // Store separation for hybrid layout calculation
-    renderer.hybridLayout = {
+    const hybridLayout = {
       internetBoundaryGroup,
       rootLeafNodes,
       otherRootGroups
     };
 
+    // Store results in context
+    context.state.vertexMap = vertexMap;
+    context.state.hybridLayout = hybridLayout;
+
     // For circle packing, exclude root leaf nodes - they'll be positioned radially
-    const packedRoots = renderer.hybridLayout && renderer.hybridLayout.rootLeafNodes.length > 0
+    const packedRoots = hybridLayout && hybridLayout.rootLeafNodes.length > 0
       ? roots.filter(node => node.id === 'internet-boundary' || node.isGroup)
       : roots;
 
@@ -139,9 +143,9 @@ export class NodeUtils {
   /**
    * Extract D3 positioning data back into our clean vertex structure
    */
-  static extractPositionsFromD3(renderer, packedRoot) {
+  static extractPositionsFromD3(context, packedRoot) {
     packedRoot.descendants().forEach(d => {
-      const vertex = renderer.vertexMap.get(d.data.id);
+      const vertex = context.state.vertexMap.get(d.data.id);
       if (vertex) {
         vertex.x = d.x + 25;  // Apply offset for margin
         vertex.y = d.y + 25;

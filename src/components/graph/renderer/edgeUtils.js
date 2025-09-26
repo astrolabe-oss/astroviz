@@ -92,14 +92,14 @@ export class EdgeUtils {
    * Render edges using hierarchical data and edge list
    */
   static renderEdges(context, packedRoot) {
-    if (!context.data.edges) return;
+    if (!context.state.edges) return;
 
     // Extract rendering data using utility method
     const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
       EdgeUtils.extractRenderingData(packedRoot);
 
     // Filter edges to only those with both endpoints visible
-    const visibleEdges = context.data.edges.filter(edge => {
+    const visibleEdges = context.state.edges.filter(edge => {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
 
@@ -222,7 +222,7 @@ export class EdgeUtils {
    * Internal method to do the actual edge updates
    */
   static doAllEdgesUpdate(context) {
-    if (!context.data.edges || !context.state.hierarchyRoot) {
+    if (!context.state.edges || !context.state.hierarchyRoot) {
       return;
     }
     

@@ -114,12 +114,6 @@ export class GraphRenderer {
    */
   createContext() {
     return {
-      // Data access
-      data: {
-        edges: this.data?.edges,
-        vertices: this.data?.vertices
-      },
-
       // DOM layers
       layers: {
         nodeLayer: this.nodeLayer,
@@ -132,9 +126,10 @@ export class GraphRenderer {
       state: {
         selectedNodeIds: this.selectedNodeIds,
         filteredOutNodes: this.filteredOutNodes,
-        vertexMap: this.vertexMap,
+        vertexMap: new Map(),
         hierarchyRoot: this.hierarchyRoot,
-        hybridLayout: this.hybridLayout
+        hybridLayout: {},
+        edges: this.data?.edges
       },
 
       // Interaction state
@@ -222,31 +217,10 @@ export class GraphRenderer {
    */
   setData(data) {
     this.data = data;
-    // Update context with new data
-    this.updateContextData();
+    this.context.state.edges = this.data?.edges;
     this.render();
   }
 
-  /**
-   * Update the context with current data (called when data changes)
-   */
-  updateContextData() {
-    if (this.context) {
-      this.context.data.edges = this.data?.edges;
-      this.context.data.vertices = this.data?.vertices;
-    }
-  }
-
-  /**
-   * Update the context with current state (called after hierarchy creation)
-   */
-  updateContextState() {
-    if (this.context) {
-      this.context.state.vertexMap = this.vertexMap;
-      this.context.state.hierarchyRoot = this.hierarchyRoot;
-      this.context.state.hybridLayout = this.hybridLayout;
-    }
-  }
   
   /**
    * Main render method
@@ -254,22 +228,20 @@ export class GraphRenderer {
   render() {
     if (!this.data) return;
     
-    // Build hierarchy from vertices (stores vertexMap as class property)
-    const hierarchy = NodeUtils.buildHierarchy(this);
+    // Build hierarchy from vertices (stores vertexMap in context.state)
+    const hierarchy = NodeUtils.buildHierarchy(this.context, this.data.vertices);
     if (!hierarchy) return;
 
     // Calculate positions using D3 pack
-    const packedRoot = LayoutUtils.calculatePack(this, hierarchy);
+    const packedRoot = LayoutUtils.calculatePack(this.context, hierarchy);
     if (!packedRoot) return;
 
     // Extract D3 positioning back to our vertex structure
-    NodeUtils.extractPositionsFromD3(this, packedRoot);
+    NodeUtils.extractPositionsFromD3(this.context, packedRoot);
 
     // Store the packed root for later use (e.g., drag end re-rendering)
     this.hierarchyRoot = packedRoot;
-
-    // Update context with newly created state (after hierarchyRoot is set)
-    this.updateContextState();
+    this.context.state.hierarchyRoot = this.hierarchyRoot;
 
     // Store original positions for drag reset functionality
     NodeUtils.storeOriginalPositions(this.context);
