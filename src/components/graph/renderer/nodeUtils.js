@@ -39,29 +39,16 @@ export class NodeUtils {
     );
   }
   /**
-   * Store node positions from pack layout
+   * Store original positions in vertexMap for drag reset functionality
    */
-  static storeNodePositions(renderer, packedRoot) {
-    renderer.nodePositions.clear();
-    renderer.groupPositions.clear();
-
-    // Store positions using our clean vertex structure
-    renderer.vertexMap.forEach((vertex, id) => {
+  static storeOriginalPositions(context) {
+    // Store original positions directly in vertexMap for reset functionality
+    context.state.vertexMap.forEach((vertex, id) => {
       if (!vertex.isVirtual) {
-        const position = {
-          x: vertex.x,
-          y: vertex.y,
-          originalX: vertex.x,
-          originalY: vertex.y
-        };
-
+        vertex.originalX = vertex.x;
+        vertex.originalY = vertex.y;
         if (vertex.isGroup) {
-          position.r = vertex.r;
-          position.originalR = vertex.r;
-          position.children = vertex.children ? vertex.children.map(c => c.id) : [];
-          renderer.groupPositions.set(vertex.id, position);
-        } else {
-          renderer.nodePositions.set(vertex.id, position);
+          vertex.originalR = vertex.r;
         }
       }
     });
@@ -261,9 +248,9 @@ export class NodeUtils {
     // Add drag behavior with reasonable threshold to prevent accidental drags during clicks
     const dragBehavior = d3.drag()
       .subject((event, d) => {
-        // Initialize drag subject with current node position
-        const pos = context.state.nodePositions.get(d.id);
-        return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
+        // Initialize drag subject with current node position from vertexMap
+        const vertex = context.state.vertexMap.get(d.id);
+        return vertex ? { x: vertex.x, y: vertex.y } : { x: d.x + 25, y: d.y + 25 };
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
@@ -278,85 +265,79 @@ export class NodeUtils {
    * Move a group and all its children by the given offset
    */
   static moveGroupAndChildren(context, groupId, deltaX, deltaY) {
-    const groupPos = context.state.groupPositions.get(groupId);
-    if (!groupPos) return;
+    const groupVertex = context.state.vertexMap.get(groupId);
+    if (!groupVertex || !groupVertex.isGroup) return;
 
     // Move the group itself
-    groupPos.x += deltaX;
-    groupPos.y += deltaY;
+    groupVertex.x += deltaX;
+    groupVertex.y += deltaY;
 
     // Update group visual position
     d3.select(`#group-${groupId}`)
-      .attr('cx', groupPos.x)
-      .attr('cy', groupPos.y);
+      .attr('cx', groupVertex.x)
+      .attr('cy', groupVertex.y);
 
     // Update group label container
     d3.select(`#group-label-container-${groupId}`)
-      .attr('transform', `translate(${groupPos.x}, ${groupPos.y - groupPos.r - 5})`);
+      .attr('transform', `translate(${groupVertex.x}, ${groupVertex.y - groupVertex.r - 5})`);
 
     // Move all child nodes and subgroups recursively
-    groupPos.children.forEach(childId => {
-      const childNodePos = context.state.nodePositions.get(childId);
-      const childGroupPos = context.state.groupPositions.get(childId);
+    if (groupVertex.children) {
+      groupVertex.children.forEach(child => {
+        const childVertex = context.state.vertexMap.get(child.id);
+        if (!childVertex) return;
 
-      if (childNodePos) {
-        // Move child node
-        childNodePos.x += deltaX;
-        childNodePos.y += deltaY;
+        if (childVertex.isGroup) {
+          // Recursively move child group
+          NodeUtils.moveGroupAndChildren(context, child.id, deltaX, deltaY);
+        } else {
+          // Move child node
+          childVertex.x += deltaX;
+          childVertex.y += deltaY;
 
-        // Update visual position
-        d3.select(`#node-${childId}`)
-          .attr('transform', `translate(${childNodePos.x}, ${childNodePos.y})`);
-
-
-      } else if (childGroupPos) {
-        // Recursively move child group
-        NodeUtils.moveGroupAndChildren(context, childId, deltaX, deltaY);
-      }
-    });
+          // Update visual position
+          d3.select(`#node-${child.id}`)
+            .attr('transform', `translate(${childVertex.x}, ${childVertex.y})`);
+        }
+      });
+    }
   }
 
   /**
    * Reset all nodes and groups to their original pack layout positions
    */
   static resetNodePositions(context) {
-    if (!context.state.nodePositions.size && !context.state.groupPositions.size) return;
+    if (!context.state.vertexMap.size) return;
 
-    // Animate groups back to original positions
-    context.state.groupPositions.forEach((pos, groupId) => {
-      if (pos.originalX !== undefined && pos.originalY !== undefined) {
+    // Animate all vertices back to original positions
+    context.state.vertexMap.forEach((vertex, id) => {
+      if (vertex.originalX !== undefined && vertex.originalY !== undefined) {
         // Update tracking position
-        pos.x = pos.originalX;
-        pos.y = pos.originalY;
+        vertex.x = vertex.originalX;
+        vertex.y = vertex.originalY;
 
-        // Animate group back to original position
-        d3.select(`#group-${groupId}`)
-          .transition()
-          .duration(500)
-          .attr('cx', pos.originalX)
-          .attr('cy', pos.originalY);
+        if (vertex.isGroup) {
+          vertex.r = vertex.originalR;
 
-        // Animate group label container back to original position
-        d3.select(`#group-label-container-${groupId}`)
-          .transition()
-          .duration(500)
-          .attr('transform', `translate(${pos.originalX}, ${pos.originalY - pos.r - 5})`);
-      }
-    });
+          // Animate group back to original position
+          d3.select(`#group-${id}`)
+            .transition()
+            .duration(500)
+            .attr('cx', vertex.originalX)
+            .attr('cy', vertex.originalY);
 
-    // Animate nodes back to original positions
-    context.state.nodePositions.forEach((pos, nodeId) => {
-      if (pos.originalX !== undefined && pos.originalY !== undefined) {
-        // Update tracking position
-        pos.x = pos.originalX;
-        pos.y = pos.originalY;
-
-        // Animate node back to original position
-        d3.select(`#node-${nodeId}`)
-          .transition()
-          .duration(500)
-          .attr('transform', `translate(${pos.originalX}, ${pos.originalY})`);
-
+          // Animate group label container back to original position
+          d3.select(`#group-label-container-${id}`)
+            .transition()
+            .duration(500)
+            .attr('transform', `translate(${vertex.originalX}, ${vertex.originalY - vertex.r - 5})`);
+        } else {
+          // Animate node back to original position
+          d3.select(`#node-${id}`)
+            .transition()
+            .duration(500)
+            .attr('transform', `translate(${vertex.originalX}, ${vertex.originalY})`);
+        }
       }
     });
 

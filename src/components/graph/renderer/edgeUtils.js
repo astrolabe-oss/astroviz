@@ -239,24 +239,18 @@ export class EdgeUtils {
   }
 
   /**
-   * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
+   * Sync current drag positions from vertexMap back to hierarchyRoot
    */
   static syncCurrentPositionsToHierarchy(context) {
     if (!context.state.hierarchyRoot) return;
 
     context.state.hierarchyRoot.descendants().forEach(node => {
-      if (node.data.isGroup && !node.data.isVirtual) {
-        const groupPos = context.state.groupPositions.get(node.data.id);
-        if (groupPos) {
-          node.x = groupPos.x - 25; // Remove offset used in rendering
-          node.y = groupPos.y - 25;
-          node.r = groupPos.r;
-        }
-      } else if (!node.data.isGroup && !node.data.isVirtual) {
-        const nodePos = context.state.nodePositions.get(node.data.id);
-        if (nodePos) {
-          node.x = nodePos.x - 25; // Remove offset used in rendering
-          node.y = nodePos.y - 25;
+      const vertex = context.state.vertexMap.get(node.data.id);
+      if (vertex && !vertex.isVirtual) {
+        node.x = vertex.x - 25; // Remove offset used in rendering
+        node.y = vertex.y - 25;
+        if (vertex.isGroup) {
+          node.r = vertex.r;
         }
       }
     });

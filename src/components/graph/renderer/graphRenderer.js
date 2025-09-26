@@ -28,12 +28,6 @@ export class GraphRenderer {
     this.svg = null;
     this.g = null;
 
-    // Track node positions for drag updates
-    this.nodePositions = new Map(); // nodeId -> {x, y}
-
-    // Track group positions and their children
-    this.groupPositions = new Map(); // groupId -> {x, y, r, children: []}
-
     // Track async edge update for cancellation
     this.edgeUpdateController = null;
 
@@ -138,8 +132,6 @@ export class GraphRenderer {
       state: {
         selectedNodeIds: this.selectedNodeIds,
         filteredOutNodes: this.filteredOutNodes,
-        nodePositions: this.nodePositions,
-        groupPositions: this.groupPositions,
         vertexMap: this.vertexMap,
         hierarchyRoot: this.hierarchyRoot,
         hybridLayout: this.hybridLayout
@@ -279,8 +271,8 @@ export class GraphRenderer {
     // Update context with newly created state (after hierarchyRoot is set)
     this.updateContextState();
 
-    // Store node positions for drag updates
-    NodeUtils.storeNodePositions(this, packedRoot);
+    // Store original positions for drag reset functionality
+    NodeUtils.storeOriginalPositions(this.context);
 
     // Render everything
     GroupUtils.renderGroups(this.context, packedRoot);
@@ -371,8 +363,6 @@ export class GraphRenderer {
    */
   destroy() {
     d3.select(this.container).selectAll('*').remove();
-    this.nodePositions.clear();
-    this.groupPositions.clear();
     
     // Clean up tooltip through NodeUtils
     if (NodeUtils.tooltip) {
