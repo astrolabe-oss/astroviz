@@ -4,6 +4,8 @@
  */
 
 import * as d3 from 'd3';
+import { NodeUtils } from './nodeUtils.js';
+import { EdgeUtils } from './edgeUtils.js';
 
 /**
  * HighlightingUtils - Utility class for handling graph highlighting logic
@@ -286,7 +288,7 @@ export class HighlightingUtils {
         const node = d3.select(this);
 
         // Reset to normal state (which automatically handles filter dimming)
-        context.styling.applyNodeStyle(node, 'normal', d);
+        NodeUtils.applyNodeStyle(node, 'normal', d, context.styling, context.state.filteredOutNodes);
       });
     }
 
@@ -301,7 +303,7 @@ export class HighlightingUtils {
         }
 
         // Reset to normal state (which automatically handles filter dimming)
-        context.styling.applyEdgeStyle(edge, 'normal');
+        EdgeUtils.applyEdgeStyle(edge, 'normal', context.styling, context.state.filteredOutNodes);
 
         // Clear stored values after reset
         edge.attr('data-original-stroke', null)
@@ -328,7 +330,7 @@ export class HighlightingUtils {
         node.attr('data-original-color', null);
 
         // Use unified styling - but ignore filter states (this is a complete clear)
-        context.styling.applyNodeStyle(node, 'normal', d);
+        NodeUtils.applyNodeStyle(node, 'normal', d, context.styling, context.state.filteredOutNodes);
       });
     }
 
@@ -344,7 +346,7 @@ export class HighlightingUtils {
         }
 
         // Use unified styling
-        context.styling.applyEdgeStyle(edge, 'normal');
+        EdgeUtils.applyEdgeStyle(edge, 'normal', context.styling, context.state.filteredOutNodes);
 
         // Clear stored values after reset
         edge.attr('data-original-stroke', null)
@@ -390,7 +392,7 @@ export class HighlightingUtils {
       const node = context.layers.nodeLayer.select(`#node-${nodeId}`);
       if (!node.empty()) {
         node.each(function(d) {
-          context.styling.applyNodeStyle(d3.select(this), 'path', d);
+          NodeUtils.applyNodeStyle(d3.select(this), 'path', d, context.styling, context.state.filteredOutNodes);
         });
         HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'path' });
       }
@@ -410,7 +412,7 @@ export class HighlightingUtils {
             edge.attr('data-original-stroke', edge.attr('stroke'))
                 .attr('data-original-stroke-width', edge.attr('stroke-width'));
           }
-          context.styling.applyEdgeStyle(edge, 'path');
+          EdgeUtils.applyEdgeStyle(edge, 'path', context.styling, context.state.filteredOutNodes);
           HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: 'path' });
         }
       });
@@ -451,7 +453,7 @@ export class HighlightingUtils {
       const node = context.layers.nodeLayer.select(`#node-${nodeId}`);
       if (!node.empty()) {
         node.each(function(d) {
-          context.styling.applyNodeStyle(d3.select(this), 'connected', d);
+          NodeUtils.applyNodeStyle(d3.select(this), 'connected', d, context.styling, context.state.filteredOutNodes);
         });
         HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'connected' });
       }
@@ -476,7 +478,7 @@ export class HighlightingUtils {
           const isInbound = target === HighlightingUtils.state.headNode;
           const edgeType = isInbound ? 'connected-inbound' : 'connected';
           
-          context.styling.applyEdgeStyle(edge, edgeType);
+          EdgeUtils.applyEdgeStyle(edge, edgeType, context.styling, context.state.filteredOutNodes);
           HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: edgeType });
         }
       });
@@ -494,7 +496,7 @@ export class HighlightingUtils {
       const isInPath = HighlightingUtils.state.tracePath.nodes.has(nodeId);
       node.each(function(d) {
         // Use 'path' style if node is in path, otherwise 'head'
-        context.styling.applyNodeStyle(d3.select(this), isInPath ? 'path' : 'head', d);
+        NodeUtils.applyNodeStyle(d3.select(this), isInPath ? 'path' : 'head', d, context.styling, context.state.filteredOutNodes);
       });
       HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'head' });
     }
@@ -517,7 +519,7 @@ export class HighlightingUtils {
     nodeElement.each(function(d) {
       const node = d3.select(this);
       // Use head style for directly selected, connected style otherwise
-      context.styling.applyNodeStyle(node, isDirectlySelected ? 'head' : 'connected', d);
+      NodeUtils.applyNodeStyle(node, isDirectlySelected ? 'head' : 'connected', d, context.styling, context.state.filteredOutNodes);
     });
   }
 

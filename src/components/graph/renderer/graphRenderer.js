@@ -6,28 +6,7 @@ import { LayoutUtils } from './layoutUtils.js';
 import { InteractionUtils } from './interactionUtils.js';
 import { FilteringUtils } from './filteringUtils.js';
 import { HighlightingUtils } from './highlightingUtils.js';
-
-/**
- * Supported style properties for graph elements
- * Each property maps to an SVG attribute and has a default value
- */
-const SUPPORTED_STYLES = {
-  fill: { attr: 'fill', default: 'none' },
-  stroke: { attr: 'stroke', default: '#5B8FF9' },
-  strokeWidth: { attr: 'stroke-width', default: 2 },
-  strokeDasharray: { attr: 'stroke-dasharray', default: null },
-  opacity: { attr: 'opacity', default: 0.6 }
-};
-
-/**
- * Get default dash pattern based on node type/id
- */
-function getDefaultDashPattern(vertex) {
-  if (vertex.id.startsWith('app')) return '3,3';        // Short dash for apps
-  if (vertex.id.startsWith('cluster')) return '8,4';     // Medium dash for clusters
-  if (vertex.id === 'private-network') return '5,5';     // Default dash for private network
-  return null;  // No dash for others
-}
+import { GroupUtils } from './groupUtils.js';
 
 /**
  * GraphRenderer - D3 hierarchical graph renderer with advanced edge styling
@@ -176,17 +155,13 @@ export class GraphRenderer {
       // SVG definitions
       defs: this.defs,
 
-      // Style methods
-      styling: {
-        applyNodeStyle: this.applyNodeStyle.bind(this),
-        applyEdgeStyle: this.applyEdgeStyle.bind(this)
-      },
+      // Style configuration
+      styling: this.styling,
 
       // UI handlers
       ui: {
         handleNodeClick: this.handleNodeClick.bind(this),
-        showTooltip: this.showTooltip.bind(this),
-        hideTooltip: this.hideTooltip.bind(this)
+        handleGroupClick: this.handleGroupClick.bind(this)
       },
 
       // Options
@@ -194,51 +169,6 @@ export class GraphRenderer {
     };
   }
 
-  /**
-   * Unified node styling function - Orchestrates highlight and filter styling
-   * @param {d3.Selection} nodeSelection - D3 selection of node(s) to style
-   * @param {string} state - 'normal'|'path'|'head'|'connected'|'dimmed'
-   * @param {Object} nodeData - Node data for type-specific styling
-   */
-  applyNodeStyle(nodeSelection, state, nodeData = null) {
-    // Apply highlighting styles
-    HighlightingUtils.applyHighlightStyleToNode(
-      nodeSelection, 
-      state, 
-      nodeData, 
-      this.styling
-    );
-    
-    // Apply filtering styles
-    const nodeId = nodeData?.id || nodeSelection.attr('id')?.replace('node-', '');
-    FilteringUtils.applyFilterStyleToNode(
-      nodeSelection,
-      nodeId,
-      this.filteredOutNodes
-    );
-  }
-
-
-  /**
-   * Unified edge styling function - Orchestrates highlight and filter styling
-   * @param {d3.Selection} edgeSelection - D3 selection of edge(s) to style
-   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'|'connected-inbound'
-   */
-  applyEdgeStyle(edgeSelection, state) {
-    // Apply highlighting styles
-    HighlightingUtils.applyHighlightStyleToEdge(
-      edgeSelection, 
-      state, 
-      this.styling
-    );
-    
-    // Apply filtering styles with edge state information
-    FilteringUtils.applyFilterStyleToEdge(
-      edgeSelection,
-      this.filteredOutNodes,
-      state
-    );
-  }
 
 
   /**
@@ -265,31 +195,8 @@ export class GraphRenderer {
     // Add definitions for gradients and markers
     this.defs = this.svg.append('defs');
     
-    // Create arrow marker definitions for different states
-    const createArrowMarker = (id, color) => {
-      const marker = this.defs.append('marker')
-        .attr('id', id)
-        .attr('viewBox', '0 0 10 10')
-        .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
-        .attr('refY', 5)
-        .attr('markerWidth', 5)  // Half the original size
-        .attr('markerHeight', 5)  // Half the original size
-        .attr('orient', 'auto-start-reverse');
-      
-      marker.append('path')
-        .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-        .attr('fill', color)
-        .attr('opacity', 1.0);
-    };
-
-    // Default gray arrow for normal edges
-    createArrowMarker('arrow', '#888');
-    
-    // Purple arrow for connected (highlighted) edges  
-    createArrowMarker('arrow-connected', '#4444ff');
-    
-    // Gold arrow for path (trace) edges
-    createArrowMarker('arrow-path', '#FFA500');
+    // Initialize edge markers through EdgeUtils
+    EdgeUtils.initArrowMarkers(this.defs);
     
     // Main group for zooming/panning
     this.g = this.svg.append('g');
@@ -376,7 +283,7 @@ export class GraphRenderer {
     NodeUtils.storeNodePositions(this, packedRoot);
 
     // Render everything
-    this.renderGroups(packedRoot);
+    GroupUtils.renderGroups(this.context, packedRoot);
     NodeUtils.renderNodes(this.context, packedRoot);
     EdgeUtils.renderEdges(this.context, packedRoot);
     
@@ -384,121 +291,6 @@ export class GraphRenderer {
     LayoutUtils.fitToView(this.context, packedRoot);
   }
 
-  /**
-   * Render group circles
-   */
-  renderGroups(packedRoot) {
-    const groups = Array.from(this.vertexMap.values())
-      .filter(vertex => vertex.isGroup && !vertex.isVirtual);
-    
-    const groupElements = this.groupLayer
-      .selectAll('circle.group')
-      .data(groups, vertex => vertex.id)
-      .join('circle')
-      .attr('class', 'group')
-      .attr('id', vertex => `group-${vertex.id}`)
-      .attr('cx', vertex => vertex.x)
-      .attr('cy', vertex => vertex.y)
-      .attr('r', vertex => vertex.r)
-      .style('cursor', 'grab')
-      .on('click', (event, vertex) => {
-        this.handleGroupClick(event, vertex);
-      });
-    
-    // Apply all supported styles from the style object
-    groupElements.each(function(d) {
-      const element = d3.select(this);
-      
-      Object.entries(SUPPORTED_STYLES).forEach(([styleProp, config]) => {
-        // Check for style in nested style object first, then fall back to legacy flat properties
-        let value = d.style?.[styleProp] ?? d.data?.[styleProp] ?? config.default;
-        
-        // Special handling for strokeDasharray - use type-based defaults if not specified
-        if (styleProp === 'strokeDasharray' && !value && !d.style?.strokeDasharray) {
-          value = getDefaultDashPattern(d);
-        }
-        
-        if (value !== null && value !== undefined) {
-          element.attr(config.attr, value);
-        }
-      });
-    });
-    
-    // Group labels with backgrounds (like old D3 force styling) - moved to label layer
-    const groupLabelElements = this.labelLayer
-      .selectAll('g.group-label-container')
-      .data(groups, vertex => vertex.id)
-      .join('g')
-      .attr('class', 'group-label-container')
-      .attr('id', vertex => `group-label-container-${vertex.id}`)
-      .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y - vertex.r - 5})`);
-
-    // Add label backgrounds
-    groupLabelElements.each(function(d) {
-      const group = d3.select(this);
-
-      // Remove prefixes from label text
-      let labelText = d.label || d.id;
-      if (labelText.startsWith('App: ')) {
-        labelText = labelText.substring(5);
-      } else if (labelText.startsWith('Cluster: ')) {
-        labelText = labelText.substring(9);
-      }
-
-      // Get the group's fill color (same logic as group rendering)
-      const groupFillColor = d.style?.fill ?? d.data?.fill ?? 'none';
-
-      // Create temporary text to measure width
-      const tempText = group.append('text')
-        .attr('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' :
-                          d.id.startsWith('cluster') ? '14px' : '12px')
-        .attr('font-weight', 'bold')
-        .text(labelText)
-        .style('visibility', 'hidden');
-
-      const bbox = tempText.node().getBBox();
-      tempText.remove();
-
-      // Add background rectangle with group's fill color
-      group.append('rect')
-        .attr('x', -bbox.width/2 - 4)
-        .attr('y', -bbox.height/2 - 2)
-        .attr('width', bbox.width + 8)
-        .attr('height', bbox.height + 4)
-        .attr('rx', 3)
-        .attr('fill', groupFillColor !== 'none' ? groupFillColor : 'rgba(240, 240, 245, 0.85)')
-        .attr('stroke', '#999')
-        .attr('stroke-width', 1);
-
-      // Add label text
-      group.append('text')
-        .attr('class', 'group-label')
-        .attr('text-anchor', 'middle')
-        .attr('dominant-baseline', 'middle')
-        .style('font-size', d.id === 'internet-boundary' || d.id === 'private-network' ? '16px' :
-                           d.id.startsWith('cluster') ? '14px' : '12px')
-        .style('font-weight', 'bold')
-        .style('fill', d.id === 'internet-boundary' || d.id === 'private-network' ? '#333' : '#555')
-        .style('pointer-events', 'none')
-        .text(labelText);
-    });
-    
-    // Add drag behavior to groups with reasonable threshold
-    const groupDragBehavior = d3.drag()
-      .subject((event, d) => {
-        // Initialize drag subject with current group position
-        const pos = this.groupPositions.get(d.id);
-        return pos ? { x: pos.x, y: pos.y } : { x: d.x, y: d.y };
-      })
-      .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
-      .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => InteractionUtils.onGroupDragStart(this.context, event, d))
-      .on('drag', (event, d) => InteractionUtils.onGroupDrag(this.context, event, d))
-      .on('end', (event, d) => InteractionUtils.onGroupDragEnd(this.context, event, d));
-    
-    groupElements.call(groupDragBehavior);
-  }
-  
 
   /**
    * Unified click handler for groups
@@ -574,58 +366,6 @@ export class GraphRenderer {
     }
   }
 
-
-
-
-
-
-
-  /**
-   * Show tooltip on node hover
-   */
-  showTooltip(event, nodeData) {
-    // Create tooltip if it doesn't exist
-    if (!this.tooltip) {
-      this.tooltip = d3.select('body')
-        .append('div')
-        .attr('class', 'graph-tooltip')
-        .style('position', 'absolute')
-        .style('background', 'rgba(0, 0, 0, 0.8)')
-        .style('color', 'white')
-        .style('padding', '8px')
-        .style('border-radius', '4px')
-        .style('font-size', '12px')
-        .style('pointer-events', 'none')
-        .style('z-index', '9999')
-        .style('opacity', 0);
-    }
-
-    // Build tooltip content
-    let content = `Type: ${nodeData.type || 'Unknown'}`;
-    if (nodeData.name) {
-      content += `\nName: ${nodeData.name}`;
-    }
-    if (nodeData.address) {
-      content += `\nAddress: ${nodeData.address}`;
-    }
-
-    // Show tooltip with content
-    this.tooltip
-      .html(content.replace(/\n/g, '<br>'))
-      .style('left', (event.pageX + 10) + 'px')
-      .style('top', (event.pageY - 10) + 'px')
-      .style('opacity', 1);
-  }
-
-  /**
-   * Hide tooltip
-   */
-  hideTooltip() {
-    if (this.tooltip) {
-      this.tooltip.style('opacity', 0);
-    }
-  }
-  
   /**
    * Cleanup
    */
@@ -634,10 +374,10 @@ export class GraphRenderer {
     this.nodePositions.clear();
     this.groupPositions.clear();
     
-    // Clean up tooltip
-    if (this.tooltip) {
-      this.tooltip.remove();
-      this.tooltip = null;
+    // Clean up tooltip through NodeUtils
+    if (NodeUtils.tooltip) {
+      NodeUtils.tooltip.remove();
+      NodeUtils.tooltip = null;
     }
   }
 

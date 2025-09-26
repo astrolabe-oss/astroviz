@@ -7,8 +7,58 @@
  */
 
 import { HighlightingUtils } from './highlightingUtils.js';
+import { FilteringUtils } from './filteringUtils.js';
 
 export class EdgeUtils {
+  /**
+   * Initialize arrow markers for edges
+   * @param {d3.Selection} defs - SVG defs section
+   */
+  static initArrowMarkers(defs) {
+    const createArrowMarker = (id, color) => {
+      const marker = defs.append('marker')
+        .attr('id', id)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
+        .attr('refY', 5)
+        .attr('markerWidth', 5)  // Half the original size
+        .attr('markerHeight', 5)  // Half the original size
+        .attr('orient', 'auto-start-reverse');
+      
+      marker.append('path')
+        .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+        .attr('fill', color)
+        .attr('opacity', 1.0);
+    };
+
+    // Create all arrow markers for different edge states
+    createArrowMarker('arrow', '#888');                    // Default gray arrow for normal edges
+    createArrowMarker('arrow-connected', '#4444ff');       // Purple arrow for connected (highlighted) edges  
+    createArrowMarker('arrow-path', '#FFA500');            // Gold arrow for path (trace) edges
+  }
+
+  /**
+   * Unified edge styling function - Orchestrates highlight and filter styling
+   * @param {d3.Selection} edgeSelection - D3 selection of edge(s) to style
+   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'|'connected-inbound'
+   * @param {Object} styling - Styling configuration object
+   * @param {Set} filteredOutNodes - Set of filtered node IDs
+   */
+  static applyEdgeStyle(edgeSelection, state, styling, filteredOutNodes) {
+    // Apply highlighting styles
+    HighlightingUtils.applyHighlightStyleToEdge(
+      edgeSelection, 
+      state, 
+      styling
+    );
+    
+    // Apply filtering styles with edge state information
+    FilteringUtils.applyFilterStyleToEdge(
+      edgeSelection,
+      filteredOutNodes,
+      state
+    );
+  }
   /**
    * Create or update gradient for an edge
    */

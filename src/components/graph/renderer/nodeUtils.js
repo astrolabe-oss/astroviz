@@ -9,8 +9,35 @@
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
 import { InteractionUtils } from './interactionUtils.js';
+import { HighlightingUtils } from './highlightingUtils.js';
+import { FilteringUtils } from './filteringUtils.js';
 
 export class NodeUtils {
+  /**
+   * Unified node styling function - Orchestrates highlight and filter styling
+   * @param {d3.Selection} nodeSelection - D3 selection of node(s) to style
+   * @param {string} state - 'normal'|'path'|'head'|'connected'|'dimmed'
+   * @param {Object} nodeData - Node data for type-specific styling
+   * @param {Object} styling - Styling configuration object
+   * @param {Set} filteredOutNodes - Set of filtered node IDs
+   */
+  static applyNodeStyle(nodeSelection, state, nodeData, styling, filteredOutNodes) {
+    // Apply highlighting styles
+    HighlightingUtils.applyHighlightStyleToNode(
+      nodeSelection, 
+      state, 
+      nodeData, 
+      styling
+    );
+    
+    // Apply filtering styles
+    const nodeId = nodeData?.id || nodeSelection.attr('id')?.replace('node-', '');
+    FilteringUtils.applyFilterStyleToNode(
+      nodeSelection,
+      nodeId,
+      filteredOutNodes
+    );
+  }
   /**
    * Store node positions from pack layout
    */
@@ -157,11 +184,11 @@ export class NodeUtils {
       })
       .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
-        context.ui.showTooltip(event, vertex.data);
+        NodeUtils.showNodeTooltip(event, vertex.data);
       })
       .on('mouseout', () => {
         // Hide tooltip
-        context.ui.hideTooltip();
+        NodeUtils.hideNodeTooltip();
       });
 
     // Add icons to node elements (like the old GraphVisualization.vue)
@@ -339,5 +366,53 @@ export class NodeUtils {
         EdgeUtils.updateAllEdgesAsync(context);
       });
     }, 100);
+  }
+
+  /**
+   * Show tooltip on node hover
+   * @param {Event} event - Mouse event
+   * @param {Object} nodeData - Node data object
+   */
+  static showNodeTooltip(event, nodeData) {
+    // Create tooltip if it doesn't exist
+    if (!NodeUtils.tooltip) {
+      NodeUtils.tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'graph-tooltip')
+        .style('position', 'absolute')
+        .style('background', 'rgba(0, 0, 0, 0.8)')
+        .style('color', 'white')
+        .style('padding', '8px')
+        .style('border-radius', '4px')
+        .style('font-size', '12px')
+        .style('pointer-events', 'none')
+        .style('z-index', '9999')
+        .style('opacity', 0);
+    }
+
+    // Build tooltip content
+    let content = `Type: ${nodeData.type || 'Unknown'}`;
+    if (nodeData.name) {
+      content += `\nName: ${nodeData.name}`;
+    }
+    if (nodeData.address) {
+      content += `\nAddress: ${nodeData.address}`;
+    }
+
+    // Show tooltip with content
+    NodeUtils.tooltip
+      .html(content.replace(/\n/g, '<br>'))
+      .style('left', (event.pageX + 10) + 'px')
+      .style('top', (event.pageY - 10) + 'px')
+      .style('opacity', 1);
+  }
+
+  /**
+   * Hide node tooltip
+   */
+  static hideNodeTooltip() {
+    if (NodeUtils.tooltip) {
+      NodeUtils.tooltip.style('opacity', 0);
+    }
   }
 }
