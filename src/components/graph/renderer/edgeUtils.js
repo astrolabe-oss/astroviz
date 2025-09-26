@@ -89,17 +89,17 @@ export class EdgeUtils {
   }
 
   /**
-   * Render edges using hierarchical data and edge list
+   * Render edges using vertexMap data and edge list
    */
-  static renderEdges(context, packedRoot) {
-    if (!context.data.edges) return;
+  static renderEdges(context) {
+    if (!context.state.edges) return;
 
     // Extract rendering data using utility method
     const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
-      EdgeUtils.extractRenderingData(packedRoot);
+      EdgeUtils.extractRenderingDataFromVertexMap(context.state.vertexMap);
 
     // Filter edges to only those with both endpoints visible
-    const visibleEdges = context.data.edges.filter(edge => {
+    const visibleEdges = context.state.edges.filter(edge => {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
 
@@ -222,15 +222,12 @@ export class EdgeUtils {
    * Internal method to do the actual edge updates
    */
   static doAllEdgesUpdate(context) {
-    if (!context.data.edges || !context.state.hierarchyRoot) {
+    if (!context.state.edges) {
       return;
     }
     
-    // Sync current drag positions back to hierarchyRoot before rendering
-    EdgeUtils.syncCurrentPositionsToHierarchy(context);
-
-    // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
-    EdgeUtils.renderEdges(context, context.state.hierarchyRoot);
+    // Call renderEdges using current vertexMap positions - no sync needed!
+    EdgeUtils.renderEdges(context);
 
     // Reapply highlighting if we have active selections
     if (HighlightingUtils.state.headNode) {
@@ -238,29 +235,6 @@ export class EdgeUtils {
     }
   }
 
-  /**
-   * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
-   */
-  static syncCurrentPositionsToHierarchy(context) {
-    if (!context.state.hierarchyRoot) return;
-
-    context.state.hierarchyRoot.descendants().forEach(node => {
-      if (node.data.isGroup && !node.data.isVirtual) {
-        const groupPos = context.state.groupPositions.get(node.data.id);
-        if (groupPos) {
-          node.x = groupPos.x - 25; // Remove offset used in rendering
-          node.y = groupPos.y - 25;
-          node.r = groupPos.r;
-        }
-      } else if (!node.data.isGroup && !node.data.isVirtual) {
-        const nodePos = context.state.nodePositions.get(node.data.id);
-        if (nodePos) {
-          node.x = nodePos.x - 25; // Remove offset used in rendering
-          node.y = nodePos.y - 25;
-        }
-      }
-    });
-  }
 
   /**
    * Calculate edge segments with flexible group filtering
@@ -456,70 +430,69 @@ export class EdgeUtils {
 
 
   /**
-   * Extract rendering data from D3 hierarchy for edge processing
-   * @param {Object} packedRoot - D3 packed hierarchy root
+   * Extract rendering data from vertexMap for edge processing
+   * @param {Map} vertexMap - Map of vertices with current positions
    * @returns {Object} Object with position maps and group data
    */
-  static extractRenderingData(packedRoot) {
-    // Create position map for nodes
+  static extractRenderingDataFromVertexMap(vertexMap) {
+    // Create position map from vertexMap
     const positionMap = new Map();
-    packedRoot.descendants().forEach(d => {
-      if (!d.data.isVirtual) {
-        positionMap.set(d.data.id, { x: d.x + 25, y: d.y + 25 });
-      }
-    });
-    
-    // Create group circles map for intersection detection
     const applicationGroups = [];
     const clusterGroups = [];
     const nodeToAppMap = new Map();
     const nodeToClusterMap = new Map();
     
-    // Build group data and node mappings
-    packedRoot.descendants().forEach(d => {
-      if (d.data.isGroup && !d.data.isVirtual) {
-        const circle = {
-          id: d.data.id,
-          x: d.x + 25,
-          y: d.y + 25,
-          r: d.r,
-          isApp: d.data.id.startsWith('app-'),
-          isCluster: d.data.id.startsWith('cluster')
-        };
+    // Process all vertices
+    vertexMap.forEach((vertex, id) => {
+      if (!vertex.isVirtual) {
+        // Add position for all vertices (nodes and groups)
+        positionMap.set(id, { x: vertex.x, y: vertex.y });
         
-        // Track application groups
-        if (circle.isApp) {
-          applicationGroups.push(circle);
+        // Process groups for intersection detection
+        if (vertex.isGroup) {
+          const circle = {
+            id: vertex.id,
+            x: vertex.x,
+            y: vertex.y,
+            r: vertex.r,
+            isApp: vertex.id.startsWith('app-'),
+            isCluster: vertex.id.startsWith('cluster')
+          };
           
-          // Map all child nodes to this application
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToAppMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
+          // Track application groups
+          if (circle.isApp) {
+            applicationGroups.push(circle);
+            
+            // Map all child nodes to this application
+            if (vertex.children) {
+              const mapChildNodes = (child) => {
+                if (!child.isGroup) {
+                  nodeToAppMap.set(child.id, vertex.id);
+                }
+                if (child.children) {
+                  child.children.forEach(mapChildNodes);
+                }
+              };
+              vertex.children.forEach(mapChildNodes);
+            }
           }
-        }
-        
-        // Track cluster groups
-        if (circle.isCluster) {
-          clusterGroups.push(circle);
           
-          // Map all child nodes to this cluster
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToClusterMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
+          // Track cluster groups  
+          if (circle.isCluster) {
+            clusterGroups.push(circle);
+            
+            // Map all child nodes to this cluster
+            if (vertex.children) {
+              const mapChildNodes = (child) => {
+                if (!child.isGroup) {
+                  nodeToClusterMap.set(child.id, vertex.id);
+                }
+                if (child.children) {
+                  child.children.forEach(mapChildNodes);
+                }
+              };
+              vertex.children.forEach(mapChildNodes);
+            }
           }
         }
       }

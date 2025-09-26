@@ -38,6 +38,29 @@
       </div>
     </div>
 
+    <!-- Group Inventory Section (for groups with children) -->
+    <div class="detail-section" v-if="node.children && node.children.length > 0">
+      <div class="connections-container inventory-container">
+        <div class="connections-header inventory-header">
+          <h5>Inventory ({{ node.children.length }} nodes)</h5>
+        </div>
+        <div class="inventory-content">
+        <div v-for="(typeGroup, type) in groupedChildren" :key="type" class="inventory-type-group">
+          <h6 class="inventory-type-header">{{ type }} ({{ typeGroup.length }})</h6>
+          <ul class="inventory-list">
+            <li v-for="child in typeGroup" :key="child.id" class="inventory-item">
+              <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(child.type) }">
+                {{ child.type }}
+              </span>
+              <span class="inventory-details">
+                {{ child.name }} - {{ child.address || 'No address' }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      </div>
+    </div>
 
     <!-- Node Relationships Section -->
     <div class="detail-section" v-if="hasAnyRelationships">
@@ -225,6 +248,31 @@ export default {
       });
 
       return result;
+    },
+
+    /**
+     * Group children by type for inventory display
+     */
+    groupedChildren() {
+      if (!this.node.children || !Array.isArray(this.node.children)) {
+        return {};
+      }
+      
+      const grouped = {};
+      this.node.children.forEach(child => {
+        const type = child.type || 'Unknown';
+        if (!grouped[type]) {
+          grouped[type] = [];
+        }
+        grouped[type].push(child);
+      });
+      
+      // Sort each group by name
+      Object.keys(grouped).forEach(type => {
+        grouped[type].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      });
+      
+      return grouped;
     },
 
     /**
@@ -742,5 +790,58 @@ export default {
 .connection-details:hover {
   text-decoration: underline;
   color: #4A98E3;
+}
+
+/* Inventory Section Styles */
+.inventory-header {
+  background-color: #E3F2FD;
+  border-bottom: 1px solid #BBDEFB;
+}
+
+.inventory-header::before {
+  background-color: #2196F3;
+}
+
+.inventory-content {
+  padding: 4px;
+}
+
+.inventory-type-group {
+  margin-bottom: 12px;
+  padding: 4px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.inventory-type-header {
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px;
+}
+
+.inventory-list {
+  list-style-type: none;
+  padding-left: 4px;
+  margin: 0;
+}
+
+.inventory-item {
+  margin-bottom: 4px;
+  padding: 3px 0;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.inventory-details {
+  flex: 1;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

@@ -46,7 +46,6 @@ import GraphControls from './graph/GraphControls.vue';
 import GraphLegend from './graph/GraphLegend.vue';
 import GraphStats from './graph/GraphStats.vue';
 import RenderingStatus from './graph/RenderingStatus.vue';
-import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
   name: 'NetworkGraph',
@@ -99,8 +98,8 @@ export default {
      * @param {Object} event The DOM event object
      */
     onNodeClick(node, event) {
-      // Pass node data and shift key state to parent
-      this.$emit('node-clicked', node, event?.shiftKey);
+      // Pass node data and event to parent
+      this.$emit('node-clicked', node, event);
     },
 
 
@@ -155,17 +154,6 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
-      }
-    },
-
-    /**
-     * Select/highlight a node by its ID
-     * @param {string} nodeId The ID of the node to select
-     * @param {boolean} appendToSelection Whether to add to existing selection
-     */
-    selectNodeById(nodeId, appendToSelection = false) {
-      if (this.$refs.visualization) {
-        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
       }
     }
   }

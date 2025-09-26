@@ -221,7 +221,7 @@ export class HighlightingUtils {
       const prevHead = HighlightingUtils.state.headNode;
 
       // Check if directly connected to previous head
-      const directEdge = context.data.edges?.find(edge =>
+      const directEdge = context.state.edges?.find(edge =>
         (edge.source === prevHead && edge.target === nodeId) ||
         (edge.source === nodeId && edge.target === prevHead)
       );
@@ -704,9 +704,9 @@ export class HighlightingUtils {
     const connectedNodes = new Set([nodeId]); // Include the node itself
     const connectedEdges = [];
 
-    if (!context.data.edges) return { nodes: connectedNodes, edges: connectedEdges };
+    if (!context.state.edges) return { nodes: connectedNodes, edges: connectedEdges };
 
-    context.data.edges.forEach((edge) => {
+    context.state.edges.forEach((edge) => {
       if (edge.source === nodeId) {
         connectedNodes.add(edge.target);
         connectedEdges.push(`${edge.source}-${edge.target}`);

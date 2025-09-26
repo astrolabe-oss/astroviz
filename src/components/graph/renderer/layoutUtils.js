@@ -9,67 +9,85 @@
 import * as d3 from 'd3';
 
 export class LayoutUtils {
-  /**
-   * Calculate optimal canvas size based on graph complexity
-   */
-  static calculateOptimalCanvasSize(renderer, hierarchyRoot) {
-    // Count nodes at each level
-    let leafNodes = 0;
-    let groupNodes = 0;
-    let maxDepth = 0;
-    let maxChildrenAtAnyLevel = 0;
+    /**
+     * Build hierarchy structure and populate vertexMap from raw vertices data
+     */
+    static buildHierarchy(context, vertices) {
+        // Take vertices as parameter - initialization data only
+        if (!vertices) return null;
 
-    // Traverse hierarchy to gather statistics
-    const traverse = (node, depth = 0) => {
-      maxDepth = Math.max(maxDepth, depth);
+        console.log('Raw vertices data:', vertices);
 
-      if (!node.children || node.children.length === 0) {
-        leafNodes++;
-      } else {
-        groupNodes++;
-        maxChildrenAtAnyLevel = Math.max(maxChildrenAtAnyLevel, node.children.length);
-        node.children.forEach(child => traverse(child, depth + 1));
-      }
-    };
+        // Create vertex map with clean separation between app and database properties
+        const vertexMap = new Map();
 
-    traverse(hierarchyRoot);
+        Object.entries(vertices).forEach(([id, vertex]) => {
+            // Use the already properly structured data from graphTransformUtils
+            vertexMap.set(id, {
+                // Application properties (for visualization/interaction)
+                id: vertex.id || id,
+                children: [],
+                isGroup: vertex.type === 'group',
+                isVirtual: vertex.isVirtual || false,
+                parentId: vertex.parentId,
+                label: vertex.label,
+                style: vertex.style,
+                x: 0, y: 0, r: 0,    // Will be set from D3 positioning
 
-    console.log(`Graph stats: ${leafNodes} leaves, ${groupNodes} groups, depth ${maxDepth}, max children ${maxChildrenAtAnyLevel}`);
+                // Database properties (clean for end users) - already separated
+                data: vertex.data  // All vertices should have data from graphTransformUtils
+            });
+        });
 
-    // Calculate scale factors based on complexity (very conservative)
-    // More leaves need more space
-    const leafFactor = Math.log10(leafNodes + 1) * 0.1;  // Use log for gentler scaling
+        // Build parent-child relationships
+        Object.entries(vertices).forEach(([id, vertex]) => {
+            if (vertex.parentId && vertexMap.has(vertex.parentId)) {
+                const parent = vertexMap.get(vertex.parentId);
+                const child = vertexMap.get(id);
+                parent.children.push(child);
+            }
+        });
 
-    // Deeper hierarchies need more space for nested circles
-    const depthFactor = maxDepth * 0.05;  // Very small increment per level
+        // Find roots (nodes with no parentId)
+        const roots = [];
+        vertexMap.forEach(vertex => {
+            if (!vertex.parentId) {
+                roots.push(vertex);
+            }
+        });
 
-    // More groups need more space for labels and padding
-    const groupFactor = Math.log10(groupNodes + 1) * 0.1;  // Use log for gentler scaling
+        // Simple approach: radial elements are root non-group elements
+        const rootRadialElements = roots.filter(node => !node.isGroup);
 
-    // Padding contributes to scale
-    const paddingFactor = renderer.options.nodePadding / 200;  // Much smaller contribution
+        console.log(`Hierarchy separation: ${rootRadialElements.length} radial elements (excluding groups)`);
 
-    // Calculate final scale (minimum 1x, typically 1.1-1.5x for complex graphs)
-    const scale = Math.max(1, 1 + leafFactor + depthFactor + groupFactor + paddingFactor);
+        // Store vertexMap in context
+        context.state.vertexMap = vertexMap;
 
-    const canvasWidth = renderer.options.width * scale;
-    const canvasHeight = renderer.options.height * scale;
+        // For circle packing, exclude radial elements - they'll be positioned radially
+        const packedRoots = rootRadialElements.length > 0
+            ? roots.filter(node => !rootRadialElements.includes(node))
+            : roots;
 
-    console.log(`Canvas scaling: leaf(${leafFactor.toFixed(2)}) + depth(${depthFactor.toFixed(2)}) + group(${groupFactor.toFixed(2)}) + padding(${paddingFactor.toFixed(2)}) = ${scale.toFixed(2)}x`);
-    console.log(`Final canvas: ${canvasWidth.toFixed(0)}x${canvasHeight.toFixed(0)}`);
+        console.log(`Hierarchy for packing: ${packedRoots.length} roots (excluded ${roots.length - packedRoots.length} radial elements)`);
 
-    return { width: canvasWidth, height: canvasHeight, scale };
-  }
+        // Create virtual root if needed, ensuring there is only one group-node at the root
+        const hierarchy = packedRoots.length === 1 ? packedRoots[0] : {
+            id: 'virtual-root',
+            type: 'group',       // Use type instead of just isGroup
+            children: packedRoots,
+            isGroup: true,
+            isVirtual: true
+        };
+
+        // Return hierarchy and elements that need radial positioning
+        return { hierarchy, rootRadialElements };
+    }
 
   /**
    * Calculate circle packing layout with optional radial positioning for root leaf nodes
    */
-  static calculatePack(renderer, hierarchyRoot) {
-    // Calculate optimal canvas size based on graph complexity
-    const { width, height } = LayoutUtils.calculateOptimalCanvasSize(renderer, hierarchyRoot);
-    const centerX = width / 2;
-    const centerY = height / 2;
-
+  static d3CirclePack(context, hierarchyRoot) {
     // Always do circle packing for the main hierarchy
     const root = d3.hierarchy(hierarchyRoot)
       .sum(d => {
@@ -78,7 +96,7 @@ export class LayoutUtils {
       });
 
     const pack = d3.pack()
-      .size([width - 50, height - 50])
+      .size([context.canvasDimensions.width - 50, context.canvasDimensions.height - 50])
       .padding(d => {
         // D3 padding function is called for PARENT nodes to set spacing between their CHILDREN
         // Check what type of children this parent has
@@ -89,79 +107,78 @@ export class LayoutUtils {
 
           if (childrenAreLeafNodes) {
             // This parent's children are leaf nodes - use nodePadding
-            return renderer.options.nodePadding;
+            return context.options.nodePadding;
           } else {
             // This parent's children are groups - use groupPadding
-            return renderer.options.groupPadding;
+            return context.options.groupPadding;
           }
         }
 
         // Fallback (shouldn't happen since padding is only called for parents)
-        return renderer.options.nodePadding;
+        return context.options.nodePadding;
       })
       .radius(d => {
         // Set explicit radius for leaf nodes based on nodeRadius setting
         if (!d.children || d.children.length === 0) {
-          return renderer.options.nodeRadius;
+          return context.options.nodeRadius;
         }
         // Let D3 calculate radius for group nodes (parents)
         return null;
       });
 
-    const packedRoot = pack(root);
-
-    // If we have root leaf nodes to position radially, handle them specially
-    if (renderer.hybridLayout && renderer.hybridLayout.rootLeafNodes.length > 0) {
-      return LayoutUtils.addRadialLayout(renderer, packedRoot, centerX, centerY);
-    }
-
-    return packedRoot;
+    return pack(root);
   }
 
   /**
    * Add radial positioning for root leaf nodes around the packed layout
    */
-  static addRadialLayout(renderer, packedRoot, centerX, centerY) {
-    const { rootLeafNodes, otherRootGroups } = renderer.hybridLayout;
+  static addRadialLayout(context, packedRoot, rootRadialElements) {
+    console.log(`Adding radial layout: ${rootRadialElements.length} radial elements`);
 
-    console.log(`Adding radial layout: ${rootLeafNodes.length} root leaves, ${otherRootGroups.length} other groups`);
-
-    // Find the internet-boundary node in the packed hierarchy
-    const internetBoundaryNode = packedRoot.descendants().find(d => d.data.id === 'internet-boundary');
-    let internetBoundaryRadius = 0;
-
-    if (internetBoundaryNode) {
-      internetBoundaryRadius = internetBoundaryNode.r;
-
-      // Center the internet boundary on the canvas
-      const offsetX = centerX - internetBoundaryNode.x;
-      const offsetY = centerY - internetBoundaryNode.y;
-
-      // Apply offset to all nodes in the packed hierarchy
-      packedRoot.descendants().forEach(node => {
-        node.x += offsetX;
-        node.y += offsetY;
-      });
+    // Find the main container node (should be the only non-virtual root in packed hierarchy)
+    const containerNodes = packedRoot.descendants().filter(d => d.depth === 1 && !d.data.isVirtual);
+    
+    if (containerNodes.length === 0) {
+      console.error('No container node found for radial positioning');
+      return packedRoot;
+    }
+    
+    if (containerNodes.length > 1) {
+      console.error(`Multiple container nodes found (${containerNodes.length}), radial positioning not supported yet`);
+      return packedRoot;
     }
 
-    // Position root leaf nodes in a ring around the private network
-    const ringRadius = internetBoundaryRadius + 80; // 80px gap from internet boundary edge
+    const containerNode = containerNodes[0];
+    const containerRadius = containerNode.r;
+
+    // Center the container on the canvas
+    const offsetX = context.canvasDimensions.centerX - containerNode.x;
+    const offsetY = context.canvasDimensions.centerY - containerNode.y;
+
+    // Apply offset to all nodes in the packed hierarchy
+    packedRoot.descendants().forEach(node => {
+      node.x += offsetX;
+      node.y += offsetY;
+    });
+
+    // Position radial elements in a ring around the main container
+    const ringRadius = containerRadius + 80; // 80px gap from container edge
     const radialNodes = [];
 
-    if (rootLeafNodes.length > 0) {
-      const angleStep = (2 * Math.PI) / rootLeafNodes.length;
+    if (rootRadialElements.length > 0) {
+      const angleStep = (2 * Math.PI) / rootRadialElements.length;
 
-      rootLeafNodes.forEach((leafNode, index) => {
+      rootRadialElements.forEach((element, index) => {
         const angle = index * angleStep;
-        const x = centerX + Math.cos(angle) * ringRadius;
-        const y = centerY + Math.sin(angle) * ringRadius;
+        const x = context.canvasDimensions.centerX + Math.cos(angle) * ringRadius;
+        const y = context.canvasDimensions.centerY + Math.sin(angle) * ringRadius;
 
         // Create a packed node structure for consistency
         const radialNode = {
-          data: leafNode,
+          data: element,
           x: x,
           y: y,
-          r: renderer.options.nodeRadius, // Use consistent radius (no fallback)
+          r: element.isGroup ? 50 : context.options.nodeRadius, // Groups get default radius, nodes use nodeRadius
           children: null,
           parent: packedRoot,
           depth: 1,
@@ -172,36 +189,11 @@ export class LayoutUtils {
       });
     }
 
-    // Handle other root groups (if any) - position them further out
-    if (otherRootGroups.length > 0) {
-      const outerRingRadius = ringRadius + 100;
-      const outerAngleStep = (2 * Math.PI) / otherRootGroups.length;
-
-      otherRootGroups.forEach((group, index) => {
-        const angle = index * outerAngleStep;
-        const x = centerX + Math.cos(angle) * outerRingRadius;
-        const y = centerY + Math.sin(angle) * outerRingRadius;
-
-        const radialGroup = {
-          data: group,
-          x: x,
-          y: y,
-          r: 50, // Default group radius
-          children: null,
-          parent: packedRoot,
-          depth: 1,
-          height: 0
-        };
-
-        radialNodes.push(radialGroup);
-      });
-    }
-
     // Add radial nodes to the packed hierarchy's descendants method
     const originalDescendants = packedRoot.descendants.bind(packedRoot);
     packedRoot.descendants = () => [...originalDescendants(), ...radialNodes];
 
-    console.log(`Radial layout complete: added ${radialNodes.length} radial nodes to packed hierarchy`);
+    console.log(`Radial layout complete: added ${radialNodes.length} radial nodes around container (radius: ${containerRadius})`);
 
     return packedRoot;
   }
@@ -209,10 +201,9 @@ export class LayoutUtils {
   /**
    * Fit the drawing to viewport on initial render
    * @param {Object} context - GraphRenderer context
-   * @param {Object} packedRoot - D3 packed hierarchy root
    */
-  static fitToView(context, packedRoot) {
-    if (!packedRoot || !context.state.vertexMap || !context.options || !context.interaction.svg || !context.interaction.zoom) return;
+  static fitToView(context) {
+    if (!context.state.vertexMap || !context.options || !context.interaction.svg || !context.interaction.zoom) return;
 
     // Get the bounds of all visible elements using our vertex structure
     const allElements = Array.from(context.state.vertexMap.values()).filter(vertex => !vertex.isVirtual);
@@ -244,7 +235,7 @@ export class LayoutUtils {
     const viewportHeight = context.options.height;
     const scaleX = viewportWidth / contentWidth;
     const scaleY = viewportHeight / contentHeight;
-    const scale = Math.min(scaleX, scaleY, 1) * 1.33; // Zoom in 33% more than full fit for better readability
+    const scale = Math.min(scaleX, scaleY, 1) * 1.25; // Zoom in 25% more than full fit for better readability
 
     // Calculate translation to center the content
     const viewportCenterX = viewportWidth / 2;
@@ -260,5 +251,19 @@ export class LayoutUtils {
     context.interaction.svg.call(context.interaction.zoom.transform, transform);
 
     console.log(`Fit to view: scale=${scale.toFixed(2)}, translate=(${translateX.toFixed(0)}, ${translateY.toFixed(0)})`);
+  }
+
+  /**
+   * Extract D3 positioning data back into our clean vertex structure
+   */
+  static extractPositionsFromD3(context, packedRoot) {
+    packedRoot.descendants().forEach(d => {
+      const vertex = context.state.vertexMap.get(d.data.id);
+      if (vertex) {
+        vertex.x = d.x + 25;  // Apply offset for margin
+        vertex.y = d.y + 25;
+        vertex.r = d.r;
+      }
+    });
   }
 }

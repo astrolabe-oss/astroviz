@@ -77,6 +77,11 @@ export function transformGraphDataForVisualization(data, nodeColors) {
         stroke: '#4A98E3',
         strokeDasharray: '10,6,2,6',
         strokeWidth: 4  // Make it thicker for visibility
+      },
+      // Clean data for NodeDetails panel
+      data: {
+        label: 'Internet Boundary',
+        type: 'group'
       }
     };
 
@@ -90,6 +95,11 @@ export function transformGraphDataForVisualization(data, nodeColors) {
         stroke: '#888',
         strokeWidth: 2,
         opacity: 0.6
+      },
+      // Clean data for NodeDetails panel
+      data: {
+        label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
+        type: 'group'
       }
     };
   }
@@ -108,6 +118,12 @@ export function transformGraphDataForVisualization(data, nodeColors) {
         stroke: '#5B8FF9',
         strokeWidth: 2,
         opacity: 0.6
+      },
+      // Clean data for NodeDetails panel
+      data: {
+        label: `Cluster: ${clusterName} (${appCount} apps)`,
+        type: 'group',
+        name: clusterName
       }
     };
 
@@ -119,12 +135,26 @@ export function transformGraphDataForVisualization(data, nodeColors) {
         label: `App: ${appName} (${appNodes.length} nodes)`,
         type: 'group',
         name: appName,
+        app_name: appName,
         parentId: clusterGroupId,
         style: {
           fill: '#FFE6CC',
           stroke: '#FF9933',
           strokeWidth: 2,
           opacity: 0.6
+        },
+        // Clean data for NodeDetails panel
+        data: {
+          label: `App: ${appName} (${appNodes.length} nodes)`,
+          type: 'group',
+          name: appName,
+          app_name: appName,
+          children: appNodes.map(({ id, vertex }) => ({
+            id: id,
+            name: vertex.name || id,
+            type: vertex.type,
+            address: vertex.address
+          }))
         }
       };
 

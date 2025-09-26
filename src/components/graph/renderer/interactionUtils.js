@@ -28,16 +28,16 @@ export class InteractionUtils {
 
   static onDrag(context, event, d) {
     const nodeId = d.id;
-    const nodePos = context.state.nodePositions.get(nodeId);
-    if (!nodePos) return;
+    const vertex = context.state.vertexMap.get(nodeId);
+    if (!vertex) return;
 
     // Update the subject position and use it for consistent coordinates
     event.subject.x = event.x;
     event.subject.y = event.y;
 
-    // Update position tracking
-    nodePos.x = event.x;
-    nodePos.y = event.y;
+    // Update position tracking directly in vertexMap
+    vertex.x = event.x;
+    vertex.y = event.y;
 
     // Move the node group visually
     d3.select(`#node-${nodeId}`)
@@ -75,12 +75,12 @@ export class InteractionUtils {
       return;
     }
 
-    const groupPos = context.state.groupPositions.get(groupId);
-    if (!groupPos) return;
+    const groupVertex = context.state.vertexMap.get(groupId);
+    if (!groupVertex) return;
 
     // Calculate movement delta
-    const deltaX = event.x - groupPos.x;
-    const deltaY = event.y - groupPos.y;
+    const deltaX = event.x - groupVertex.x;
+    const deltaY = event.y - groupVertex.y;
 
     // Update the group position and move all children
     NodeUtils.moveGroupAndChildren(context, groupId, deltaX, deltaY);
@@ -131,10 +131,8 @@ export class InteractionUtils {
     // Reset all node positions to original
     NodeUtils.resetNodePositions(context);
     
-    // Fit to view using context pattern
-    if (context.state.hierarchyRoot) {
-      LayoutUtils.fitToView(context, context.state.hierarchyRoot);
-    }
+    // Fit to view using vertexMap
+    LayoutUtils.fitToView(context);
   }
 
   /**

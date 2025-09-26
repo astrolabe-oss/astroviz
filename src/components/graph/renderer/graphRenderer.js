@@ -28,12 +28,6 @@ export class GraphRenderer {
     this.svg = null;
     this.g = null;
 
-    // Track node positions for drag updates
-    this.nodePositions = new Map(); // nodeId -> {x, y}
-
-    // Track group positions and their children
-    this.groupPositions = new Map(); // groupId -> {x, y, r, children: []}
-
     // Track async edge update for cancellation
     this.edgeUpdateController = null;
 
@@ -120,10 +114,12 @@ export class GraphRenderer {
    */
   createContext() {
     return {
-      // Data access
-      data: {
-        edges: this.data?.edges,
-        vertices: this.data?.vertices
+      // Canvas dimensions
+      canvasDimensions: {
+          width: this.options.width,
+          height: this.options.height,
+          centerX: this.options.width / 2,
+          centerY: this.options.height / 2
       },
 
       // DOM layers
@@ -138,11 +134,8 @@ export class GraphRenderer {
       state: {
         selectedNodeIds: this.selectedNodeIds,
         filteredOutNodes: this.filteredOutNodes,
-        nodePositions: this.nodePositions,
-        groupPositions: this.groupPositions,
-        vertexMap: this.vertexMap,
-        hierarchyRoot: this.hierarchyRoot,
-        hybridLayout: this.hybridLayout
+        vertexMap: new Map(),
+        edges: this.data?.edges
       },
 
       // Interaction state
@@ -230,65 +223,43 @@ export class GraphRenderer {
    */
   setData(data) {
     this.data = data;
-    // Update context with new data
-    this.updateContextData();
+    this.context.state.edges = this.data?.edges;
     this.render();
   }
 
-  /**
-   * Update the context with current data (called when data changes)
-   */
-  updateContextData() {
-    if (this.context) {
-      this.context.data.edges = this.data?.edges;
-      this.context.data.vertices = this.data?.vertices;
-    }
-  }
-
-  /**
-   * Update the context with current state (called after hierarchy creation)
-   */
-  updateContextState() {
-    if (this.context) {
-      this.context.state.vertexMap = this.vertexMap;
-      this.context.state.hierarchyRoot = this.hierarchyRoot;
-      this.context.state.hybridLayout = this.hybridLayout;
-    }
-  }
   
   /**
    * Main render method
    */
   render() {
     if (!this.data) return;
-    
-    // Build hierarchy from vertices (stores vertexMap as class property)
-    const hierarchy = NodeUtils.buildHierarchy(this);
+
+    // Build hierarchy from vertices (stores vertexMap in context.state)
+    const { hierarchy, rootRadialElements } = LayoutUtils.buildHierarchy(this.context, this.data.vertices);
     if (!hierarchy) return;
 
     // Calculate positions using D3 pack
-    const packedRoot = LayoutUtils.calculatePack(this, hierarchy);
+    const packedRoot = LayoutUtils.d3CirclePack(this.context, hierarchy);
     if (!packedRoot) return;
 
+    // If we have elements to position radially, handle them specially
+    const packedRootWithRadial = (rootRadialElements && rootRadialElements.length > 0) ?
+      LayoutUtils.addRadialLayout(this.context, packedRoot, rootRadialElements) :
+      packedRoot;
+
     // Extract D3 positioning back to our vertex structure
-    NodeUtils.extractPositionsFromD3(this, packedRoot);
+    LayoutUtils.extractPositionsFromD3(this.context, packedRootWithRadial || packedRoot);
 
-    // Store the packed root for later use (e.g., drag end re-rendering)
-    this.hierarchyRoot = packedRoot;
-
-    // Update context with newly created state (after hierarchyRoot is set)
-    this.updateContextState();
-
-    // Store node positions for drag updates
-    NodeUtils.storeNodePositions(this, packedRoot);
+    // Store original positions for drag reset functionality
+    NodeUtils.storeOriginalPositions(this.context);
 
     // Render everything
-    GroupUtils.renderGroups(this.context, packedRoot);
-    NodeUtils.renderNodes(this.context, packedRoot);
-    EdgeUtils.renderEdges(this.context, packedRoot);
+    GroupUtils.renderGroups(this.context);
+    NodeUtils.renderNodes(this.context);
+    EdgeUtils.renderEdges(this.context);
     
     // Fit the drawing to viewport on initial render
-    LayoutUtils.fitToView(this.context, packedRoot);
+    LayoutUtils.fitToView(this.context);
   }
 
 
@@ -315,21 +286,15 @@ export class GraphRenderer {
    * Handle clicks on application groups specifically
    */
   handleApplicationGroupClick(event, d) {
-    // Extract application name from label: 'App: app-precise-framework (4 nodes)' -> 'app-precise-framework'
-    const label = d.data.label || '';
-    const match = label.match(/App: (.+?) \(/);
-    const appName = match ? match[1] : null;
-
-    console.log('Application group clicked:', {
-      label: label,
-      extractedAppName: appName
-    });
+    console.log('Application group clicked:', d);
     
     // Apply application-specific highlighting
-    HighlightingUtils.selectApplicationGroups(this.context, appName, event.shiftKey);
+    HighlightingUtils.selectApplicationGroups(this.context, d.app_name || d.data?.app_name, event.shiftKey);
     
-    // Note: We don't emit click events for application groups since they are purely
-    // visual highlighting within the graph and should not trigger App.vue's node selection logic
+    // Emit clean data for NodeDetails - pass d.data consistently
+    if (this.options.onNodeClick) {
+      this.options.onNodeClick(d.data, event);
+    }
   }
 
   /**
@@ -341,38 +306,18 @@ export class GraphRenderer {
     // Use unified selection logic
     this.selectNodeById(d.id, event.shiftKey);
     
-    // Emit vertex data (includes both app and database properties)
-    this.emitClickEvent(d, event, 'node');
-  }
-
-  /**
-   * Unified event emission with type information
-   */
-  emitClickEvent(data, event, type) {
+    // Emit node data for NodeDetails - pass the clean database properties
     if (this.options.onNodeClick) {
-      // For vertex objects (nodes/groups), pass the data property (clean database properties)
-      // For application data, pass as-is
-      let cleanData;
-      if (data && data.data && typeof data.data === 'object') {
-        // This is a vertex object - pass the clean database properties only
-        cleanData = data.data;
-      } else {
-        // This is already application data - pass as-is
-        cleanData = data;
-      }
-      
-      // Pass only clean data to UI - no internal application metadata
-      this.options.onNodeClick(cleanData, event);
+      this.options.onNodeClick(d.data, event);
     }
   }
+
 
   /**
    * Cleanup
    */
   destroy() {
     d3.select(this.container).selectAll('*').remove();
-    this.nodePositions.clear();
-    this.groupPositions.clear();
     
     // Clean up tooltip through NodeUtils
     if (NodeUtils.tooltip) {
@@ -397,6 +342,8 @@ export class GraphRenderer {
   setFilterDimming(filteredOutNodeIds) {
     FilteringUtils.setFilterDimming(this, filteredOutNodeIds);
   }
+
+  // Internal method for visual selection (called from click handlers)
   selectNodeById(nodeId, appendToSelection = false) {
     // Clear any existing highlights from other systems
     HighlightingUtils.clearApplicationSelection(this.context);

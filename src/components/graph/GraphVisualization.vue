@@ -157,12 +157,6 @@ export default {
       if (this.graph && this.graphData) {
         this.updateGraph(this.graphData);
       }
-    },
-
-    selectNodeById(nodeId, appendToSelection = false) {
-      if (this.graph) {
-        this.graph.selectNodeById(nodeId, appendToSelection);
-      }
     }
   }
 };

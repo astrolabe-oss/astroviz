@@ -34,9 +34,8 @@ export class GroupUtils {
   /**
    * Main method to render all groups
    * @param {Object} context - Rendering context from GraphRenderer
-   * @param {Object} packedRoot - D3 packed hierarchy root
    */
-  static renderGroups(context, packedRoot) {
+  static renderGroups(context) {
     const groups = Array.from(context.state.vertexMap.values())
       .filter(vertex => vertex.isGroup && !vertex.isVirtual);
     
@@ -178,9 +177,9 @@ export class GroupUtils {
     // Add drag behavior to groups with reasonable threshold
     const groupDragBehavior = d3.drag()
       .subject((event, d) => {
-        // Initialize drag subject with current group position
-        const pos = context.state.groupPositions.get(d.id);
-        return pos ? { x: pos.x, y: pos.y } : { x: d.x, y: d.y };
+        // Initialize drag subject with current group position from vertexMap
+        const vertex = context.state.vertexMap.get(d.id);
+        return vertex ? { x: vertex.x, y: vertex.y } : { x: d.x, y: d.y };
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
