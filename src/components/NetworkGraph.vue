@@ -155,6 +155,17 @@ export default {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
       }
+    },
+
+    /**
+     * Select/highlight a node by its ID
+     * @param {string} nodeId The ID of the node to select
+     * @param {boolean} appendToSelection Whether to add to existing selection
+     */
+    selectNodeById(nodeId, appendToSelection = false) {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.selectNodeById(nodeId, appendToSelection);
+      }
     }
   }
 };

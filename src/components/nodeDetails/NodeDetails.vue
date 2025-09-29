@@ -238,7 +238,7 @@ export default {
       // Add additional properties to exclude from the "Other Properties" section
       const excludedKeys = [
         'type', 'app_name', 'name', 'address', 'components', 
-        'typeCounts', 'componentCounts', 'profile_timestamp'
+        'typeCounts', 'componentCounts', 'profile_timestamp', 'children'
       ];
 
       Object.entries(this.node).forEach(([key, value]) => {
@@ -399,22 +399,16 @@ export default {
      * @param {boolean} isShiftKey Whether the shift key was pressed during click
      */
     selectNodeInGraph(rel, isShiftKey = false) {
-      // Check if this is a component (has originalData)
-      if (rel.originalData) {
-        console.log("NodeDetails: Selecting component with shift key:", isShiftKey);
-        // For components, use the originalData
-        this.$emit('select-node', rel.originalData, isShiftKey);
-        return;
-      }
-
-      // For relationships, get the node data directly using the nodeId
+      // Get the node data directly using the nodeId
       const nodeData = this.graphData.vertices[rel.nodeId];
 
       if (nodeData) {
         console.log("NodeDetails: Selecting node with shift key:", isShiftKey);
-        // Emit an event to notify the parent components to select this node
-        // Pass the shift key state to support multi-selection
-        this.$emit('select-node', nodeData, isShiftKey);
+        // Emit both ID (for selection) and data (for details display)
+        this.$emit('select-node', {
+          id: rel.nodeId,
+          data: nodeData.data || nodeData
+        }, isShiftKey);
       } else {
         console.warn(`Node with ID ${rel.nodeId} not found in current graph data (may be filtered out)`);
       }
@@ -427,57 +421,6 @@ export default {
       this.$emit('close');
     },
 
-    /**
-     * Generate a comprehensive tooltip for a component
-     * @param {Object} component The component object
-     * @returns {string} Tooltip text with complete component information
-     */
-    getComponentTooltip(component) {
-      if (!component) return '';
-
-      let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-
-      if (component.address) {
-        tooltip += `\nAddress: ${component.address}`;
-      }
-
-      if (component.protocol_multiplexor) {
-        tooltip += `\nMux: ${component.protocol_multiplexor}`;
-      }
-
-      if (component.app_name && component.app_name !== component.name) {
-        tooltip += `\nApp: ${component.app_name}`;
-      }
-
-      if (component.provider) {
-        tooltip += `\nProvider: ${component.provider}`;
-      }
-
-      if (component.public_ip !== undefined) {
-        tooltip += `\nIP: ${component.public_ip ? 'Public' : 'Private'}`;
-      }
-
-      return tooltip;
-    },
-
-    /**
-     * Format component details for display in the list
-     * @param {Object} component The component object
-     * @returns {string} Formatted component details
-     */
-    formatComponentDetails(component) {
-      if (!component) return '';
-
-      // Determine the primary display value (either address or name)
-      let primaryText = component.address || component.name || component.app_name || 'Unknown';
-
-      // Add protocol multiplexor if available
-      if (component.protocol_multiplexor) {
-        primaryText += ` (${component.protocol_multiplexor})`;
-      }
-
-      return primaryText;
-    },
 
     /**
      * Find edge between two nodes
@@ -738,22 +681,6 @@ export default {
   background-color: #eef5fd;
 }
 
-.component-item {
-  cursor: default;
-}
-
-.component-item:hover {
-  background-color: #f5f5f5;
-}
-
-.component-item .connection-details {
-  cursor: default;
-}
-
-.component-item .connection-details:hover {
-  text-decoration: none;
-  color: #555;
-}
 
 .node-type-badge {
   display: inline-block;

@@ -119,8 +119,8 @@ export function findComponentRelationships(components, rawGraphData) {
     // Create a map of component IDs to their index position in the nodes array
     // This is important for maintaining node references
     components.forEach((component, index) => {
-        // Use originalData if available, otherwise use the component itself
-        const componentData = component.originalData || component;
+        // Use the component data directly
+        const componentData = component;
         
         // Store the component's data and its index in the nodes array
         componentMap[index] = {

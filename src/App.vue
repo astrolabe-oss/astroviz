@@ -437,15 +437,21 @@ export default {
 
     /**
      * Handle selection of a connected node from the details panel
-     * @param {Object} nodeData Node data to select
+     * @param {Object} payload Object containing id and data for the node
+     * @param {boolean} isShiftKey Whether shift key was pressed (optional)
      */
-    onSelectConnectedNode(nodeData) {
-      console.log("APP: Selecting connected node", nodeData);
+    onSelectConnectedNode(payload, isShiftKey = false) {
+      console.log("APP: Selecting connected node", payload, isShiftKey ? "with shift" : "");
 
-      // Simply update the selected node for the details panel
-      // TODO: In the future, we may want to trigger visual selection in GraphRenderer
-      // but for now, just show the node details
-      this.selectedNode = nodeData;
+      // Use the clean data for the details panel
+      this.selectedNode = payload.data;
+      
+      // Use the ID directly for selection - NO LOOKUP NEEDED!
+      if (payload.id && this.$refs.networkGraph) {
+        this.$refs.networkGraph.selectNodeById(payload.id, isShiftKey);
+      } else {
+        console.warn("APP: Connected node missing ID", payload);
+      }
     },
 
     /**
