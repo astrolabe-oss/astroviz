@@ -7,6 +7,7 @@ import { InteractionUtils } from './interactionUtils.js';
 import { FilteringUtils } from './filteringUtils.js';
 import { HighlightingUtils } from './highlightingUtils.js';
 import { GroupUtils } from './groupUtils.js';
+import { initializeOptions, getOptions } from './options.js';
 
 /**
  * GraphRenderer - D3 hierarchical graph renderer with advanced edge styling
@@ -15,151 +16,45 @@ import { GroupUtils } from './groupUtils.js';
 export class GraphRenderer {
   constructor(container, options = {}) {
     this.container = container;
-    this.options = {
+    
+    // Initialize global options for all utilities
+    initializeOptions({
       width: options.width || 800,
       height: options.height || 600,
       nodePadding: options.nodePadding || 0,
       nodeRadius: options.nodeRadius || 25,
       groupPadding: options.groupPadding || 50,
       ...options
-    };
+    });
 
     this.data = null;
     this.svg = null;
     this.g = null;
+    this.zoom = null;
 
-    // Track async edge update for cancellation
-    this.edgeUpdateController = null;
-
-
-    // Legacy state (to be phased out)
-    this.selectedNodeIds = new Set();
-    this.filteredOutNodes = new Set();
-
-    // Centralized styling configuration - Single source of truth
-    this.styling = {
-      // Node type base colors
-      nodeColors: {
-        'Application': '#F9696E',
-        'Deployment': '#F2A3B3',
-        'Compute': '#5DCAD1',
-        'Resource': '#74B56D',
-        'TrafficController': '#4A98E3',
-        'Unknown': '#F9C96E'
+    // Initialize context as single source of truth
+    this.context = {
+      // Core mutable state
+      state: {
+        vertexMap: new Map(),
+        edges: null
       },
 
-      // Highlight states styling
-      highlights: {
-        // Golden trace path
-        path: {
-          node: {
-            scale: 1.2,
-            color: '#FFA500',
-            glowSize: '8px',
-            glowColor: '#FFA500'
-          },
-          edge: {
-            stroke: '#FFA500',
-            strokeWidth: 5,
-            opacity: 1,
-            glow: 'drop-shadow(0 0 8px #FFA500)'
-          }
-        },
-        // Head node (current selection)
-        head: {
-          scale: 1.2,
-          color: '#8A4FBE',
-          glowSize: '5px',
-          glowColor: '#8A4FBE'
-        },
-        // Connected to head
-        connected: {
-          node: {
-            scale: 1.1,
-            color: '#A875D4',
-            glowSize: '5px',
-            glowColor: '#A875D4'
-          },
-          edge: {
-            stroke: '#4444ff',
-            strokeWidth: 3,
-            opacity: 1
-          }
-        },
-        // Dimmed (filtered out)
-        dimmed: {
-          opacity: 0.2
-        }
-      },
-
-      // Unknown node special text styling
-      unknownText: {
-        highlighted: {
-          fill: '#FFFFFF',
-          fontWeight: 'bolder'
-        },
-        normal: {
-          fill: '#333333',
-          fontWeight: 'normal'
+      // DOM references (populated in init)
+      dom: {
+        svg: null,
+        zoom: null,
+        defs: null,
+        layers: {
+          nodeLayer: null,
+          edgeLayer: null,
+          groupLayer: null,
+          labelLayer: null
         }
       }
     };
 
     this.init();
-  }
-
-  /**
-   * Create a highlighting context object with specific dependencies
-   * @returns {Object} Context object for highlighting operations
-   */
-  createContext() {
-    return {
-      // Canvas dimensions
-      canvasDimensions: {
-          width: this.options.width,
-          height: this.options.height,
-          centerX: this.options.width / 2,
-          centerY: this.options.height / 2
-      },
-
-      // DOM layers
-      layers: {
-        nodeLayer: this.nodeLayer,
-        edgeLayer: this.edgeLayer,
-        groupLayer: this.groupLayer,
-        labelLayer: this.labelLayer
-      },
-
-      // State
-      state: {
-        selectedNodeIds: this.selectedNodeIds,
-        filteredOutNodes: this.filteredOutNodes,
-        vertexMap: new Map(),
-        edges: this.data?.edges
-      },
-
-      // Interaction state
-      interaction: {
-        edgeUpdateController: this.edgeUpdateController,
-        svg: this.svg,
-        zoom: this.zoom
-      },
-
-      // SVG definitions
-      defs: this.defs,
-
-      // Style configuration
-      styling: this.styling,
-
-      // UI handlers
-      ui: {
-        handleNodeClick: this.handleNodeClick.bind(this),
-        handleGroupClick: this.handleGroupClick.bind(this)
-      },
-
-      // Options
-      options: this.options
-    };
   }
 
 
@@ -175,21 +70,23 @@ export class GraphRenderer {
     this.svg = d3.select(this.container)
       .append('svg')
       .attr('id', 'graph-svg')
-      .attr('width', this.options.width)
-      .attr('height', this.options.height)
+      .attr('width', getOptions().width)
+      .attr('height', getOptions().height)
       .style('background', '#f8f9fa')
       .on('click', (event) => {
         // Clear highlights when clicking background (unless shift key is pressed)
         if (!event.shiftKey) {
-          HighlightingUtils.clearHighlight(this.context);
+          if (this.context) {
+            HighlightingUtils.clearHighlight(this.context);
+          }
         }
       });
     
     // Add definitions for gradients and markers
-    this.defs = this.svg.append('defs');
+    this.context.dom.defs = this.svg.append('defs');
     
     // Initialize edge markers through EdgeUtils
-    EdgeUtils.initArrowMarkers(this.defs);
+    EdgeUtils.initArrowMarkers(this.context.dom.defs);
     
     // Main group for zooming/panning
     this.g = this.svg.append('g');
@@ -201,21 +98,22 @@ export class GraphRenderer {
         this.g.attr('transform', event.transform);
 
         // Emit zoom change event if callback is provided
-        if (this.options.onZoomChange) {
-          this.options.onZoomChange(event.transform.k);
+        if (getOptions().onZoomChange) {
+          getOptions().onZoomChange(event.transform.k);
         }
       });
     
     this.svg.call(this.zoom);
+
+    // Set DOM references for utilities that need them
+    this.context.dom.svg = this.svg;
+    this.context.dom.zoom = this.zoom;
     
     // Create layers (order determines z-index: groups behind edges behind nodes behind labels)
-    this.groupLayer = this.g.append('g').attr('class', 'groups');
-    this.edgeLayer = this.g.append('g').attr('class', 'edges');
-    this.nodeLayer = this.g.append('g').attr('class', 'nodes');
-    this.labelLayer = this.g.append('g').attr('class', 'labels');
-
-    // Create highlighting context after DOM layers are set up
-    this.context = this.createContext();
+    this.context.dom.layers.groupLayer = this.g.append('g').attr('class', 'groups');
+    this.context.dom.layers.edgeLayer = this.g.append('g').attr('class', 'edges');
+    this.context.dom.layers.nodeLayer = this.g.append('g').attr('class', 'nodes');
+    this.context.dom.layers.labelLayer = this.g.append('g').attr('class', 'labels');
   }
   
   /**
@@ -223,7 +121,7 @@ export class GraphRenderer {
    */
   setData(data) {
     this.data = data;
-    this.context.state.edges = this.data?.edges;
+    this.context.state.edges = data?.edges;
     this.render();
   }
 
@@ -254,8 +152,8 @@ export class GraphRenderer {
     NodeUtils.storeOriginalPositions(this.context);
 
     // Render everything
-    GroupUtils.renderGroups(this.context);
-    NodeUtils.renderNodes(this.context);
+    GroupUtils.renderGroups(this.context, (event, d) => this.handleGroupClick(event, d));
+    NodeUtils.renderNodes(this.context, (event, d) => this.handleNodeClick(event, d));
     EdgeUtils.renderEdges(this.context);
     
     // Fit the drawing to viewport on initial render
@@ -292,8 +190,8 @@ export class GraphRenderer {
     HighlightingUtils.selectApplicationGroups(this.context, d.app_name || d.data?.app_name, event.shiftKey);
     
     // Emit clean data for NodeDetails - pass d.data consistently
-    if (this.options.onNodeClick) {
-      this.options.onNodeClick(d.data, event);
+    if (getOptions().onNodeClick) {
+      getOptions().onNodeClick(d.data, event);
     }
   }
 
@@ -307,8 +205,8 @@ export class GraphRenderer {
     this.selectNodeById(d.id, event.shiftKey);
     
     // Emit node data for NodeDetails - pass the clean database properties
-    if (this.options.onNodeClick) {
-      this.options.onNodeClick(d.data, event);
+    if (getOptions().onNodeClick) {
+      getOptions().onNodeClick(d.data, event);
     }
   }
 
@@ -340,7 +238,8 @@ export class GraphRenderer {
   }
 
   setFilterDimming(filteredOutNodeIds) {
-    FilteringUtils.setFilterDimming(this, filteredOutNodeIds);
+    // Apply the visual dimming (FilteringUtils manages its own state)
+    FilteringUtils.setFilterDimming(this.context, filteredOutNodeIds);
   }
 
   // Internal method for visual selection (called from click handlers)

@@ -11,6 +11,7 @@ import networkIcons from '../../networkIcons';
 import { InteractionUtils } from './interactionUtils.js';
 import { HighlightingUtils } from './highlightingUtils.js';
 import { FilteringUtils } from './filteringUtils.js';
+import { getOptions } from './options.js';
 
 export class NodeUtils {
   /**
@@ -57,13 +58,15 @@ export class NodeUtils {
 
   /**
    * Render node icons
+   * @param {Object} context - Rendering context
+   * @param {Function} handleNodeClick - Click handler for nodes
    */
-  static renderNodes(context) {
+  static renderNodes(context, handleNodeClick) {
     const nodes = Array.from(context.state.vertexMap.values())
       .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
 
     // Create node elements to hold icons
-    const nodeElements = context.layers.nodeLayer
+    const nodeElements = context.dom.layers.nodeLayer
       .selectAll('g.node')
       .data(nodes, vertex => vertex.id)
       .join('g')
@@ -72,7 +75,9 @@ export class NodeUtils {
       .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y})`)
       .style('cursor', 'grab')
       .on('click', (event, vertex) => {
-        context.ui.handleNodeClick(event, vertex);
+        if (handleNodeClick) {
+          handleNodeClick(event, vertex);
+        }
       })
       .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
@@ -100,7 +105,7 @@ export class NodeUtils {
 
       if (svgElement) {
         // Create SVG icon with appropriate size and color
-        const iconSize = context.options.nodeRadius * 1.6; // Make icons bigger for visibility
+        const iconSize = getOptions().nodeRadius * 1.6; // Make icons bigger for visibility
 
         const iconSvg = group.append('svg')
           .attr('class', 'node-icon')

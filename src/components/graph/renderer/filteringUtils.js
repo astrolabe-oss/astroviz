@@ -12,6 +12,12 @@ import { HighlightingUtils } from './highlightingUtils.js';
 
 export class FilteringUtils {
   /**
+   * Internal filtering state
+   */
+  static state = {
+    filteredOutNodes: new Set()  // Set of node IDs that don't match current filters
+  };
+  /**
    * Apply filter-based opacity to an edge
    * @param {d3.Selection} edge - D3 selection of the edge
    * @param {Set} filteredOutNodes - Set of filtered node IDs
@@ -67,43 +73,40 @@ export class FilteringUtils {
   }
   /**
    * Set filter-based dimming for nodes (dims non-matching nodes)
-   * @param {Object} renderer - GraphRenderer instance
+   * @param {Object} context - The graph context object
    * @param {Set} filteredOutNodeIds - Set of node IDs to dim (don't match filters)
    */
-  static setFilterDimming(renderer, filteredOutNodeIds) {
+  static setFilterDimming(context, filteredOutNodeIds) {
     console.log("GraphRenderer: Setting filter dimming for", filteredOutNodeIds.size, "nodes");
 
     // Clear previous dimming
-    const previousFilteredOutNodes = new Set(renderer.filteredOutNodes || []);
-    renderer.filteredOutNodes = new Set(filteredOutNodeIds);
+    const previousFilteredOutNodes = new Set(FilteringUtils.state.filteredOutNodes);
 
-    // Update context to reflect the new filteredOutNodes
-    if (renderer.context) {
-      renderer.context.state.filteredOutNodes = renderer.filteredOutNodes;
-    }
+    // Update internal state
+    FilteringUtils.state.filteredOutNodes = new Set(filteredOutNodeIds);
 
     // Remove dimming from nodes that are no longer filtered out
     previousFilteredOutNodes.forEach(nodeId => {
       if (!filteredOutNodeIds.has(nodeId)) {
-        FilteringUtils.removeNodeDimming(renderer.context, nodeId);
+        FilteringUtils.removeNodeDimming(context, nodeId);
       }
     });
 
     // Apply dimming to newly filtered out nodes
     filteredOutNodeIds.forEach(nodeId => {
-      FilteringUtils.applyNodeDimming(renderer.context, nodeId);
+      FilteringUtils.applyNodeDimming(context, nodeId);
     });
 
     // Apply edge dimming based on filtered out nodes
     if (filteredOutNodeIds.size > 0) {
-      FilteringUtils.applyEdgeDimming(renderer.context);
+      FilteringUtils.applyEdgeDimming(context);
     } else {
-      FilteringUtils.removeEdgeDimming(renderer.context);
+      FilteringUtils.removeEdgeDimming(context);
     }
 
     // Handle zoom behavior based on filter state
     InteractionUtils.handleFilterZoomBehavior(
-      renderer.context, 
+      context, 
       filteredOutNodeIds.size, 
       previousFilteredOutNodes.size
     );
@@ -116,12 +119,12 @@ export class FilteringUtils {
    */
   static applyNodeDimming(context, nodeId) {
     // Find the node element
-    context.layers.nodeLayer.selectAll('.node')
+    context.dom.layers.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
         node.classed('dimmed', true);
-        FilteringUtils.applyFilterStyleToNode(node, nodeId, context.state.filteredOutNodes);
+        FilteringUtils.applyFilterStyleToNode(node, nodeId, FilteringUtils.state.filteredOutNodes);
       });
   }
 
@@ -132,7 +135,7 @@ export class FilteringUtils {
    */
   static removeNodeDimming(context, nodeId) {
     // Find the node element
-    context.layers.nodeLayer.selectAll('.node')
+    context.dom.layers.nodeLayer.selectAll('.node')
       .filter(d => d.id === nodeId)
       .each(function(d) {
         const node = d3.select(this);
@@ -146,7 +149,7 @@ export class FilteringUtils {
    * @param {Object} context - GraphRenderer context
    */
   static applyEdgeDimming(context) {
-    if (!context.layers.edgeLayer) return;
+    if (!context.dom.layers.edgeLayer) return;
 
     // Re-apply current highlighting to ensure correct edge states with filter awareness
     // This ensures path edges maintain their 'path' state and get light dimming
@@ -154,9 +157,9 @@ export class FilteringUtils {
       HighlightingUtils.applyCleanHighlighting(context);
     } else {
       // No active highlighting - apply filter styling to all edges as normal
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
-        FilteringUtils.applyFilterStyleToEdge(edge, context.state.filteredOutNodes, 'normal');
+        FilteringUtils.applyFilterStyleToEdge(edge, FilteringUtils.state.filteredOutNodes, 'normal');
       });
     }
   }
@@ -166,7 +169,7 @@ export class FilteringUtils {
    * @param {Object} context - GraphRenderer context
    */
   static removeEdgeDimming(context) {
-    if (!context.layers.edgeLayer) return;
+    if (!context.dom.layers.edgeLayer) return;
 
     // Re-apply current highlighting to ensure correct edge states without filter dimming
     // This ensures path edges maintain their 'path' state and full opacity
@@ -174,7 +177,7 @@ export class FilteringUtils {
       HighlightingUtils.applyCleanHighlighting(context);
     } else {
       // No active highlighting - remove filter styling from all edges
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
         FilteringUtils.applyFilterStyleToEdge(edge, new Set(), 'normal');
       });

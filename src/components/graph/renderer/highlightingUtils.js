@@ -6,6 +6,8 @@
 import * as d3 from 'd3';
 import { NodeUtils } from './nodeUtils.js';
 import { EdgeUtils } from './edgeUtils.js';
+import { STYLES } from './styles.js';
+import { FilteringUtils } from './filteringUtils.js';
 
 /**
  * HighlightingUtils - Utility class for handling graph highlighting logic
@@ -14,6 +16,26 @@ import { EdgeUtils } from './edgeUtils.js';
  * edges, and groups in the graph visualization.
  */
 export class HighlightingUtils {
+    /**
+     * Internal highlighting state
+     */
+    static state = {
+        // Current selection state
+        headNode: null,              // Most recently selected node (head of selection)
+        tracePath: {                 // Golden path being traced
+            nodes: new Set(),
+            edges: new Set()
+        },
+
+        // Visual state tracking
+        activeHighlights: {          // Currently highlighted elements
+            nodes: new Map(),         // nodeId -> {type: 'head'|'connected'|'path', originalColor}
+            edges: new Map()          // edgeKey -> {type: 'connected'|'path', originalStroke, originalWidth}
+        },
+
+        // Application group selection
+        selectedApplications: new Set()  // Set of selected application names
+    };
   /**
    * Apply highlight-based styling to an edge (stroke, stroke-width, stroke-dasharray)
    * @param {d3.Selection} edge - D3 selection of the edge
@@ -168,32 +190,6 @@ export class HighlightingUtils {
   // State Management
   // ========================================================================
 
-  /**
-   * Internal highlighting state
-   */
-  static state = {
-    // Current selection state
-    headNode: null,              // Most recently selected node (head of selection)
-    tracePath: {                 // Golden path being traced
-      nodes: new Set(),
-      edges: new Set()
-    },
-
-    // Visual state tracking
-    activeHighlights: {          // Currently highlighted elements
-      nodes: new Map(),         // nodeId -> {type: 'head'|'connected'|'path', originalColor}
-      edges: new Map()          // edgeKey -> {type: 'connected'|'path', originalStroke, originalWidth}
-    },
-
-    // Legacy state (for compatibility with edgeUtils)
-    highlightedElements: {       // Legacy highlighting state
-      nodes: new Set(),
-      edgeKeys: new Set()
-    },
-
-    // Application group selection
-    selectedApplications: new Set()  // Set of selected application names
-  };
 
   // ========================================================================
   // Core Highlighting Methods
@@ -244,10 +240,6 @@ export class HighlightingUtils {
 
     // Apply the visual highlighting
     HighlightingUtils.applyCleanHighlighting(context);
-
-    // Update legacy state for compatibility
-    context.state.selectedNodeIds.clear();
-    context.state.selectedNodeIds.add(nodeId);
   }
 
   /**
@@ -283,18 +275,18 @@ export class HighlightingUtils {
    */
   static resetAllVisuals(context) {
     // Reset all nodes but preserve filter dimming
-    if (context.layers.nodeLayer) {
-      context.layers.nodeLayer.selectAll('.node').each(function(d) {
+    if (context.dom.layers.nodeLayer) {
+      context.dom.layers.nodeLayer.selectAll('.node').each(function(d) {
         const node = d3.select(this);
 
         // Reset to normal state (which automatically handles filter dimming)
-        NodeUtils.applyNodeStyle(node, 'normal', d, context.styling, context.state.filteredOutNodes);
+        NodeUtils.applyNodeStyle(node, 'normal', d, STYLES, FilteringUtils.state.filteredOutNodes);
       });
     }
 
     // Reset all edges but preserve filter dimming
-    if (context.layers.edgeLayer) {
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+    if (context.dom.layers.edgeLayer) {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
         // Store original values if not already stored
         if (!edge.attr('data-original-stroke')) {
@@ -303,7 +295,7 @@ export class HighlightingUtils {
         }
 
         // Reset to normal state (which automatically handles filter dimming)
-        EdgeUtils.applyEdgeStyle(edge, 'normal', context.styling, context.state.filteredOutNodes);
+        EdgeUtils.applyEdgeStyle(edge, 'normal', STYLES, FilteringUtils.state.filteredOutNodes);
 
         // Clear stored values after reset
         edge.attr('data-original-stroke', null)
@@ -322,21 +314,21 @@ export class HighlightingUtils {
    */
   static clearAllHighlights(context) {
     // Clear ALL node highlights - restore everything to default
-    if (context.layers.nodeLayer) {
-      context.layers.nodeLayer.selectAll('.node').each(function(d) {
+    if (context.dom.layers.nodeLayer) {
+      context.dom.layers.nodeLayer.selectAll('.node').each(function(d) {
         const node = d3.select(this);
 
         // Clear original color storage
         node.attr('data-original-color', null);
 
         // Use unified styling - but ignore filter states (this is a complete clear)
-        NodeUtils.applyNodeStyle(node, 'normal', d, context.styling, context.state.filteredOutNodes);
+        NodeUtils.applyNodeStyle(node, 'normal', d, STYLES, FilteringUtils.state.filteredOutNodes);
       });
     }
 
     // Clear ALL edge highlights - restore everything to default
-    if (context.layers.edgeLayer) {
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+    if (context.dom.layers.edgeLayer) {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
 
         // Store original values if not already stored
@@ -346,7 +338,7 @@ export class HighlightingUtils {
         }
 
         // Use unified styling
-        EdgeUtils.applyEdgeStyle(edge, 'normal', context.styling, context.state.filteredOutNodes);
+        EdgeUtils.applyEdgeStyle(edge, 'normal', STYLES, FilteringUtils.state.filteredOutNodes);
 
         // Clear stored values after reset
         edge.attr('data-original-stroke', null)
@@ -367,11 +359,6 @@ export class HighlightingUtils {
     HighlightingUtils.state.activeHighlights.nodes.clear();
     HighlightingUtils.state.activeHighlights.edges.clear();
 
-    // Clear legacy state
-    context.state.selectedNodeIds.clear();
-    HighlightingUtils.state.highlightedElements.nodes.clear();
-    HighlightingUtils.state.highlightedElements.edgeKeys.clear();
-
     // Reset all visuals
     HighlightingUtils.resetAllVisuals(context);
   }
@@ -389,10 +376,10 @@ export class HighlightingUtils {
 
     // Highlight path nodes
     tracePath.nodes.forEach(nodeId => {
-      const node = context.layers.nodeLayer.select(`#node-${nodeId}`);
+      const node = context.dom.layers.nodeLayer.select(`#node-${nodeId}`);
       if (!node.empty()) {
         node.each(function(d) {
-          NodeUtils.applyNodeStyle(d3.select(this), 'path', d, context.styling, context.state.filteredOutNodes);
+          NodeUtils.applyNodeStyle(d3.select(this), 'path', d, STYLES, FilteringUtils.state.filteredOutNodes);
         });
         HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'path' });
       }
@@ -400,7 +387,7 @@ export class HighlightingUtils {
 
     // Highlight path edges
     tracePath.edges.forEach(edgeKey => {
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
         const source = edge.attr('data-source');
         const target = edge.attr('data-target');
@@ -412,7 +399,7 @@ export class HighlightingUtils {
             edge.attr('data-original-stroke', edge.attr('stroke'))
                 .attr('data-original-stroke-width', edge.attr('stroke-width'));
           }
-          EdgeUtils.applyEdgeStyle(edge, 'path', context.styling, context.state.filteredOutNodes);
+          EdgeUtils.applyEdgeStyle(edge, 'path', STYLES, FilteringUtils.state.filteredOutNodes);
           HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: 'path' });
         }
       });
@@ -450,10 +437,10 @@ export class HighlightingUtils {
 
     // Highlight connected nodes
     connections.nodes.forEach(nodeId => {
-      const node = context.layers.nodeLayer.select(`#node-${nodeId}`);
+      const node = context.dom.layers.nodeLayer.select(`#node-${nodeId}`);
       if (!node.empty()) {
         node.each(function(d) {
-          NodeUtils.applyNodeStyle(d3.select(this), 'connected', d, context.styling, context.state.filteredOutNodes);
+          NodeUtils.applyNodeStyle(d3.select(this), 'connected', d, STYLES, FilteringUtils.state.filteredOutNodes);
         });
         HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'connected' });
       }
@@ -461,7 +448,7 @@ export class HighlightingUtils {
 
     // Highlight connected edges
     connections.edges.forEach(edgeKey => {
-      context.layers.edgeLayer.selectAll('.edge').each(function() {
+      context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
         const edge = d3.select(this);
         const source = edge.attr('data-source');
         const target = edge.attr('data-target');
@@ -478,7 +465,7 @@ export class HighlightingUtils {
           const isInbound = target === HighlightingUtils.state.headNode;
           const edgeType = isInbound ? 'connected-inbound' : 'connected';
           
-          EdgeUtils.applyEdgeStyle(edge, edgeType, context.styling, context.state.filteredOutNodes);
+          EdgeUtils.applyEdgeStyle(edge, edgeType, STYLES, FilteringUtils.state.filteredOutNodes);
           HighlightingUtils.state.activeHighlights.edges.set(edgeKey, { type: edgeType });
         }
       });
@@ -491,12 +478,12 @@ export class HighlightingUtils {
    * @param {string} nodeId - ID of the head node
    */
   static applyHeadHighlight(context, nodeId) {
-    const node = context.layers.nodeLayer.select(`#node-${nodeId}`);
+    const node = context.dom.layers.nodeLayer.select(`#node-${nodeId}`);
     if (!node.empty()) {
       const isInPath = HighlightingUtils.state.tracePath.nodes.has(nodeId);
       node.each(function(d) {
         // Use 'path' style if node is in path, otherwise 'head'
-        NodeUtils.applyNodeStyle(d3.select(this), isInPath ? 'path' : 'head', d, context.styling, context.state.filteredOutNodes);
+        NodeUtils.applyNodeStyle(d3.select(this), isInPath ? 'path' : 'head', d, STYLES, FilteringUtils.state.filteredOutNodes);
       });
       HighlightingUtils.state.activeHighlights.nodes.set(nodeId, { type: 'head' });
     }
@@ -513,13 +500,13 @@ export class HighlightingUtils {
    * @param {boolean} isDirectlySelected - Whether this node is directly selected
    */
   static applyNodeHighlighting(context, nodeId, isDirectlySelected = true) {
-    const nodeElement = context.layers.nodeLayer.select(`#node-${nodeId}`);
+    const nodeElement = context.dom.layers.nodeLayer.select(`#node-${nodeId}`);
     if (nodeElement.empty()) return;
 
     nodeElement.each(function(d) {
       const node = d3.select(this);
       // Use head style for directly selected, connected style otherwise
-      NodeUtils.applyNodeStyle(node, isDirectlySelected ? 'head' : 'connected', d, context.styling, context.state.filteredOutNodes);
+      NodeUtils.applyNodeStyle(node, isDirectlySelected ? 'head' : 'connected', d, STYLES, FilteringUtils.state.filteredOutNodes);
     });
   }
 
@@ -529,12 +516,12 @@ export class HighlightingUtils {
    * @param {string} nodeId - Node ID to unhighlight
    */
   static unhighlightNode(context, nodeId) {
-    const nodeElement = context.layers.nodeLayer.select(`#node-${nodeId}`);
+    const nodeElement = context.dom.layers.nodeLayer.select(`#node-${nodeId}`);
     if (nodeElement.empty()) return;
 
     nodeElement.each(function(d) {
       const node = d3.select(this);
-      context.styling.applyNodeStyle(node, 'normal', d);
+      NodeUtils.applyNodeStyle(node, 'normal', d, STYLES, FilteringUtils.state.filteredOutNodes);
     });
   }
 
@@ -566,7 +553,7 @@ export class HighlightingUtils {
     // Find and highlight all application groups with the same name
     console.log('DEBUG: Looking for application groups with name:', appName);
 
-    const allGroups = context.layers.groupLayer.selectAll('circle.group');
+    const allGroups = context.dom.layers.groupLayer.selectAll('circle.group');
     console.log('DEBUG: Total groups found:', allGroups.size());
 
     const appGroups = allGroups.filter(d => d.id.startsWith('app-'));
@@ -596,7 +583,7 @@ export class HighlightingUtils {
       });
 
     // Also enhance the labels for highlighted application groups
-    context.layers.labelLayer.selectAll('g.group-label-container')
+    context.dom.layers.labelLayer.selectAll('g.group-label-container')
       .filter(d => {
         if (!d.id.startsWith('app-')) return false;
         // Extract app name from label using same pattern
@@ -640,7 +627,7 @@ export class HighlightingUtils {
     console.log("GraphRenderer: Clearing application group selection");
 
     // Restore original label styling
-    context.layers.labelLayer.selectAll('g.group-label-container.app-label-highlighted')
+    context.dom.layers.labelLayer.selectAll('g.group-label-container.app-label-highlighted')
       .each(function(d) {
         const labelContainer = d3.select(this);
         const labelText = d.label || d.id;
@@ -674,7 +661,7 @@ export class HighlightingUtils {
     }
 
     // Remove highlights from all application groups
-    context.layers.groupLayer.selectAll('circle.group.app-highlighted')
+    context.dom.layers.groupLayer.selectAll('circle.group.app-highlighted')
       .each(function(d) {
         const group = d3.select(this);
 

@@ -35,12 +35,12 @@ export class GroupUtils {
    * Main method to render all groups
    * @param {Object} context - Rendering context from GraphRenderer
    */
-  static renderGroups(context) {
+  static renderGroups(context, handleGroupClick) {
     const groups = Array.from(context.state.vertexMap.values())
       .filter(vertex => vertex.isGroup && !vertex.isVirtual);
     
     // Render group circles
-    const groupElements = GroupUtils.renderGroupElements(context, groups);
+    const groupElements = GroupUtils.renderGroupElements(context, groups, handleGroupClick);
     
     // Apply styles to groups
     GroupUtils.applyGroupStyles(groupElements);
@@ -56,10 +56,11 @@ export class GroupUtils {
    * Render group circle elements
    * @param {Object} context - Rendering context
    * @param {Array} groups - Array of group vertices
+   * @param {Function} handleGroupClick - Click handler for groups
    * @returns {d3.Selection} Selection of group elements
    */
-  static renderGroupElements(context, groups) {
-    const groupElements = context.layers.groupLayer
+  static renderGroupElements(context, groups, handleGroupClick) {
+    const groupElements = context.dom.layers.groupLayer
       .selectAll('circle.group')
       .data(groups, vertex => vertex.id)
       .join('circle')
@@ -70,9 +71,8 @@ export class GroupUtils {
       .attr('r', vertex => vertex.r)
       .style('cursor', 'grab')
       .on('click', (event, vertex) => {
-        // Note: We need to access the handler through context
-        if (context.ui && context.ui.handleGroupClick) {
-          context.ui.handleGroupClick(event, vertex);
+        if (handleGroupClick) {
+          handleGroupClick(event, vertex);
         }
       });
     
@@ -109,7 +109,7 @@ export class GroupUtils {
    * @param {Array} groups - Array of group vertices
    */
   static renderGroupLabels(context, groups) {
-    const groupLabelElements = context.layers.labelLayer
+    const groupLabelElements = context.dom.layers.labelLayer
       .selectAll('g.group-label-container')
       .data(groups, vertex => vertex.id)
       .join('g')

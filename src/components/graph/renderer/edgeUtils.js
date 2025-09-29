@@ -8,8 +8,15 @@
 
 import { HighlightingUtils } from './highlightingUtils.js';
 import { FilteringUtils } from './filteringUtils.js';
+import { STYLES } from './styles.js';
+import { getOptions } from './options.js';
 
 export class EdgeUtils {
+  /**
+   * Flag to track if async update should be cancelled
+   */
+  static asyncUpdateCancelled = false;
+
   /**
    * Initialize arrow markers for edges
    * @param {d3.Selection} defs - SVG defs section
@@ -90,6 +97,8 @@ export class EdgeUtils {
 
   /**
    * Render edges using vertexMap data and edge list
+   * @param {Object} context - Rendering context
+   * @param {Object} options - Rendering options (nodeRadius, etc)
    */
   static renderEdges(context) {
     if (!context.state.edges) return;
@@ -104,7 +113,7 @@ export class EdgeUtils {
     });
 
     // Clear existing edges
-    context.layers.edgeLayer.selectAll('line.edge').remove();
+    context.dom.layers.edgeLayer.selectAll('line.edge').remove();
 
     // Create single gradient edges using segment data
     visibleEdges.forEach((edge, edgeIndex) => {
@@ -113,12 +122,12 @@ export class EdgeUtils {
       const targetPos = positionMap.get(edge.target);
 
       // Calculate adjusted endpoint using utility method
-      const shortenBy = context.options.nodeRadius * 0.7;
+      const shortenBy = getOptions().nodeRadius * 0.7;
       const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
 
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
-      const isHighlighted = HighlightingUtils.state.highlightedElements.edgeKeys.has(edgeKey);
+      const isHighlighted = HighlightingUtils.state.activeHighlights.edges.has(edgeKey);
 
       let strokeStyle, strokeWidth;
 
@@ -155,7 +164,7 @@ export class EdgeUtils {
 
         // Create gradient for this edge (use adjusted coordinates)
         strokeStyle = EdgeUtils.createEdgeGradient(
-          context.defs,
+          context.dom.defs,
           edgeId,
           gradientStops,
           sourcePos.x,
@@ -167,12 +176,12 @@ export class EdgeUtils {
       }
 
       // Check if this edge should be dimmed (connected to filtered nodes)
-      const sourceFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.source);
-      const targetFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.target);
+      const sourceFiltered = FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(edge.source);
+      const targetFiltered = FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(edge.target);
       const shouldBeDimmed = sourceFiltered || targetFiltered;
 
       // Create single line with appropriate styling including filtering state
-      const edgeElement = context.layers.edgeLayer
+      const edgeElement = context.dom.layers.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
@@ -192,30 +201,26 @@ export class EdgeUtils {
    * Update all edges asynchronously with cancellation support
    */
   static async updateAllEdgesAsync(context) {
-    // Cancel any in-progress update
-    if (context.interaction.edgeUpdateController) {
-      context.interaction.edgeUpdateController.cancelled = true;
-    }
-
-    // Create new controller for this update
-    const controller = { cancelled: false };
-    context.interaction.edgeUpdateController = controller;
+    // Reset cancellation flag for this update
+    EdgeUtils.asyncUpdateCancelled = false;
 
     // Yield to browser to keep UI responsive
     await new Promise(resolve => setTimeout(resolve, 0));
 
     // Check if cancelled
-    if (controller.cancelled) {
+    if (EdgeUtils.asyncUpdateCancelled) {
       return;
     }
 
     // Now do the actual update
     await EdgeUtils.doAllEdgesUpdate(context);
+  }
 
-    // Clear controller if this update completed
-    if (context.interaction.edgeUpdateController === controller) {
-      context.interaction.edgeUpdateController = null;
-    }
+  /**
+   * Cancel any in-progress edge update
+   */
+  static cancelPendingUpdates() {
+    EdgeUtils.asyncUpdateCancelled = true;
   }
 
   /**
@@ -231,7 +236,7 @@ export class EdgeUtils {
 
     // Reapply highlighting if we have active selections
     if (HighlightingUtils.state.headNode) {
-      HighlightingUtils.applyCleanHighlighting(context);
+      HighlightingUtils.applyCleanHighlighting(context, STYLES);
     }
   }
 

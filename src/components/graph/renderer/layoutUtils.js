@@ -7,6 +7,7 @@
  */
 
 import * as d3 from 'd3';
+import { getOptions } from './options.js';
 
 export class LayoutUtils {
     /**
@@ -96,7 +97,7 @@ export class LayoutUtils {
       });
 
     const pack = d3.pack()
-      .size([context.canvasDimensions.width - 50, context.canvasDimensions.height - 50])
+      .size([getOptions().width - 50, getOptions().height - 50])
       .padding(d => {
         // D3 padding function is called for PARENT nodes to set spacing between their CHILDREN
         // Check what type of children this parent has
@@ -107,20 +108,20 @@ export class LayoutUtils {
 
           if (childrenAreLeafNodes) {
             // This parent's children are leaf nodes - use nodePadding
-            return context.options.nodePadding;
+            return getOptions().nodePadding;
           } else {
             // This parent's children are groups - use groupPadding
-            return context.options.groupPadding;
+            return getOptions().groupPadding;
           }
         }
 
         // Fallback (shouldn't happen since padding is only called for parents)
-        return context.options.nodePadding;
+        return getOptions().nodePadding;
       })
       .radius(d => {
         // Set explicit radius for leaf nodes based on nodeRadius setting
         if (!d.children || d.children.length === 0) {
-          return context.options.nodeRadius;
+          return getOptions().nodeRadius;
         }
         // Let D3 calculate radius for group nodes (parents)
         return null;
@@ -152,8 +153,8 @@ export class LayoutUtils {
     const containerRadius = containerNode.r;
 
     // Center the container on the canvas
-    const offsetX = context.canvasDimensions.centerX - containerNode.x;
-    const offsetY = context.canvasDimensions.centerY - containerNode.y;
+    const offsetX = getOptions().centerX - containerNode.x;
+    const offsetY = getOptions().centerY - containerNode.y;
 
     // Apply offset to all nodes in the packed hierarchy
     packedRoot.descendants().forEach(node => {
@@ -170,15 +171,15 @@ export class LayoutUtils {
 
       rootRadialElements.forEach((element, index) => {
         const angle = index * angleStep;
-        const x = context.canvasDimensions.centerX + Math.cos(angle) * ringRadius;
-        const y = context.canvasDimensions.centerY + Math.sin(angle) * ringRadius;
+        const x = getOptions().centerX + Math.cos(angle) * ringRadius;
+        const y = getOptions().centerY + Math.sin(angle) * ringRadius;
 
         // Create a packed node structure for consistency
         const radialNode = {
           data: element,
           x: x,
           y: y,
-          r: element.isGroup ? 50 : context.options.nodeRadius, // Groups get default radius, nodes use nodeRadius
+          r: element.isGroup ? 50 : getOptions().nodeRadius, // Groups get default radius, nodes use nodeRadius
           children: null,
           parent: packedRoot,
           depth: 1,
@@ -203,7 +204,7 @@ export class LayoutUtils {
    * @param {Object} context - GraphRenderer context
    */
   static fitToView(context) {
-    if (!context.state.vertexMap || !context.options || !context.interaction.svg || !context.interaction.zoom) return;
+    if (!context.state.vertexMap || !context.dom.svg || !context.dom.zoom) return;
 
     // Get the bounds of all visible elements using our vertex structure
     const allElements = Array.from(context.state.vertexMap.values()).filter(vertex => !vertex.isVirtual);
@@ -215,7 +216,7 @@ export class LayoutUtils {
     allElements.forEach(vertex => {
       const x = vertex.x;
       const y = vertex.y;
-      const radius = vertex.isGroup ? vertex.r : context.options.nodeRadius;
+      const radius = vertex.isGroup ? vertex.r : getOptions().nodeRadius;
 
       minX = Math.min(minX, x - radius);
       minY = Math.min(minY, y - radius);
@@ -231,8 +232,8 @@ export class LayoutUtils {
     const contentCenterY = (minY + maxY) / 2;
 
     // Calculate scale to fit content in viewport
-    const viewportWidth = context.options.width;
-    const viewportHeight = context.options.height;
+    const viewportWidth = getOptions().width;
+    const viewportHeight = getOptions().height;
     const scaleX = viewportWidth / contentWidth;
     const scaleY = viewportHeight / contentHeight;
     const scale = Math.min(scaleX, scaleY, 1) * 1.25; // Zoom in 25% more than full fit for better readability
@@ -248,7 +249,7 @@ export class LayoutUtils {
       .translate(translateX, translateY)
       .scale(scale);
 
-    context.interaction.svg.call(context.interaction.zoom.transform, transform);
+    context.dom.svg.call(context.dom.zoom.transform, transform);
 
     console.log(`Fit to view: scale=${scale.toFixed(2)}, translate=(${translateX.toFixed(0)}, ${translateY.toFixed(0)})`);
   }

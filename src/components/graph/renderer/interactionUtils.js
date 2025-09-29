@@ -10,6 +10,7 @@ import * as d3 from 'd3';
 import { EdgeUtils } from './edgeUtils.js';
 import { NodeUtils } from './nodeUtils.js';
 import { LayoutUtils } from './layoutUtils.js';
+import { FilteringUtils } from './filteringUtils.js';
 
 export class InteractionUtils {
   /**
@@ -93,10 +94,7 @@ export class InteractionUtils {
     InteractionUtils.setCursor(event, 'grab');
 
     // Cancel any in-progress async update and do a final synchronous update
-    if (context.interaction.edgeUpdateController) {
-      context.interaction.edgeUpdateController.cancelled = true;
-      context.interaction.edgeUpdateController = null;
-    }
+    EdgeUtils.cancelPendingUpdates();
 
     // Do a final edge update to ensure everything is accurate
     EdgeUtils.updateAllEdgesAsync(context);
@@ -106,25 +104,25 @@ export class InteractionUtils {
    * Zoom controls
    */
   static zoomIn(context) {
-    if (!context.interaction.svg || !context.interaction.zoom) return;
-    context.interaction.svg.transition().duration(300).call(
-      context.interaction.zoom.scaleBy, 1.5
+    if (!context.dom.svg || !context.dom.zoom) return;
+    context.dom.svg.transition().duration(300).call(
+      context.dom.zoom.scaleBy, 1.5
     );
   }
 
   static zoomOut(context) {
-    if (!context.interaction.svg || !context.interaction.zoom) return;
-    context.interaction.svg.transition().duration(300).call(
-      context.interaction.zoom.scaleBy, 0.67
+    if (!context.dom.svg || !context.dom.zoom) return;
+    context.dom.svg.transition().duration(300).call(
+      context.dom.zoom.scaleBy, 0.67
     );
   }
 
   static resetView(context) {
-    if (!context.interaction.svg || !context.interaction.zoom) return;
+    if (!context.dom.svg || !context.dom.zoom) return;
 
     // Reset zoom and pan
-    context.interaction.svg.transition().duration(500).call(
-      context.interaction.zoom.transform,
+    context.dom.svg.transition().duration(500).call(
+      context.dom.zoom.transform,
       d3.zoomIdentity
     );
 
@@ -139,22 +137,22 @@ export class InteractionUtils {
    * Get current zoom level
    */
   static getZoom(context) {
-    if (!context.interaction.svg) return 1;
-    return d3.zoomTransform(context.interaction.svg.node()).k;
+    if (!context.dom.svg) return 1;
+    return d3.zoomTransform(context.dom.svg.node()).k;
   }
 
   /**
    * Zoom to bounds of visible (non-dimmed) nodes
    */
   static zoomToVisibleNodes(context) {
-    if (!context.interaction.svg || !context.interaction.zoom || !context.layers.nodeLayer) return;
+    if (!context.dom.svg || !context.dom.zoom || !context.dom.layers.nodeLayer) return;
 
-    console.log('DEBUG: filteredOutNodes:', context.state.filteredOutNodes?.size, Array.from(context.state.filteredOutNodes || []));
+    console.log('DEBUG: filteredOutNodes:', FilteringUtils.state.filteredOutNodes?.size, Array.from(FilteringUtils.state.filteredOutNodes || []));
 
     // Get bounds of all non-dimmed nodes
     const visibleNodes = [];
-    context.layers.nodeLayer.selectAll('.node')
-      .filter(d => !context.state.filteredOutNodes || !context.state.filteredOutNodes.has(d.id))
+    context.dom.layers.nodeLayer.selectAll('.node')
+      .filter(d => !FilteringUtils.state.filteredOutNodes || !FilteringUtils.state.filteredOutNodes.has(d.id))
       .each(function(d) {
         const node = d3.select(this);
         const transform = node.attr('transform');
@@ -191,7 +189,7 @@ export class InteractionUtils {
     const boundsY = minY - padding;
 
     // Get current SVG dimensions
-    const svgNode = context.interaction.svg.node();
+    const svgNode = context.dom.svg.node();
     const svgWidth = svgNode.clientWidth || svgNode.getBoundingClientRect().width;
     const svgHeight = svgNode.clientHeight || svgNode.getBoundingClientRect().height;
 
@@ -210,8 +208,8 @@ export class InteractionUtils {
     const translateY = svgHeight / 2 - scale * (boundsY + boundsHeight / 2);
 
     // Apply zoom transform
-    context.interaction.svg.transition().duration(750).call(
-      context.interaction.zoom.transform,
+    context.dom.svg.transition().duration(750).call(
+      context.dom.zoom.transform,
       d3.zoomIdentity.translate(translateX, translateY).scale(scale)
     );
 
@@ -249,16 +247,16 @@ export class InteractionUtils {
    * Animate all nodes with a bounce effect for dramatic filter feedback
    */
   static bounceAllNodes(context) {
-    if (!context.layers.nodeLayer) return;
+    if (!context.dom.layers.nodeLayer) return;
 
     console.log('Bouncing visible nodes with shared physics simulation');
 
     // Collect only visible (non-filtered) nodes and their base transforms
     const nodeData = [];
-    context.layers.nodeLayer.selectAll('.node')
+    context.dom.layers.nodeLayer.selectAll('.node')
       .each(function(d) {
         // Skip filtered out nodes - they should stay dimmed and not bounce
-        if (context.state.filteredOutNodes && context.state.filteredOutNodes.has(d.id)) {
+        if (FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(d.id)) {
           return;
         }
 
