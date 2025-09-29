@@ -48,7 +48,7 @@
         <div v-for="(typeGroup, type) in groupedChildren" :key="type" class="inventory-type-group">
           <h6 class="inventory-type-header">{{ type }} ({{ typeGroup.length }})</h6>
           <ul class="inventory-list">
-            <li v-for="child in typeGroup" :key="child.id" class="inventory-item">
+            <li v-for="child in typeGroup" :key="child.id" class="inventory-item" @click="(event) => selectNodeInGraph(child.id, child.data, event.shiftKey)">
               <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(child.type) }">
                 {{ child.type }}
               </span>
@@ -99,7 +99,7 @@
                     v-for="(rel, relIndex) in group.relationships"
                     :key="`conns-out-${relIndex}`"
                     class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
+                    @click="(event) => selectNodeInGraph(rel.nodeId, null, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                     {{ rel.nodeType }}
@@ -126,7 +126,7 @@
                     v-for="(rel, relIndex) in group.relationships"
                     :key="`conns-in-${relIndex}`"
                     class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
+                    @click="(event) => selectNodeInGraph(rel.nodeId, null, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                     {{ rel.nodeType }}
@@ -398,19 +398,19 @@ export default {
      * @param {Object} rel The relationship object or component containing node information
      * @param {boolean} isShiftKey Whether the shift key was pressed during click
      */
-    selectNodeInGraph(rel, isShiftKey = false) {
+    selectNodeInGraph(nodeId, nodeData = null, isShiftKey = false) {
       // Get the node data directly using the nodeId
-      const nodeData = this.graphData.vertices[rel.nodeId];
+      const data = nodeData || this.graphData.vertices[nodeId];
 
-      if (nodeData) {
+      if (data) {
         console.log("NodeDetails: Selecting node with shift key:", isShiftKey);
         // Emit both ID (for selection) and data (for details display)
         this.$emit('select-node', {
-          id: rel.nodeId,
-          data: nodeData.data || nodeData
+          id: nodeId,
+          data: data
         }, isShiftKey);
       } else {
-        console.warn(`Node with ID ${rel.nodeId} not found in current graph data (may be filtered out)`);
+        console.warn(`Node with ID ${nodeId} not found in current graph data (may be filtered out)`);
       }
     },
 
@@ -757,11 +757,18 @@ export default {
 
 .inventory-item {
   margin-bottom: 4px;
-  padding: 3px 0;
+  padding: 3px;
   font-size: 13px;
   display: flex;
   align-items: center;
   gap: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.inventory-item:hover {
+  background-color: #eef5fd;
 }
 
 .inventory-details {
