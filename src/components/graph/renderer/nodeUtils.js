@@ -8,53 +8,70 @@
 
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
-import { InteractionUtils } from './interactionUtils.js';
-import { HighlightingUtils } from './highlightingUtils.js';
-import { FilteringUtils } from './filteringUtils.js';
+import { EdgeUtils } from './edgeUtils.js';
+import { FeatureRegistry } from './featureRegistry.js';
 import { getOptions } from './options.js';
 
 export class NodeUtils {
   /**
-   * Unified node styling function - Orchestrates highlight and filter styling
-   * @param {d3.Selection} nodeSelection - D3 selection of node(s) to style
-   * @param {string} state - 'normal'|'path'|'head'|'connected'|'dimmed'
-   * @param {Object} nodeData - Node data for type-specific styling
-   * @param {Object} styling - Styling configuration object
-   * @param {Set} filteredOutNodes - Set of filtered node IDs
+   * Node type base colors
    */
-  static applyNodeStyle(nodeSelection, state, nodeData, styling, filteredOutNodes) {
-    // Apply highlighting styles
-    HighlightingUtils.applyHighlightStyleToNode(
-      nodeSelection, 
-      state, 
-      nodeData, 
-      styling
-    );
-    
-    // Apply filtering styles
-    const nodeId = nodeData?.id || nodeSelection.attr('id')?.replace('node-', '');
-    FilteringUtils.applyFilterStyleToNode(
-      nodeSelection,
-      nodeId,
-      filteredOutNodes
-    );
-  }
+  static NODE_COLORS = {
+    'Application': '#F9696E',
+    'Deployment': '#F2A3B3',
+    'Compute': '#5DCAD1',
+    'Resource': '#74B56D',
+    'TrafficController': '#4A98E3',
+    'Unknown': '#F9C96E'
+  };
+
   /**
-   * Store original positions in vertexMap for drag reset functionality
+   * Unknown node text styles (normal state)
    */
-  static storeOriginalPositions(context) {
-    // Store original positions directly in vertexMap for reset functionality
-    context.state.vertexMap.forEach((vertex, id) => {
-      if (!vertex.isVirtual) {
-        vertex.originalX = vertex.x;
-        vertex.originalY = vertex.y;
-        if (vertex.isGroup) {
-          vertex.originalR = vertex.r;
-        }
-      }
-    });
+  static UNKNOWN_TEXT_NORMAL = {
+    fill: '#333333',
+    fontWeight: 'normal'
+  };
+  /**
+   * Node drag handlers
+   */
+  static setCursor(event, cursor) {
+    d3.select(event.sourceEvent.target).style('cursor', cursor);
   }
 
+  static onDragStart(context, event, d) {
+    console.log('DEBUG: onDragStart fired for', d.id);
+    NodeUtils.setCursor(event, 'grabbing');
+  }
+
+  static onDrag(context, event, d) {
+    const nodeId = d.id;
+    const vertex = context.state.vertexMap.get(nodeId);
+    if (!vertex) return;
+
+    // Update the subject position and use it for consistent coordinates
+    event.subject.x = event.x;
+    event.subject.y = event.y;
+
+    // Update position tracking directly in vertexMap
+    vertex.x = event.x;
+    vertex.y = event.y;
+
+    // Move the node group visually
+    d3.select(`#node-${nodeId}`)
+      .attr('transform', `translate(${event.x}, ${event.y})`);
+
+    // Update all non-highlighted edges (async with cancellation)
+    EdgeUtils.updateAllEdgesAsync(context);
+  }
+
+  static onDragEnd(context, event, d) {
+    console.log('DEBUG: onDragEnd fired for', d.id);
+    NodeUtils.setCursor(event, 'grab');
+
+    // Use unified pipeline like group drag end
+    EdgeUtils.updateAllEdgesAsync(context);
+  }
 
   /**
    * Render node icons
@@ -114,8 +131,7 @@ export class NodeUtils {
           .attr('x', -iconSize / 2)
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
-          .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.style?.fill ?? '#5B8FF9'); // Use node color from style object
+          .attr('preserveAspectRatio', 'xMidYMid meet');
 
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
@@ -152,8 +168,10 @@ export class NodeUtils {
           }
         }
       }
-    });
 
+      // Apply default styling (colors only, preserve transform for initial render)
+      NodeUtils.applyNodeDefaultStyling(group, d, true);
+    });
 
     // Add drag behavior with reasonable threshold to prevent accidental drags during clicks
     const dragBehavior = d3.drag()
@@ -164,11 +182,81 @@ export class NodeUtils {
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => InteractionUtils.onDragStart(context, event, d))
-      .on('drag', (event, d) => InteractionUtils.onDrag(context, event, d))
-      .on('end', (event, d) => InteractionUtils.onDragEnd(context, event, d));
+      .on('start', (event, d) => NodeUtils.onDragStart(context, event, d))
+      .on('drag', (event, d) => NodeUtils.onDrag(context, event, d))
+      .on('end', (event, d) => NodeUtils.onDragEnd(context, event, d));
 
     nodeElements.call(dragBehavior);
+  }
+
+  /**
+   * Apply all default styling to a node (colors, transforms, classes)
+   * @param {d3.Selection} node - D3 selection of the node element
+   * @param {Object} nodeData - Node data object
+   * @param {boolean} preserveTransform - If true, only sets colors (for initial render)
+   */
+  static applyNodeDefaultStyling(node, nodeData, preserveTransform = false) {
+    // Reset transform, filter, and classes (unless initial render)
+    if (!preserveTransform) {
+      // Get current position and remove any scale transform
+      const currentTransform = node.attr('transform') || 'translate(0,0)';
+      const match = currentTransform.match(/translate\(([^,]+),([^)]+)\)/);
+      const x = match ? parseFloat(match[1]) : 0;
+      const y = match ? parseFloat(match[2]) : 0;
+
+      node.attr('transform', `translate(${x},${y})`)
+          .style('filter', null)
+          .classed('highlighted', false);
+    }
+
+    // Apply default icon colors
+    const nodeType = nodeData.data?.type || nodeData.type || 'Unknown';
+    const defaultColor = nodeData.data?.color || nodeData.style?.fill || NodeUtils.NODE_COLORS[nodeType];
+
+    const svgIcon = node.select('svg');
+    if (!svgIcon.empty()) {
+      svgIcon.style('color', defaultColor);
+      if (nodeType === 'Unknown') {
+        svgIcon.select('circle').attr('fill', defaultColor);
+        svgIcon.select('text')
+          .attr('fill', NodeUtils.UNKNOWN_TEXT_NORMAL.fill)
+          .attr('font-weight', NodeUtils.UNKNOWN_TEXT_NORMAL.fontWeight);
+      }
+    }
+  }
+
+  /**
+   * Apply all feature styles to all nodes
+   * Called after any render operation or when only styles change
+   * @param {Object} context - Rendering context
+   */
+  static renderNodesWithHooks(context) {
+    context.dom.layers.nodeLayer.selectAll('.node').each(function(d) {
+      const node = d3.select(this);
+      const nodeId = d.id || d.data?.id;
+
+      // Reset to defaults first (with transform reset)
+      NodeUtils.applyNodeDefaultStyling(node, d, false);
+
+      // Let all registered features apply their styles
+      FeatureRegistry.nodePostRenderHooks(node, nodeId, context);
+    });
+  }
+
+  /**
+   * Store original positions in vertexMap for drag reset functionality
+   */
+  static storeOriginalPositions(context) {
+    // Store original positions directly in vertexMap for reset functionality
+    context.state.vertexMap.forEach((vertex, id) => {
+      if (!vertex.isVirtual) {
+        vertex.originalX = vertex.x;
+        vertex.originalY = vertex.y;
+        if (vertex.isGroup) {
+          vertex.originalR = vertex.r;
+        }
+      }
+    });
   }
 
   /**
@@ -253,9 +341,7 @@ export class NodeUtils {
 
     // Update all edges after a brief delay to let nodes animate
     setTimeout(() => {
-      import('./edgeUtils.js').then(({ EdgeUtils }) => {
-        EdgeUtils.updateAllEdgesAsync(context);
-      });
+      EdgeUtils.updateAllEdgesAsync(context);
     }, 100);
   }
 

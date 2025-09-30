@@ -1,12 +1,12 @@
 import * as d3 from 'd3';
-import networkIcons from '../../networkIcons';
+
 import { EdgeUtils } from './edgeUtils.js';
 import { NodeUtils } from './nodeUtils.js';
 import { LayoutUtils } from './layoutUtils.js';
-import { InteractionUtils } from './interactionUtils.js';
-import { FilteringUtils } from './filteringUtils.js';
-import { HighlightingUtils } from './highlightingUtils.js';
+import { FilteringFeature } from './filteringFeature.js';
+import { HighlightingFeature } from './highlightingFeature.js';
 import { GroupUtils } from './groupUtils.js';
+import { FeatureRegistry } from './featureRegistry.js';
 import { initializeOptions, getOptions } from './options.js';
 
 /**
@@ -63,6 +63,13 @@ export class GraphRenderer {
    * Initialize SVG
    */
   init() {
+    // Initialize feature registry with context
+    FeatureRegistry.initialize(this.context);
+
+    // Register features
+    FeatureRegistry.register(FilteringFeature);
+    FeatureRegistry.register(HighlightingFeature);
+
     // Clear container
     d3.select(this.container).selectAll('*').remove();
     
@@ -74,10 +81,16 @@ export class GraphRenderer {
       .attr('height', getOptions().height)
       .style('background', '#f8f9fa')
       .on('click', (event) => {
+        console.log('DEBUG: Background click handler fired');
         // Clear highlights when clicking background (unless shift key is pressed)
         if (!event.shiftKey) {
-          if (this.context) {
-            HighlightingUtils.clearHighlight(this.context);
+          HighlightingFeature.clearSelectedNodes();
+          HighlightingFeature.clearSelectedApplications();
+          FeatureRegistry.triggerRender();
+
+          // Notify parent that nothing is selected (closes NodeDetails panel)
+          if (getOptions().onNodeClick) {
+            getOptions().onNodeClick(null, event);
           }
         }
       });
@@ -166,29 +179,22 @@ export class GraphRenderer {
    * Determines group type and routes to appropriate handler
    */
   handleGroupClick(event, d) {
+    console.log('DEBUG: Group click handler fired for', d.id);
     event.stopPropagation(); // Prevent background click
 
-    // Clear any existing highlights from other systems
-    HighlightingUtils.clearNodeHighlights(this.context);
-
     // Route based on group type
-    if (d.id.startsWith('app-') && d.data.label) {
-      this.handleApplicationGroupClick(event, d);
-    } else {
+    if (!d.id.startsWith('app-')) {
       // For cluster/boundary groups, do nothing (no details panel)
       console.log('Non-application group clicked, ignoring:', d.id);
+      return;
     }
-  }
 
-  /**
-   * Handle clicks on application groups specifically
-   */
-  handleApplicationGroupClick(event, d) {
+    // Clear any existing highlights from other systems
     console.log('Application group clicked:', d);
-    
-    // Apply application-specific highlighting
-    HighlightingUtils.selectApplicationGroups(this.context, d.app_name || d.data?.app_name, event.shiftKey);
-    
+    HighlightingFeature.clearSelectedNodes();
+    HighlightingFeature.selectApplicationGroups(this.context, d.app_name || d.data?.app_name, event.shiftKey);
+    FeatureRegistry.triggerRender();
+
     // Emit clean data for NodeDetails - pass d.data consistently
     if (getOptions().onNodeClick) {
       getOptions().onNodeClick(d.data, event);
@@ -199,8 +205,9 @@ export class GraphRenderer {
    * Unified click handler for nodes
    */
   handleNodeClick(event, d) {
+    console.log('DEBUG: Node click handler fired for', d.id);
     event.stopPropagation(); // Prevent background click
-    
+
     // Use unified selection logic
     this.selectNodeById(d.id, event.shiftKey);
     
@@ -224,30 +231,57 @@ export class GraphRenderer {
     }
   }
 
-  // Public API methods that delegate to utility classes
+  // Public API methods for zoom controls
   resetView() {
-    InteractionUtils.resetView(this.context);
+    if (!this.context.dom.svg || !this.context.dom.zoom) return;
+
+    // Reset zoom and pan
+    this.context.dom.svg.transition().duration(500).call(
+      this.context.dom.zoom.transform,
+      d3.zoomIdentity
+    );
+
+    // Reset all node positions to original
+    NodeUtils.resetNodePositions(this.context);
+
+    // Fit to view using vertexMap
+    LayoutUtils.fitToView(this.context);
   }
 
   zoomIn() {
-    InteractionUtils.zoomIn(this.context);
+    if (!this.context.dom.svg || !this.context.dom.zoom) return;
+    this.context.dom.svg.transition().duration(300).call(
+      this.context.dom.zoom.scaleBy, 1.5
+    );
   }
 
   zoomOut() {
-    InteractionUtils.zoomOut(this.context);
+    if (!this.context.dom.svg || !this.context.dom.zoom) return;
+    this.context.dom.svg.transition().duration(300).call(
+      this.context.dom.zoom.scaleBy, 0.67
+    );
   }
 
   setFilterDimming(filteredOutNodeIds) {
-    // Apply the visual dimming (FilteringUtils manages its own state)
-    FilteringUtils.setFilterDimming(this.context, filteredOutNodeIds);
+    FilteringFeature.updateFilteredNodes(this.context, filteredOutNodeIds);
+
+    const postRenderCallback =
+      (filteredOutNodeIds.size > 0) ? () => FilteringFeature.zoomAndBounce(this.context) :
+      LayoutUtils.fitToView(this.context);
+
+    FeatureRegistry.triggerRender(postRenderCallback);
   }
 
   // Internal method for visual selection (called from click handlers)
-  selectNodeById(nodeId, appendToSelection = false) {
-    // Clear any existing highlights from other systems
-    HighlightingUtils.clearApplicationSelection(this.context);
-    
-    // Apply node-specific highlighting
-    HighlightingUtils.highlightNode(this.context, nodeId, appendToSelection);
+  selectNodeById(nodeId, appendToSelection = false, skipStyling = false) {
+    HighlightingFeature.clearSelectedApplications();
+    HighlightingFeature.updateSelectedNodes(this.context, nodeId, appendToSelection);
+
+    // Styling is applied by onDragEnd() handler - b/c d3 drag initiated click events.
+    //  We skip styling here so we don't perform styling twice during drag handling.
+    if (!skipStyling) {
+      // Trigger re-render through registry
+      FeatureRegistry.triggerRender();
+    }
   }
 }

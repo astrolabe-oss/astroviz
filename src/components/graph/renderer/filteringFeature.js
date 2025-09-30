@@ -1,158 +1,123 @@
 /**
- * interactionUtils.js - Interaction and animation utilities for GraphRenderer
+ * filteringUtils.js - Filtering and dimming utilities for GraphRenderer
  *
- * Contains utilities for drag operations, zoom controls, event handling,
- * and animations used in network graph visualization. Includes cursor management,
- * node bouncing animations, and viewport controls.
+ * Contains utilities for node and edge filtering, dimming effects, and
+ * visibility management used in network graph visualization. Includes
+ * filter state management and visual feedback for filtered content.
  */
 
 import * as d3 from 'd3';
-import { EdgeUtils } from './edgeUtils.js';
-import { NodeUtils } from './nodeUtils.js';
-import { LayoutUtils } from './layoutUtils.js';
-import { FilteringUtils } from './filteringUtils.js';
 
-export class InteractionUtils {
+export class FilteringFeature {
   /**
-   * Unified cursor management for drag operations
+   * Internal filtering state
    */
-  static setCursor(event, cursor) {
-    d3.select(event.sourceEvent.target).style('cursor', cursor);
-  }
+  static state = {
+    filteredOutNodes: new Set()  // Set of node IDs that don't match current filters
+  };
 
   /**
-   * Node drag handlers
+   * Set filter-based dimming for nodes (dims non-matching nodes)
+   * @param {Object} context - The graph context object
+   * @param {Set} filteredOutNodeIds - Set of node IDs to dim (don't match filters)
    */
-  static onDragStart(context, event, d) {
-    InteractionUtils.setCursor(event, 'grabbing');
+  static updateFilteredNodes(context, filteredOutNodeIds) {
+    console.log("GraphRenderer: Setting filter dimming for", filteredOutNodeIds.size, "nodes");
+
+    // Update internal state
+    FilteringFeature.state.filteredOutNodes = new Set(filteredOutNodeIds);
   }
 
-  static onDrag(context, event, d) {
-    const nodeId = d.id;
-    const vertex = context.state.vertexMap.get(nodeId);
-    if (!vertex) return;
 
-    // Update the subject position and use it for consistent coordinates
-    event.subject.x = event.x;
-    event.subject.y = event.y;
+  // ========================================================================
+  // Unified Rendering Pipeline Methods
+  // ========================================================================
 
-    // Update position tracking directly in vertexMap
-    vertex.x = event.x;
-    vertex.y = event.y;
+  /**
+   * Apply filter styles to a node based on current state
+   * Called by unified rendering pipeline (NodeUtils.styleAll)
+   * @param {d3.Selection} node - D3 selection of the node element
+   * @param {string} nodeId - Node ID
+   * @param {Object} context - Rendering context (unused but kept for consistency)
+   */
+  static nodePostRenderHook(node, nodeId, context) {
+    if (!nodeId) return;
 
-    // Move the node group visually
-    d3.select(`#node-${nodeId}`)
-      .attr('transform', `translate(${event.x}, ${event.y})`);
-
-    // Update all non-highlighted edges (async with cancellation)
-    EdgeUtils.updateAllEdgesAsync(context);
-  }
-
-  static onDragEnd(context, event, d) {
-    InteractionUtils.setCursor(event, 'grab');
-
-    // Use unified pipeline like group drag end
-    EdgeUtils.updateAllEdgesAsync(context);
+    // Check if filtering is active and this node is filtered out
+    if (FilteringFeature.state.filteredOutNodes && FilteringFeature.state.filteredOutNodes.has(nodeId)) {
+      // Apply dimming
+      node.style('opacity', 0.2);
+      node.classed('dimmed', true);
+    } else {
+      // Remove dimming
+      node.style('opacity', null);
+      node.classed('dimmed', false);
+    }
   }
 
   /**
-   * Group drag handlers
+   * Apply filter styles to an edge based on current state
+   * Called by unified rendering pipeline (EdgeUtils.styleAll)
+   * @param {d3.Selection} edge - D3 selection of the edge element
+   * @param {string} source - Source node ID
+   * @param {string} target - Target node ID
+   * @param {Object} context - Rendering context (unused but kept for consistency)
    */
-  static onGroupDragStart(context, event, d) {
-    // Prevent dragging the private network
-    if (d.id === 'private-network') {
-      event.sourceEvent.preventDefault();
+  static edgePostRenderHook(edge, source, target, context) {
+    if (!source || !target) return;
+
+    // Check if filtering is active
+    if (!FilteringFeature.state.filteredOutNodes || FilteringFeature.state.filteredOutNodes.size === 0) {
+      // No filtering - ensure opacity is not set
+      edge.style('opacity', null);
       return;
     }
 
-    InteractionUtils.setCursor(event, 'grabbing');
-  }
+    // Check if either endpoint is filtered
+    const sourceFiltered = FilteringFeature.state.filteredOutNodes.has(source);
+    const targetFiltered = FilteringFeature.state.filteredOutNodes.has(target);
 
-  static onGroupDrag(context, event, d) {
-    const groupId = d.id;
-
-    // Prevent dragging the private network
-    if (groupId === 'private-network') {
-      return;
+    if (sourceFiltered || targetFiltered) {
+      // Dim edges connected to filtered nodes
+      edge.style('opacity', 0.2);
+    } else {
+      // Not filtered - ensure full opacity
+      edge.style('opacity', null);
     }
-
-    const groupVertex = context.state.vertexMap.get(groupId);
-    if (!groupVertex) return;
-
-    // Calculate movement delta
-    const deltaX = event.x - groupVertex.x;
-    const deltaY = event.y - groupVertex.y;
-
-    // Update the group position and move all children
-    NodeUtils.moveGroupAndChildren(context, groupId, deltaX, deltaY);
-    
-    // Update all non-highlighted edges (async with cancellation)
-    EdgeUtils.updateAllEdgesAsync(context);
   }
 
-  static onGroupDragEnd(context, event, d) {
-    InteractionUtils.setCursor(event, 'grab');
+  // ========================================================================
+  // Filter Zoom and Animation Behavior
+  // ========================================================================
 
-    // Cancel any in-progress async update and do a final synchronous update
-    EdgeUtils.cancelPendingUpdates();
+  /**
+   * Handle zoom and animation behavior when filters change
+   * @param {Object} context - GraphRenderer context
+   */
+  static zoomAndBounce(context) {
+      setTimeout(() => {
+        FilteringFeature.zoomToFilteredView(context);
 
-    // Do a final edge update to ensure everything is accurate
-    EdgeUtils.updateAllEdgesAsync(context);
+        // Then trigger pulse animation after zoom completes
+        setTimeout(() => {
+          FilteringFeature.bounceVisibleNodes(context);
+        }, 850);
+      }, 100);
   }
 
   /**
-   * Zoom controls
+   * Zoom to bounds of visible (non-filtered) nodes
+   * @param {Object} context - GraphRenderer context
    */
-  static zoomIn(context) {
-    if (!context.dom.svg || !context.dom.zoom) return;
-    context.dom.svg.transition().duration(300).call(
-      context.dom.zoom.scaleBy, 1.5
-    );
-  }
-
-  static zoomOut(context) {
-    if (!context.dom.svg || !context.dom.zoom) return;
-    context.dom.svg.transition().duration(300).call(
-      context.dom.zoom.scaleBy, 0.67
-    );
-  }
-
-  static resetView(context) {
-    if (!context.dom.svg || !context.dom.zoom) return;
-
-    // Reset zoom and pan
-    context.dom.svg.transition().duration(500).call(
-      context.dom.zoom.transform,
-      d3.zoomIdentity
-    );
-
-    // Reset all node positions to original
-    NodeUtils.resetNodePositions(context);
-    
-    // Fit to view using vertexMap
-    LayoutUtils.fitToView(context);
-  }
-
-  /**
-   * Get current zoom level
-   */
-  static getZoom(context) {
-    if (!context.dom.svg) return 1;
-    return d3.zoomTransform(context.dom.svg.node()).k;
-  }
-
-  /**
-   * Zoom to bounds of visible (non-dimmed) nodes
-   */
-  static zoomToVisibleNodes(context) {
+  static zoomToFilteredView(context) {
     if (!context.dom.svg || !context.dom.zoom || !context.dom.layers.nodeLayer) return;
 
-    console.log('DEBUG: filteredOutNodes:', FilteringUtils.state.filteredOutNodes?.size, Array.from(FilteringUtils.state.filteredOutNodes || []));
+    console.log('DEBUG: filteredOutNodes:', FilteringFeature.state.filteredOutNodes?.size, Array.from(FilteringFeature.state.filteredOutNodes || []));
 
     // Get bounds of all non-dimmed nodes
     const visibleNodes = [];
     context.dom.layers.nodeLayer.selectAll('.node')
-      .filter(d => !FilteringUtils.state.filteredOutNodes || !FilteringUtils.state.filteredOutNodes.has(d.id))
+      .filter(d => !FilteringFeature.state.filteredOutNodes || !FilteringFeature.state.filteredOutNodes.has(d.id))
       .each(function(d) {
         const node = d3.select(this);
         const transform = node.attr('transform');
@@ -197,7 +162,7 @@ export class InteractionUtils {
     const fullScale = Math.min(svgWidth / boundsWidth, svgHeight / boundsHeight);
 
     // Get current zoom level
-    const currentZoom = InteractionUtils.getZoom(context);
+    const currentZoom = FilteringFeature.getCurrentZoom(context);
     const maxZoom = currentZoom * 1.5; // Limit to 1.5x current zoom
 
     // Apply maximum zoom limit
@@ -219,34 +184,10 @@ export class InteractionUtils {
   }
 
   /**
-   * Handle zoom and animation behavior when filters change
+   * Animate visible (non-filtered) nodes with a bounce effect
    * @param {Object} context - GraphRenderer context
-   * @param {number} newFilterCount - Number of nodes now filtered
-   * @param {number} previousFilterCount - Number of nodes previously filtered
    */
-  static handleFilterZoomBehavior(context, newFilterCount, previousFilterCount) {
-    if (newFilterCount > 0) {
-      // Auto-zoom to visible nodes first
-      setTimeout(() => {
-        InteractionUtils.zoomToVisibleNodes(context);
-
-        // Then trigger pulse animation after zoom completes
-        setTimeout(() => {
-          InteractionUtils.bounceAllNodes(context);
-        }, 850);
-      }, 100);
-    } else if (previousFilterCount > 0 && newFilterCount === 0) {
-      // Filters were cleared - reset the zoom view
-      setTimeout(() => {
-        InteractionUtils.resetView(context);
-      }, 100);
-    }
-  }
-
-  /**
-   * Animate all nodes with a bounce effect for dramatic filter feedback
-   */
-  static bounceAllNodes(context) {
+  static bounceVisibleNodes(context) {
     if (!context.dom.layers.nodeLayer) return;
 
     console.log('Bouncing visible nodes with shared physics simulation');
@@ -256,7 +197,7 @@ export class InteractionUtils {
     context.dom.layers.nodeLayer.selectAll('.node')
       .each(function(d) {
         // Skip filtered out nodes - they should stay dimmed and not bounce
-        if (FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(d.id)) {
+        if (FilteringFeature.state.filteredOutNodes && FilteringFeature.state.filteredOutNodes.has(d.id)) {
           return;
         }
 
@@ -326,7 +267,18 @@ export class InteractionUtils {
       requestAnimationFrame(pulseStep);
     };
 
-    // Start the pulse animation
+    // Start animation
     requestAnimationFrame(pulseStep);
+  }
+
+
+  /**
+   * Get current zoom level (helper for zoom calculations)
+   * @param {Object} context - GraphRenderer context
+   * @returns {number} Current zoom scale
+   */
+  static getCurrentZoom(context) {
+    if (!context.dom.svg) return 1;
+    return d3.zoomTransform(context.dom.svg.node()).k;
   }
 }

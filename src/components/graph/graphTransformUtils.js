@@ -6,6 +6,40 @@
 // src/components/graph/graphTransformUtils.js
 
 /**
+ * Default styles for different group types
+ */
+const GROUP_STYLES = {
+  internetBoundary: {
+    fill: 'none',
+    stroke: '#4A98E3',
+    strokeDasharray: '10,6,2,6',
+    strokeWidth: 4,
+    opacity: 1
+  },
+  privateNetwork: {
+    fill: '#f0f0f0',
+    stroke: '#888',
+    strokeWidth: 2,
+    strokeDasharray: '5,5',
+    opacity: 0.6
+  },
+  cluster: {
+    fill: '#E8F4FD',
+    stroke: '#5B8FF9',
+    strokeWidth: 2,
+    strokeDasharray: '8,4',
+    opacity: 0.6
+  },
+  application: {
+    fill: '#FFE6CC',
+    stroke: '#FF9933',
+    strokeWidth: 2,
+    strokeDasharray: '3,3',
+    opacity: 0.6
+  }
+};
+
+/**
  * Transform Neo4j graph data into hierarchical structure for visualization
  * @param {Object} data - Raw graph data from Neo4j with vertices and edges
  * @param {Object} nodeColors - Map of node types to colors
@@ -72,12 +106,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
       label: 'Internet Boundary',
       type: 'group',
       parentId: null,
-      style: {
-        fill: 'none',
-        stroke: '#4A98E3',
-        strokeDasharray: '10,6,2,6',
-        strokeWidth: 4  // Make it thicker for visibility
-      },
+      style: GROUP_STYLES.internetBoundary,
       // Clean data for NodeDetails panel
       data: {
         label: 'Internet Boundary',
@@ -90,12 +119,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
       label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
       type: 'group',
       parentId: 'internet-boundary',
-      style: {
-        fill: '#f0f0f0',
-        stroke: '#888',
-        strokeWidth: 2,
-        opacity: 0.6
-      },
+      style: GROUP_STYLES.privateNetwork,
       // Clean data for NodeDetails panel
       data: {
         label: `Private Network (${clusterCount} clusters, ${totalApps} apps)`,
@@ -113,12 +137,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
       label: `Cluster: ${clusterName} (${appCount} apps)`,
       type: 'group',
       parentId: 'private-network',
-      style: {
-        fill: '#E8F4FD',
-        stroke: '#5B8FF9',
-        strokeWidth: 2,
-        opacity: 0.6
-      },
+      style: GROUP_STYLES.cluster,
       // Clean data for NodeDetails panel
       data: {
         label: `Cluster: ${clusterName} (${appCount} apps)`,
@@ -137,12 +156,7 @@ export function transformGraphDataForVisualization(data, nodeColors) {
         name: appName,
         app_name: appName,
         parentId: clusterGroupId,
-        style: {
-          fill: '#FFE6CC',
-          stroke: '#FF9933',
-          strokeWidth: 2,
-          opacity: 0.6
-        },
+        style: GROUP_STYLES.application,
         // Clean data for NodeDetails panel
         data: {
           label: `App: ${appName} (${appNodes.length} nodes)`,

@@ -6,9 +6,8 @@
  * and gradient generation for sophisticated edge styling.
  */
 
-import { HighlightingUtils } from './highlightingUtils.js';
-import { FilteringUtils } from './filteringUtils.js';
-import { STYLES } from './styles.js';
+import * as d3 from 'd3';
+import { FeatureRegistry } from './featureRegistry.js';
 import { getOptions } from './options.js';
 
 export class EdgeUtils {
@@ -16,6 +15,31 @@ export class EdgeUtils {
    * Flag to track if async update should be cancelled
    */
   static asyncUpdateCancelled = false;
+
+  /**
+   * Get all nodes and edges connected to a given node
+   * @param {Object} context - Graph context object
+   * @param {string} nodeId - ID of the node to find connections for
+   * @returns {Object} - Object with connected nodes Set and edges Array
+   */
+  static getConnectedNodes(context, nodeId) {
+    const connectedNodes = new Set([nodeId]); // Include the node itself
+    const connectedEdges = [];
+
+    if (!context.state.edges) return { nodes: connectedNodes, edges: connectedEdges };
+
+    context.state.edges.forEach((edge) => {
+      if (edge.source === nodeId) {
+        connectedNodes.add(edge.target);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
+      } else if (edge.target === nodeId) {
+        connectedNodes.add(edge.source);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
+      }
+    });
+
+    return { nodes: connectedNodes, edges: connectedEdges };
+  }
 
   /**
    * Initialize arrow markers for edges
@@ -44,28 +68,6 @@ export class EdgeUtils {
     createArrowMarker('arrow-path', '#FFA500');            // Gold arrow for path (trace) edges
   }
 
-  /**
-   * Unified edge styling function - Orchestrates highlight and filter styling
-   * @param {d3.Selection} edgeSelection - D3 selection of edge(s) to style
-   * @param {string} state - 'normal'|'path'|'connected'|'dimmed'|'connected-inbound'
-   * @param {Object} styling - Styling configuration object
-   * @param {Set} filteredOutNodes - Set of filtered node IDs
-   */
-  static applyEdgeStyle(edgeSelection, state, styling, filteredOutNodes) {
-    // Apply highlighting styles
-    HighlightingUtils.applyHighlightStyleToEdge(
-      edgeSelection, 
-      state, 
-      styling
-    );
-    
-    // Apply filtering styles with edge state information
-    FilteringUtils.applyFilterStyleToEdge(
-      edgeSelection,
-      filteredOutNodes,
-      state
-    );
-  }
   /**
    * Create or update gradient for an edge
    */
@@ -127,61 +129,49 @@ export class EdgeUtils {
 
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
-      const isHighlighted = HighlightingUtils.state.activeHighlights.edges.has(edgeKey);
 
       let strokeStyle, strokeWidth;
 
-      if (isHighlighted) {
-        // Use solid purple for highlighted edges
-        strokeStyle = '#4444ff';
-        strokeWidth = 3;
-      } else {
-        // Use gradient segments for non-highlighted edges
-        // Find home groups using utility method
-        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
+      // Use gradient segments for non-highlighted edges
+      // Find home groups using utility method
+      const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
 
-        // Create adjusted position map for segment calculation
-        const adjustedPositionMap = new Map(positionMap);
-        adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+      // Create adjusted position map for segment calculation
+      const adjustedPositionMap = new Map(positionMap);
+      adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
 
-        // Create filter function using utility method
-        const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
-          homeApps, homeClusters, applicationGroups, clusterGroups
-        );
+      // Create filter function using utility method
+      const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
+        homeApps, homeClusters, applicationGroups, clusterGroups
+      );
 
-        const segments = EdgeUtils.calculateEdgeSegments(
-          edge,
-          adjustedPositionMap,
-          [...applicationGroups, ...clusterGroups],
-          isUnrelatedGroupFilter
-        );
+      const segments = EdgeUtils.calculateEdgeSegments(
+        edge,
+        adjustedPositionMap,
+        [...applicationGroups, ...clusterGroups],
+        isUnrelatedGroupFilter
+      );
 
-        // Convert segments to gradient stops
-        const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
+      // Convert segments to gradient stops
+      const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
 
-        // Create unique edge ID
-        const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
+      // Create unique edge ID
+      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
 
-        // Create gradient for this edge (use adjusted coordinates)
-        strokeStyle = EdgeUtils.createEdgeGradient(
-          context.dom.defs,
-          edgeId,
-          gradientStops,
-          sourcePos.x,
-          sourcePos.y,
-          adjustedTargetX,
-          adjustedTargetY
-        );
-        strokeWidth = 1.5;
-      }
-
-      // Check if this edge should be dimmed (connected to filtered nodes)
-      const sourceFiltered = FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(edge.source);
-      const targetFiltered = FilteringUtils.state.filteredOutNodes && FilteringUtils.state.filteredOutNodes.has(edge.target);
-      const shouldBeDimmed = sourceFiltered || targetFiltered;
+      // Create gradient for this edge (use adjusted coordinates)
+      strokeStyle = EdgeUtils.createEdgeGradient(
+        context.dom.defs,
+        edgeId,
+        gradientStops,
+        sourcePos.x,
+        sourcePos.y,
+        adjustedTargetX,
+        adjustedTargetY
+      );
+      strokeWidth = 1.5;
 
       // Create single line with appropriate styling including filtering state
-      const edgeElement = context.dom.layers.edgeLayer
+      context.dom.layers.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
@@ -213,7 +203,7 @@ export class EdgeUtils {
     }
 
     // Now do the actual update
-    await EdgeUtils.doAllEdgesUpdate(context);
+    await EdgeUtils.renderEdgesWithHooks(context);
   }
 
   /**
@@ -221,23 +211,6 @@ export class EdgeUtils {
    */
   static cancelPendingUpdates() {
     EdgeUtils.asyncUpdateCancelled = true;
-  }
-
-  /**
-   * Internal method to do the actual edge updates
-   */
-  static doAllEdgesUpdate(context) {
-    if (!context.state.edges) {
-      return;
-    }
-    
-    // Call renderEdges using current vertexMap positions - no sync needed!
-    EdgeUtils.renderEdges(context);
-
-    // Reapply highlighting if we have active selections
-    if (HighlightingUtils.state.headNode) {
-      HighlightingUtils.applyCleanHighlighting(context, STYLES);
-    }
   }
 
 
@@ -583,5 +556,29 @@ export class EdgeUtils {
       
       return false;
     };
+  }
+
+  // ========================================================================
+  // Unified Rendering Pipeline
+  // ========================================================================
+
+  /**
+   * Apply all feature styles to existing DOM elements
+   * Called after any render operation or when only styles change
+   * @param {Object} context - Rendering context
+   */
+  static renderEdgesWithHooks(context) {
+    // Re-render edges to ensure proper gradients
+    EdgeUtils.renderEdges(context);
+
+    // Apply all feature styles to edges
+    context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
+      const edge = d3.select(this);
+      const source = edge.attr('data-source');
+      const target = edge.attr('data-target');
+
+      // Let all registered features apply their styles
+      FeatureRegistry.edgePostRenderHooks(edge, source, target, context);
+    });
   }
 }
