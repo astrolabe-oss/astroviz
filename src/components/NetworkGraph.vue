@@ -46,7 +46,6 @@ import GraphControls from './graph/GraphControls.vue';
 import GraphLegend from './graph/GraphLegend.vue';
 import GraphStats from './graph/GraphStats.vue';
 import RenderingStatus from './graph/RenderingStatus.vue';
-import { findNodeIdByProperties } from '@/utils/nodeUtils';
 
 export default {
   name: 'NetworkGraph',
@@ -76,12 +75,12 @@ export default {
   data() {
     return {
       nodeColors: {
-        'Application': '#F9696E', // Red like in the image
-        'Deployment': '#F2A3B3', // Pink like in the image
-        'Compute': '#5DCAD1', // Light blue like in the image
-        'Resource': '#74B56D', // Green like in the image
-        'TrafficController': '#4A98E3', // Blue like in the image
-        'Unknown': '#F9C96E', // Orange for unknown nodes
+        'Application': '#F9696E', // Red
+        'Deployment': '#F2A3B3', // Pink
+        'Compute': '#5DCAD1', // Light
+        'Resource': '#74B56D', // Green
+        'TrafficController': '#4A98E3', // Blue
+        'Unknown': '#F9C96E', // Orange
       },
 
       isRendering: false,
@@ -99,8 +98,8 @@ export default {
      * @param {Object} event The DOM event object
      */
     onNodeClick(node, event) {
-      // Pass node data and shift key state to parent
-      this.$emit('node-clicked', node, event?.shiftKey);
+      // Pass node data and event to parent
+      this.$emit('node-clicked', node, event);
     },
 
 

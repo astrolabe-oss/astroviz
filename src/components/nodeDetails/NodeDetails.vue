@@ -38,6 +38,29 @@
       </div>
     </div>
 
+    <!-- Group Inventory Section (for groups with children) -->
+    <div class="detail-section" v-if="node.children && node.children.length > 0">
+      <div class="connections-container inventory-container">
+        <div class="connections-header inventory-header">
+          <h5>Inventory ({{ node.children.length }} nodes)</h5>
+        </div>
+        <div class="inventory-content">
+        <div v-for="(typeGroup, type) in groupedChildren" :key="type" class="inventory-type-group">
+          <h6 class="inventory-type-header">{{ type }} ({{ typeGroup.length }})</h6>
+          <ul class="inventory-list">
+            <li v-for="child in typeGroup" :key="child.id" class="inventory-item" @click="(event) => selectNodeInGraph(child.id, child.data, event.shiftKey)">
+              <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(child.type) }">
+                {{ child.type }}
+              </span>
+              <span class="inventory-details">
+                {{ child.name }} - {{ child.address || 'No address' }}
+              </span>
+            </li>
+          </ul>
+        </div>
+      </div>
+      </div>
+    </div>
 
     <!-- Node Relationships Section -->
     <div class="detail-section" v-if="hasAnyRelationships">
@@ -76,7 +99,7 @@
                     v-for="(rel, relIndex) in group.relationships"
                     :key="`conns-out-${relIndex}`"
                     class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
+                    @click="(event) => selectNodeInGraph(rel.nodeId, null, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                     {{ rel.nodeType }}
@@ -103,7 +126,7 @@
                     v-for="(rel, relIndex) in group.relationships"
                     :key="`conns-in-${relIndex}`"
                     class="relationship-item"
-                    @click="(event) => selectNodeInGraph(rel, event.shiftKey)"
+                    @click="(event) => selectNodeInGraph(rel.nodeId, null, event.shiftKey)"
                 >
                   <span class="node-type-badge" :style="{ backgroundColor: getNodeTypeColor(rel.nodeType) }">
                     {{ rel.nodeType }}
@@ -215,7 +238,7 @@ export default {
       // Add additional properties to exclude from the "Other Properties" section
       const excludedKeys = [
         'type', 'app_name', 'name', 'address', 'components', 
-        'typeCounts', 'componentCounts', 'profile_timestamp'
+        'typeCounts', 'componentCounts', 'profile_timestamp', 'children'
       ];
 
       Object.entries(this.node).forEach(([key, value]) => {
@@ -225,6 +248,31 @@ export default {
       });
 
       return result;
+    },
+
+    /**
+     * Group children by type for inventory display
+     */
+    groupedChildren() {
+      if (!this.node.children || !Array.isArray(this.node.children)) {
+        return {};
+      }
+      
+      const grouped = {};
+      this.node.children.forEach(child => {
+        const type = child.type || 'Unknown';
+        if (!grouped[type]) {
+          grouped[type] = [];
+        }
+        grouped[type].push(child);
+      });
+      
+      // Sort each group by name
+      Object.keys(grouped).forEach(type => {
+        grouped[type].sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+      });
+      
+      return grouped;
     },
 
     /**
@@ -350,25 +398,19 @@ export default {
      * @param {Object} rel The relationship object or component containing node information
      * @param {boolean} isShiftKey Whether the shift key was pressed during click
      */
-    selectNodeInGraph(rel, isShiftKey = false) {
-      // Check if this is a component (has originalData)
-      if (rel.originalData) {
-        console.log("NodeDetails: Selecting component with shift key:", isShiftKey);
-        // For components, use the originalData
-        this.$emit('select-node', rel.originalData, isShiftKey);
-        return;
-      }
+    selectNodeInGraph(nodeId, nodeData = null, isShiftKey = false) {
+      // Get the node data directly using the nodeId
+      const data = nodeData || this.graphData.vertices[nodeId];
 
-      // For relationships, get the node data directly using the nodeId
-      const nodeData = this.graphData.vertices[rel.nodeId];
-
-      if (nodeData) {
+      if (data) {
         console.log("NodeDetails: Selecting node with shift key:", isShiftKey);
-        // Emit an event to notify the parent components to select this node
-        // Pass the shift key state to support multi-selection
-        this.$emit('select-node', nodeData, isShiftKey);
+        // Emit both ID (for selection) and data (for details display)
+        this.$emit('select-node', {
+          id: nodeId,
+          data: data
+        }, isShiftKey);
       } else {
-        console.warn(`Node with ID ${rel.nodeId} not found in current graph data (may be filtered out)`);
+        console.warn(`Node with ID ${nodeId} not found in current graph data (may be filtered out)`);
       }
     },
 
@@ -379,57 +421,6 @@ export default {
       this.$emit('close');
     },
 
-    /**
-     * Generate a comprehensive tooltip for a component
-     * @param {Object} component The component object
-     * @returns {string} Tooltip text with complete component information
-     */
-    getComponentTooltip(component) {
-      if (!component) return '';
-
-      let tooltip = `${component.nodeType}: ${component.name || 'Unnamed'}`;
-
-      if (component.address) {
-        tooltip += `\nAddress: ${component.address}`;
-      }
-
-      if (component.protocol_multiplexor) {
-        tooltip += `\nMux: ${component.protocol_multiplexor}`;
-      }
-
-      if (component.app_name && component.app_name !== component.name) {
-        tooltip += `\nApp: ${component.app_name}`;
-      }
-
-      if (component.provider) {
-        tooltip += `\nProvider: ${component.provider}`;
-      }
-
-      if (component.public_ip !== undefined) {
-        tooltip += `\nIP: ${component.public_ip ? 'Public' : 'Private'}`;
-      }
-
-      return tooltip;
-    },
-
-    /**
-     * Format component details for display in the list
-     * @param {Object} component The component object
-     * @returns {string} Formatted component details
-     */
-    formatComponentDetails(component) {
-      if (!component) return '';
-
-      // Determine the primary display value (either address or name)
-      let primaryText = component.address || component.name || component.app_name || 'Unknown';
-
-      // Add protocol multiplexor if available
-      if (component.protocol_multiplexor) {
-        primaryText += ` (${component.protocol_multiplexor})`;
-      }
-
-      return primaryText;
-    },
 
     /**
      * Find edge between two nodes
@@ -690,22 +681,6 @@ export default {
   background-color: #eef5fd;
 }
 
-.component-item {
-  cursor: default;
-}
-
-.component-item:hover {
-  background-color: #f5f5f5;
-}
-
-.component-item .connection-details {
-  cursor: default;
-}
-
-.component-item .connection-details:hover {
-  text-decoration: none;
-  color: #555;
-}
 
 .node-type-badge {
   display: inline-block;
@@ -742,5 +717,65 @@ export default {
 .connection-details:hover {
   text-decoration: underline;
   color: #4A98E3;
+}
+
+/* Inventory Section Styles */
+.inventory-header {
+  background-color: #E3F2FD;
+  border-bottom: 1px solid #BBDEFB;
+}
+
+.inventory-header::before {
+  background-color: #2196F3;
+}
+
+.inventory-content {
+  padding: 4px;
+}
+
+.inventory-type-group {
+  margin-bottom: 12px;
+  padding: 4px;
+  background-color: #f9f9f9;
+  border-radius: 4px;
+}
+
+.inventory-type-header {
+  margin: 0 0 6px 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #333;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 3px;
+}
+
+.inventory-list {
+  list-style-type: none;
+  padding-left: 4px;
+  margin: 0;
+}
+
+.inventory-item {
+  margin-bottom: 4px;
+  padding: 3px;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+}
+
+.inventory-item:hover {
+  background-color: #eef5fd;
+}
+
+.inventory-details {
+  flex: 1;
+  color: #555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 </style>

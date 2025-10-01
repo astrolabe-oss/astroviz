@@ -6,9 +6,68 @@
  * and gradient generation for sophisticated edge styling.
  */
 
-import { HighlightingUtils } from './highlightingUtils.js';
+import * as d3 from 'd3';
+import { FeatureRegistry } from './featureRegistry.js';
+import { getOptions } from './options.js';
 
 export class EdgeUtils {
+  /**
+   * Flag to track if async update should be cancelled
+   */
+  static asyncUpdateCancelled = false;
+
+  /**
+   * Get all nodes and edges connected to a given node
+   * @param {Object} context - Graph context object
+   * @param {string} nodeId - ID of the node to find connections for
+   * @returns {Object} - Object with connected nodes Set and edges Array
+   */
+  static getConnectedNodes(context, nodeId) {
+    const connectedNodes = new Set([nodeId]); // Include the node itself
+    const connectedEdges = [];
+
+    if (!context.state.edges) return { nodes: connectedNodes, edges: connectedEdges };
+
+    context.state.edges.forEach((edge) => {
+      if (edge.source === nodeId) {
+        connectedNodes.add(edge.target);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
+      } else if (edge.target === nodeId) {
+        connectedNodes.add(edge.source);
+        connectedEdges.push(`${edge.source}-${edge.target}`);
+      }
+    });
+
+    return { nodes: connectedNodes, edges: connectedEdges };
+  }
+
+  /**
+   * Initialize arrow markers for edges
+   * @param {d3.Selection} defs - SVG defs section
+   */
+  static initArrowMarkers(defs) {
+    const createArrowMarker = (id, color) => {
+      const marker = defs.append('marker')
+        .attr('id', id)
+        .attr('viewBox', '0 0 10 10')
+        .attr('refX', 7)  // Position reference inside the arrow so tip extends past line
+        .attr('refY', 5)
+        .attr('markerWidth', 5)  // Half the original size
+        .attr('markerHeight', 5)  // Half the original size
+        .attr('orient', 'auto-start-reverse');
+      
+      marker.append('path')
+        .attr('d', 'M 0 0 L 10 5 L 0 10 z')
+        .attr('fill', color)
+        .attr('opacity', 1.0);
+    };
+
+    // Create all arrow markers for different edge states
+    createArrowMarker('arrow', '#888');                    // Default gray arrow for normal edges
+    createArrowMarker('arrow-connected', '#4444ff');       // Purple arrow for connected (highlighted) edges  
+    createArrowMarker('arrow-path', '#FFA500');            // Gold arrow for path (trace) edges
+  }
+
   /**
    * Create or update gradient for an edge
    */
@@ -39,22 +98,24 @@ export class EdgeUtils {
   }
 
   /**
-   * Render edges using hierarchical data and edge list
+   * Render edges using vertexMap data and edge list
+   * @param {Object} context - Rendering context
+   * @param {Object} options - Rendering options (nodeRadius, etc)
    */
-  static renderEdges(context, packedRoot) {
-    if (!context.data.edges) return;
+  static renderEdges(context) {
+    if (!context.state.edges) return;
 
     // Extract rendering data using utility method
     const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
-      EdgeUtils.extractRenderingData(packedRoot);
+      EdgeUtils.extractRenderingDataFromVertexMap(context.state.vertexMap);
 
     // Filter edges to only those with both endpoints visible
-    const visibleEdges = context.data.edges.filter(edge => {
+    const visibleEdges = context.state.edges.filter(edge => {
       return positionMap.has(edge.source) && positionMap.has(edge.target);
     });
 
     // Clear existing edges
-    context.layers.edgeLayer.selectAll('line.edge').remove();
+    context.dom.layers.edgeLayer.selectAll('line.edge').remove();
 
     // Create single gradient edges using segment data
     visibleEdges.forEach((edge, edgeIndex) => {
@@ -63,66 +124,54 @@ export class EdgeUtils {
       const targetPos = positionMap.get(edge.target);
 
       // Calculate adjusted endpoint using utility method
-      const shortenBy = context.options.nodeRadius * 0.7;
+      const shortenBy = getOptions().nodeRadius * 0.7;
       const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(sourcePos, targetPos, shortenBy);
 
       // Check if this edge is highlighted
       const edgeKey = `${edge.source}-${edge.target}`;
-      const isHighlighted = HighlightingUtils.state.highlightedElements.edgeKeys.has(edgeKey);
 
       let strokeStyle, strokeWidth;
 
-      if (isHighlighted) {
-        // Use solid purple for highlighted edges
-        strokeStyle = '#4444ff';
-        strokeWidth = 3;
-      } else {
-        // Use gradient segments for non-highlighted edges
-        // Find home groups using utility method
-        const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
+      // Use gradient segments for non-highlighted edges
+      // Find home groups using utility method
+      const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
 
-        // Create adjusted position map for segment calculation
-        const adjustedPositionMap = new Map(positionMap);
-        adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
+      // Create adjusted position map for segment calculation
+      const adjustedPositionMap = new Map(positionMap);
+      adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
 
-        // Create filter function using utility method
-        const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
-          homeApps, homeClusters, applicationGroups, clusterGroups
-        );
+      // Create filter function using utility method
+      const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
+        homeApps, homeClusters, applicationGroups, clusterGroups
+      );
 
-        const segments = EdgeUtils.calculateEdgeSegments(
-          edge,
-          adjustedPositionMap,
-          [...applicationGroups, ...clusterGroups],
-          isUnrelatedGroupFilter
-        );
+      const segments = EdgeUtils.calculateEdgeSegments(
+        edge,
+        adjustedPositionMap,
+        [...applicationGroups, ...clusterGroups],
+        isUnrelatedGroupFilter
+      );
 
-        // Convert segments to gradient stops
-        const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
+      // Convert segments to gradient stops
+      const gradientStops = EdgeUtils.segmentsToGradientStops(segments);
 
-        // Create unique edge ID
-        const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
+      // Create unique edge ID
+      const edgeId = `${edge.source}-${edge.target}-${edgeIndex}`;
 
-        // Create gradient for this edge (use adjusted coordinates)
-        strokeStyle = EdgeUtils.createEdgeGradient(
-          context.defs,
-          edgeId,
-          gradientStops,
-          sourcePos.x,
-          sourcePos.y,
-          adjustedTargetX,
-          adjustedTargetY
-        );
-        strokeWidth = 1.5;
-      }
-
-      // Check if this edge should be dimmed (connected to filtered nodes)
-      const sourceFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.source);
-      const targetFiltered = context.state.filteredOutNodes && context.state.filteredOutNodes.has(edge.target);
-      const shouldBeDimmed = sourceFiltered || targetFiltered;
+      // Create gradient for this edge (use adjusted coordinates)
+      strokeStyle = EdgeUtils.createEdgeGradient(
+        context.dom.defs,
+        edgeId,
+        gradientStops,
+        sourcePos.x,
+        sourcePos.y,
+        adjustedTargetX,
+        adjustedTargetY
+      );
+      strokeWidth = 1.5;
 
       // Create single line with appropriate styling including filtering state
-      const edgeElement = context.layers.edgeLayer
+      context.dom.layers.edgeLayer
         .append('line')
         .attr('class', 'edge')
         .attr('data-source', edge.source)
@@ -142,75 +191,28 @@ export class EdgeUtils {
    * Update all edges asynchronously with cancellation support
    */
   static async updateAllEdgesAsync(context) {
-    // Cancel any in-progress update
-    if (context.interaction.edgeUpdateController) {
-      context.interaction.edgeUpdateController.cancelled = true;
-    }
-
-    // Create new controller for this update
-    const controller = { cancelled: false };
-    context.interaction.edgeUpdateController = controller;
+    // Reset cancellation flag for this update
+    EdgeUtils.asyncUpdateCancelled = false;
 
     // Yield to browser to keep UI responsive
     await new Promise(resolve => setTimeout(resolve, 0));
 
     // Check if cancelled
-    if (controller.cancelled) {
+    if (EdgeUtils.asyncUpdateCancelled) {
       return;
     }
 
     // Now do the actual update
-    await EdgeUtils.doAllEdgesUpdate(context);
-
-    // Clear controller if this update completed
-    if (context.interaction.edgeUpdateController === controller) {
-      context.interaction.edgeUpdateController = null;
-    }
+    await EdgeUtils.renderEdgesWithHooks(context);
   }
 
   /**
-   * Internal method to do the actual edge updates
+   * Cancel any in-progress edge update
    */
-  static doAllEdgesUpdate(context) {
-    if (!context.data.edges || !context.state.hierarchyRoot) {
-      return;
-    }
-    
-    // Sync current drag positions back to hierarchyRoot before rendering
-    EdgeUtils.syncCurrentPositionsToHierarchy(context);
-
-    // Now call renderEdges with updated hierarchy - this handles all edge logic consistently
-    EdgeUtils.renderEdges(context, context.state.hierarchyRoot);
-
-    // Reapply highlighting if we have active selections
-    if (HighlightingUtils.state.headNode) {
-      HighlightingUtils.applyCleanHighlighting(context);
-    }
+  static cancelPendingUpdates() {
+    EdgeUtils.asyncUpdateCancelled = true;
   }
 
-  /**
-   * Sync current drag positions from nodePositions/groupPositions maps back to hierarchyRoot
-   */
-  static syncCurrentPositionsToHierarchy(context) {
-    if (!context.state.hierarchyRoot) return;
-
-    context.state.hierarchyRoot.descendants().forEach(node => {
-      if (node.data.isGroup && !node.data.isVirtual) {
-        const groupPos = context.state.groupPositions.get(node.data.id);
-        if (groupPos) {
-          node.x = groupPos.x - 25; // Remove offset used in rendering
-          node.y = groupPos.y - 25;
-          node.r = groupPos.r;
-        }
-      } else if (!node.data.isGroup && !node.data.isVirtual) {
-        const nodePos = context.state.nodePositions.get(node.data.id);
-        if (nodePos) {
-          node.x = nodePos.x - 25; // Remove offset used in rendering
-          node.y = nodePos.y - 25;
-        }
-      }
-    });
-  }
 
   /**
    * Calculate edge segments with flexible group filtering
@@ -406,70 +408,69 @@ export class EdgeUtils {
 
 
   /**
-   * Extract rendering data from D3 hierarchy for edge processing
-   * @param {Object} packedRoot - D3 packed hierarchy root
+   * Extract rendering data from vertexMap for edge processing
+   * @param {Map} vertexMap - Map of vertices with current positions
    * @returns {Object} Object with position maps and group data
    */
-  static extractRenderingData(packedRoot) {
-    // Create position map for nodes
+  static extractRenderingDataFromVertexMap(vertexMap) {
+    // Create position map from vertexMap
     const positionMap = new Map();
-    packedRoot.descendants().forEach(d => {
-      if (!d.data.isVirtual) {
-        positionMap.set(d.data.id, { x: d.x + 25, y: d.y + 25 });
-      }
-    });
-    
-    // Create group circles map for intersection detection
     const applicationGroups = [];
     const clusterGroups = [];
     const nodeToAppMap = new Map();
     const nodeToClusterMap = new Map();
     
-    // Build group data and node mappings
-    packedRoot.descendants().forEach(d => {
-      if (d.data.isGroup && !d.data.isVirtual) {
-        const circle = {
-          id: d.data.id,
-          x: d.x + 25,
-          y: d.y + 25,
-          r: d.r,
-          isApp: d.data.id.startsWith('app-'),
-          isCluster: d.data.id.startsWith('cluster')
-        };
+    // Process all vertices
+    vertexMap.forEach((vertex, id) => {
+      if (!vertex.isVirtual) {
+        // Add position for all vertices (nodes and groups)
+        positionMap.set(id, { x: vertex.x, y: vertex.y });
         
-        // Track application groups
-        if (circle.isApp) {
-          applicationGroups.push(circle);
+        // Process groups for intersection detection
+        if (vertex.isGroup) {
+          const circle = {
+            id: vertex.id,
+            x: vertex.x,
+            y: vertex.y,
+            r: vertex.r,
+            isApp: vertex.id.startsWith('app-'),
+            isCluster: vertex.id.startsWith('cluster')
+          };
           
-          // Map all child nodes to this application
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToAppMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
+          // Track application groups
+          if (circle.isApp) {
+            applicationGroups.push(circle);
+            
+            // Map all child nodes to this application
+            if (vertex.children) {
+              const mapChildNodes = (child) => {
+                if (!child.isGroup) {
+                  nodeToAppMap.set(child.id, vertex.id);
+                }
+                if (child.children) {
+                  child.children.forEach(mapChildNodes);
+                }
+              };
+              vertex.children.forEach(mapChildNodes);
+            }
           }
-        }
-        
-        // Track cluster groups
-        if (circle.isCluster) {
-          clusterGroups.push(circle);
           
-          // Map all child nodes to this cluster
-          if (d.children) {
-            const mapChildNodes = (node) => {
-              if (!node.data.isGroup) {
-                nodeToClusterMap.set(node.data.id, d.data.id);
-              }
-              if (node.children) {
-                node.children.forEach(mapChildNodes);
-              }
-            };
-            d.children.forEach(mapChildNodes);
+          // Track cluster groups  
+          if (circle.isCluster) {
+            clusterGroups.push(circle);
+            
+            // Map all child nodes to this cluster
+            if (vertex.children) {
+              const mapChildNodes = (child) => {
+                if (!child.isGroup) {
+                  nodeToClusterMap.set(child.id, vertex.id);
+                }
+                if (child.children) {
+                  child.children.forEach(mapChildNodes);
+                }
+              };
+              vertex.children.forEach(mapChildNodes);
+            }
           }
         }
       }
@@ -555,5 +556,29 @@ export class EdgeUtils {
       
       return false;
     };
+  }
+
+  // ========================================================================
+  // Unified Rendering Pipeline
+  // ========================================================================
+
+  /**
+   * Apply all feature styles to existing DOM elements
+   * Called after any render operation or when only styles change
+   * @param {Object} context - Rendering context
+   */
+  static renderEdgesWithHooks(context) {
+    // Re-render edges to ensure proper gradients
+    EdgeUtils.renderEdges(context);
+
+    // Apply all feature styles to edges
+    context.dom.layers.edgeLayer.selectAll('.edge').each(function() {
+      const edge = d3.select(this);
+      const source = edge.attr('data-source');
+      const target = edge.attr('data-target');
+
+      // Let all registered features apply their styles
+      FeatureRegistry.edgePostRenderHooks(edge, source, target, context);
+    });
   }
 }

@@ -8,143 +8,82 @@
 
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
-import { InteractionUtils } from './interactionUtils.js';
+import { EdgeUtils } from './edgeUtils.js';
+import { FeatureRegistry } from './featureRegistry.js';
+import { getOptions } from './options.js';
 
 export class NodeUtils {
   /**
-   * Store node positions from pack layout
+   * Node type base colors
    */
-  static storeNodePositions(renderer, packedRoot) {
-    renderer.nodePositions.clear();
-    renderer.groupPositions.clear();
-
-    // Store positions using our clean vertex structure
-    renderer.vertexMap.forEach((vertex, id) => {
-      if (!vertex.isVirtual) {
-        const position = {
-          x: vertex.x,
-          y: vertex.y,
-          originalX: vertex.x,
-          originalY: vertex.y
-        };
-
-        if (vertex.isGroup) {
-          position.r = vertex.r;
-          position.originalR = vertex.r;
-          position.children = vertex.children ? vertex.children.map(c => c.id) : [];
-          renderer.groupPositions.set(vertex.id, position);
-        } else {
-          renderer.nodePositions.set(vertex.id, position);
-        }
-      }
-    });
-  }
+  static NODE_COLORS = {
+    'Application': '#F9696E',
+    'Deployment': '#F2A3B3',
+    'Compute': '#5DCAD1',
+    'Resource': '#74B56D',
+    'TrafficController': '#4A98E3',
+    'Unknown': '#F9C96E'
+  };
 
   /**
-   * Build hierarchy from vertices data
+   * Unknown node text styles (normal state)
    */
-  static buildHierarchy(renderer) {
-    const vertices = renderer.data.vertices;
-    if (!vertices) return null;
-
-    console.log('Raw vertices data:', vertices);
-
-    // Create vertex map with clean separation between app and database properties
-    renderer.vertexMap = new Map();
-
-    Object.entries(vertices).forEach(([id, vertex]) => {
-      // Use the already properly structured data from graphTransformUtils
-      renderer.vertexMap.set(id, {
-        // Application properties (for visualization/interaction)
-        id: vertex.id || id,
-        children: [],
-        isGroup: vertex.type === 'group',
-        isVirtual: vertex.isVirtual || false,
-        parentId: vertex.parentId,
-        label: vertex.label,
-        style: vertex.style,
-        x: 0, y: 0, r: 0,    // Will be set from D3 positioning
-
-        // Database properties (clean for end users) - already separated
-        data: vertex.data || { label: vertex.label, type: vertex.type }  // Groups use minimal data
-      });
-    });
-
-    // Build parent-child relationships
-    Object.entries(vertices).forEach(([id, vertex]) => {
-      if (vertex.parentId && renderer.vertexMap.has(vertex.parentId)) {
-        const parent = renderer.vertexMap.get(vertex.parentId);
-        const child = renderer.vertexMap.get(id);
-        parent.children.push(child);
-      }
-    });
-
-    // Find roots (nodes with no parentId)
-    const roots = [];
-    renderer.vertexMap.forEach(vertex => {
-      if (!vertex.parentId) {
-        roots.push(vertex);
-      }
-    });
-
-    // Separate internet-boundary group from root leaf nodes for hybrid layout
-    const internetBoundaryGroup = roots.find(node => node.id === 'internet-boundary');
-    const rootLeafNodes = roots.filter(node => node.id !== 'internet-boundary' && !node.isGroup);
-    const otherRootGroups = roots.filter(node => node.id !== 'internet-boundary' && node.isGroup);
-
-    console.log(`Hierarchy separation: internet-boundary=${!!internetBoundaryGroup}, rootLeaves=${rootLeafNodes.length}, otherGroups=${otherRootGroups.length}`);
-
-    // Store separation for hybrid layout calculation
-    renderer.hybridLayout = {
-      internetBoundaryGroup,
-      rootLeafNodes,
-      otherRootGroups
-    };
-
-    // For circle packing, exclude root leaf nodes - they'll be positioned radially
-    const packedRoots = renderer.hybridLayout && renderer.hybridLayout.rootLeafNodes.length > 0
-      ? roots.filter(node => node.id === 'internet-boundary' || node.isGroup)
-      : roots;
-
-    console.log(`Hierarchy for packing: ${packedRoots.length} roots (excluded ${roots.length - packedRoots.length} root leaf nodes)`);
-
-    // Create virtual root if needed
-    if (packedRoots.length === 1) {
-      return packedRoots[0];
-    } else {
-      return {
-        id: 'virtual-root',
-        type: 'group',       // Use type instead of just isGroup
-        children: packedRoots,
-        isGroup: true,
-        isVirtual: true
-      };
-    }
+  static UNKNOWN_TEXT_NORMAL = {
+    fill: '#333333',
+    fontWeight: 'normal'
+  };
+  /**
+   * Node drag handlers
+   */
+  static setCursor(event, cursor) {
+    d3.select(event.sourceEvent.target).style('cursor', cursor);
   }
 
-  /**
-   * Extract D3 positioning data back into our clean vertex structure
-   */
-  static extractPositionsFromD3(renderer, packedRoot) {
-    packedRoot.descendants().forEach(d => {
-      const vertex = renderer.vertexMap.get(d.data.id);
-      if (vertex) {
-        vertex.x = d.x + 25;  // Apply offset for margin
-        vertex.y = d.y + 25;
-        vertex.r = d.r;
-      }
-    });
+  static onDragStart(context, event, d) {
+    console.log('DEBUG: onDragStart fired for', d.id);
+    NodeUtils.setCursor(event, 'grabbing');
+  }
+
+  static onDrag(context, event, d) {
+    const nodeId = d.id;
+    const vertex = context.state.vertexMap.get(nodeId);
+    if (!vertex) return;
+
+    // Update the subject position and use it for consistent coordinates
+    event.subject.x = event.x;
+    event.subject.y = event.y;
+
+    // Update position tracking directly in vertexMap
+    vertex.x = event.x;
+    vertex.y = event.y;
+
+    // Move the node group visually
+    d3.select(`#node-${nodeId}`)
+      .attr('transform', `translate(${event.x}, ${event.y})`);
+
+    // Update all non-highlighted edges (async with cancellation)
+    EdgeUtils.updateAllEdgesAsync(context);
+  }
+
+  static onDragEnd(context, event, d) {
+    console.log('DEBUG: onDragEnd fired for', d.id);
+    NodeUtils.setCursor(event, 'grab');
+
+    // Use unified pipeline like group drag end
+    EdgeUtils.updateAllEdgesAsync(context);
   }
 
   /**
    * Render node icons
+   * @param {Object} context - Rendering context
+   * @param {Function} handleNodeClick - Click handler for nodes
    */
-  static renderNodes(context, packedRoot) {
+  static renderNodes(context, handleNodeClick) {
     const nodes = Array.from(context.state.vertexMap.values())
       .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
 
     // Create node elements to hold icons
-    const nodeElements = context.layers.nodeLayer
+    const nodeElements = context.dom.layers.nodeLayer
       .selectAll('g.node')
       .data(nodes, vertex => vertex.id)
       .join('g')
@@ -153,15 +92,17 @@ export class NodeUtils {
       .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y})`)
       .style('cursor', 'grab')
       .on('click', (event, vertex) => {
-        context.ui.handleNodeClick(event, vertex);
+        if (handleNodeClick) {
+          handleNodeClick(event, vertex);
+        }
       })
       .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
-        context.ui.showTooltip(event, vertex.data);
+        NodeUtils.showNodeTooltip(event, vertex.data);
       })
       .on('mouseout', () => {
         // Hide tooltip
-        context.ui.hideTooltip();
+        NodeUtils.hideNodeTooltip();
       });
 
     // Add icons to node elements (like the old GraphVisualization.vue)
@@ -181,7 +122,7 @@ export class NodeUtils {
 
       if (svgElement) {
         // Create SVG icon with appropriate size and color
-        const iconSize = context.options.nodeRadius * 1.6; // Make icons bigger for visibility
+        const iconSize = getOptions().nodeRadius * 1.6; // Make icons bigger for visibility
 
         const iconSvg = group.append('svg')
           .attr('class', 'node-icon')
@@ -190,8 +131,7 @@ export class NodeUtils {
           .attr('x', -iconSize / 2)
           .attr('y', -iconSize / 2)
           .attr('viewBox', svgElement.getAttribute('viewBox') || '0 0 24 24')
-          .attr('preserveAspectRatio', 'xMidYMid meet')
-          .style('color', d.style?.fill ?? '#5B8FF9'); // Use node color from style object
+          .attr('preserveAspectRatio', 'xMidYMid meet');
 
         // Insert the icon content
         iconSvg.html(svgElement.innerHTML);
@@ -228,116 +168,228 @@ export class NodeUtils {
           }
         }
       }
-    });
 
+      // Apply default styling (colors only, preserve transform for initial render)
+      NodeUtils.applyNodeDefaultStyling(group, d, true);
+    });
 
     // Add drag behavior with reasonable threshold to prevent accidental drags during clicks
     const dragBehavior = d3.drag()
       .subject((event, d) => {
-        // Initialize drag subject with current node position
-        const pos = context.state.nodePositions.get(d.id);
-        return pos ? { x: pos.x, y: pos.y } : { x: d.x + 25, y: d.y + 25 };
+        // Initialize drag subject with current node position from vertexMap
+        const vertex = context.state.vertexMap.get(d.id);
+        return vertex ? { x: vertex.x, y: vertex.y } : { x: d.x + 25, y: d.y + 25 };
       })
       .filter(event => !event.ctrlKey) // Allow ctrl+click to bypass drag for accessibility
       .clickDistance(5) // Require 5 pixels of movement before starting drag
-      .on('start', (event, d) => InteractionUtils.onDragStart(context, event, d))
-      .on('drag', (event, d) => InteractionUtils.onDrag(context, event, d))
-      .on('end', (event, d) => InteractionUtils.onDragEnd(context, event, d));
+      .on('start', (event, d) => NodeUtils.onDragStart(context, event, d))
+      .on('drag', (event, d) => NodeUtils.onDrag(context, event, d))
+      .on('end', (event, d) => NodeUtils.onDragEnd(context, event, d));
 
     nodeElements.call(dragBehavior);
+  }
+
+  /**
+   * Apply all default styling to a node (colors, transforms, classes)
+   * @param {d3.Selection} node - D3 selection of the node element
+   * @param {Object} nodeData - Node data object
+   * @param {boolean} preserveTransform - If true, only sets colors (for initial render)
+   */
+  static applyNodeDefaultStyling(node, nodeData, preserveTransform = false) {
+    // Reset transform, filter, and classes (unless initial render)
+    if (!preserveTransform) {
+      // Get current position and remove any scale transform
+      const currentTransform = node.attr('transform') || 'translate(0,0)';
+      const match = currentTransform.match(/translate\(([^,]+),([^)]+)\)/);
+      const x = match ? parseFloat(match[1]) : 0;
+      const y = match ? parseFloat(match[2]) : 0;
+
+      node.attr('transform', `translate(${x},${y})`)
+          .style('filter', null)
+          .classed('highlighted', false);
+    }
+
+    // Apply default icon colors
+    const nodeType = nodeData.data?.type || nodeData.type || 'Unknown';
+    const defaultColor = nodeData.data?.color || nodeData.style?.fill || NodeUtils.NODE_COLORS[nodeType];
+
+    const svgIcon = node.select('svg');
+    if (!svgIcon.empty()) {
+      svgIcon.style('color', defaultColor);
+      if (nodeType === 'Unknown') {
+        svgIcon.select('circle').attr('fill', defaultColor);
+        svgIcon.select('text')
+          .attr('fill', NodeUtils.UNKNOWN_TEXT_NORMAL.fill)
+          .attr('font-weight', NodeUtils.UNKNOWN_TEXT_NORMAL.fontWeight);
+      }
+    }
+  }
+
+  /**
+   * Apply all feature styles to all nodes
+   * Called after any render operation or when only styles change
+   * @param {Object} context - Rendering context
+   */
+  static renderNodesWithHooks(context) {
+    context.dom.layers.nodeLayer.selectAll('.node').each(function(d) {
+      const node = d3.select(this);
+      const nodeId = d.id || d.data?.id;
+
+      // Reset to defaults first (with transform reset)
+      NodeUtils.applyNodeDefaultStyling(node, d, false);
+
+      // Let all registered features apply their styles
+      FeatureRegistry.nodePostRenderHooks(node, nodeId, context);
+    });
+  }
+
+  /**
+   * Store original positions in vertexMap for drag reset functionality
+   */
+  static storeOriginalPositions(context) {
+    // Store original positions directly in vertexMap for reset functionality
+    context.state.vertexMap.forEach((vertex, id) => {
+      if (!vertex.isVirtual) {
+        vertex.originalX = vertex.x;
+        vertex.originalY = vertex.y;
+        if (vertex.isGroup) {
+          vertex.originalR = vertex.r;
+        }
+      }
+    });
   }
 
   /**
    * Move a group and all its children by the given offset
    */
   static moveGroupAndChildren(context, groupId, deltaX, deltaY) {
-    const groupPos = context.state.groupPositions.get(groupId);
-    if (!groupPos) return;
+    const groupVertex = context.state.vertexMap.get(groupId);
+    if (!groupVertex || !groupVertex.isGroup) return;
 
     // Move the group itself
-    groupPos.x += deltaX;
-    groupPos.y += deltaY;
+    groupVertex.x += deltaX;
+    groupVertex.y += deltaY;
 
     // Update group visual position
     d3.select(`#group-${groupId}`)
-      .attr('cx', groupPos.x)
-      .attr('cy', groupPos.y);
+      .attr('cx', groupVertex.x)
+      .attr('cy', groupVertex.y);
 
     // Update group label container
     d3.select(`#group-label-container-${groupId}`)
-      .attr('transform', `translate(${groupPos.x}, ${groupPos.y - groupPos.r - 5})`);
+      .attr('transform', `translate(${groupVertex.x}, ${groupVertex.y - groupVertex.r - 5})`);
 
     // Move all child nodes and subgroups recursively
-    groupPos.children.forEach(childId => {
-      const childNodePos = context.state.nodePositions.get(childId);
-      const childGroupPos = context.state.groupPositions.get(childId);
+    if (groupVertex.children) {
+      groupVertex.children.forEach(child => {
+        const childVertex = context.state.vertexMap.get(child.id);
+        if (!childVertex) return;
 
-      if (childNodePos) {
-        // Move child node
-        childNodePos.x += deltaX;
-        childNodePos.y += deltaY;
+        if (childVertex.isGroup) {
+          // Recursively move child group
+          NodeUtils.moveGroupAndChildren(context, child.id, deltaX, deltaY);
+        } else {
+          // Move child node
+          childVertex.x += deltaX;
+          childVertex.y += deltaY;
 
-        // Update visual position
-        d3.select(`#node-${childId}`)
-          .attr('transform', `translate(${childNodePos.x}, ${childNodePos.y})`);
-
-
-      } else if (childGroupPos) {
-        // Recursively move child group
-        NodeUtils.moveGroupAndChildren(context, childId, deltaX, deltaY);
-      }
-    });
+          // Update visual position
+          d3.select(`#node-${child.id}`)
+            .attr('transform', `translate(${childVertex.x}, ${childVertex.y})`);
+        }
+      });
+    }
   }
 
   /**
    * Reset all nodes and groups to their original pack layout positions
    */
   static resetNodePositions(context) {
-    if (!context.state.nodePositions.size && !context.state.groupPositions.size) return;
+    if (!context.state.vertexMap.size) return;
 
-    // Animate groups back to original positions
-    context.state.groupPositions.forEach((pos, groupId) => {
-      if (pos.originalX !== undefined && pos.originalY !== undefined) {
+    // Animate all vertices back to original positions
+    context.state.vertexMap.forEach((vertex, id) => {
+      if (vertex.originalX !== undefined && vertex.originalY !== undefined) {
         // Update tracking position
-        pos.x = pos.originalX;
-        pos.y = pos.originalY;
+        vertex.x = vertex.originalX;
+        vertex.y = vertex.originalY;
 
-        // Animate group back to original position
-        d3.select(`#group-${groupId}`)
-          .transition()
-          .duration(500)
-          .attr('cx', pos.originalX)
-          .attr('cy', pos.originalY);
+        if (vertex.isGroup) {
+          vertex.r = vertex.originalR;
 
-        // Animate group label container back to original position
-        d3.select(`#group-label-container-${groupId}`)
-          .transition()
-          .duration(500)
-          .attr('transform', `translate(${pos.originalX}, ${pos.originalY - pos.r - 5})`);
-      }
-    });
+          // Animate group back to original position
+          d3.select(`#group-${id}`)
+            .transition()
+            .duration(500)
+            .attr('cx', vertex.originalX)
+            .attr('cy', vertex.originalY);
 
-    // Animate nodes back to original positions
-    context.state.nodePositions.forEach((pos, nodeId) => {
-      if (pos.originalX !== undefined && pos.originalY !== undefined) {
-        // Update tracking position
-        pos.x = pos.originalX;
-        pos.y = pos.originalY;
-
-        // Animate node back to original position
-        d3.select(`#node-${nodeId}`)
-          .transition()
-          .duration(500)
-          .attr('transform', `translate(${pos.originalX}, ${pos.originalY})`);
-
+          // Animate group label container back to original position
+          d3.select(`#group-label-container-${id}`)
+            .transition()
+            .duration(500)
+            .attr('transform', `translate(${vertex.originalX}, ${vertex.originalY - vertex.r - 5})`);
+        } else {
+          // Animate node back to original position
+          d3.select(`#node-${id}`)
+            .transition()
+            .duration(500)
+            .attr('transform', `translate(${vertex.originalX}, ${vertex.originalY})`);
+        }
       }
     });
 
     // Update all edges after a brief delay to let nodes animate
     setTimeout(() => {
-      import('./edgeUtils.js').then(({ EdgeUtils }) => {
-        EdgeUtils.updateAllEdgesAsync(context);
-      });
+      EdgeUtils.updateAllEdgesAsync(context);
     }, 100);
+  }
+
+  /**
+   * Show tooltip on node hover
+   * @param {Event} event - Mouse event
+   * @param {Object} nodeData - Node data object
+   */
+  static showNodeTooltip(event, nodeData) {
+    // Create tooltip if it doesn't exist
+    if (!NodeUtils.tooltip) {
+      NodeUtils.tooltip = d3.select('body')
+        .append('div')
+        .attr('class', 'graph-tooltip')
+        .style('position', 'absolute')
+        .style('background', 'rgba(0, 0, 0, 0.8)')
+        .style('color', 'white')
+        .style('padding', '8px')
+        .style('border-radius', '4px')
+        .style('font-size', '12px')
+        .style('pointer-events', 'none')
+        .style('z-index', '9999')
+        .style('opacity', 0);
+    }
+
+    // Build tooltip content
+    let content = `Type: ${nodeData.type || 'Unknown'}`;
+    if (nodeData.name) {
+      content += `\nName: ${nodeData.name}`;
+    }
+    if (nodeData.address) {
+      content += `\nAddress: ${nodeData.address}`;
+    }
+
+    // Show tooltip with content
+    NodeUtils.tooltip
+      .html(content.replace(/\n/g, '<br>'))
+      .style('left', (event.pageX + 10) + 'px')
+      .style('top', (event.pageY - 10) + 'px')
+      .style('opacity', 1);
+  }
+
+  /**
+   * Hide node tooltip
+   */
+  static hideNodeTooltip() {
+    if (NodeUtils.tooltip) {
+      NodeUtils.tooltip.style('opacity', 0);
+    }
   }
 }
