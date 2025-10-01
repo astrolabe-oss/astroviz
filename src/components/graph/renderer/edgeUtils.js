@@ -106,7 +106,7 @@ export class EdgeUtils {
     if (!context.state.edges) return;
 
     // Extract rendering data using utility method
-    const { positionMap, applicationGroups, clusterGroups, nodeToAppMap, nodeToClusterMap } =
+    const { positionMap, allGroups } =
       EdgeUtils.extractRenderingDataFromVertexMap(context.state.vertexMap);
 
     // Filter edges to only those with both endpoints visible
@@ -133,22 +133,28 @@ export class EdgeUtils {
       let strokeStyle, strokeWidth;
 
       // Use gradient segments for non-highlighted edges
-      // Find home groups using utility method
-      const { homeApps, homeClusters } = EdgeUtils.findHomeGroups(edge, nodeToAppMap, nodeToClusterMap);
+      // Find all ancestor groups containing this edge's endpoints (hierarchy-agnostic)
+      const homeGroups = EdgeUtils.findContainingGroups(edge, context.state.vertexMap);
 
       // Create adjusted position map for segment calculation
       const adjustedPositionMap = new Map(positionMap);
       adjustedPositionMap.set(edge.target, { x: adjustedTargetX, y: adjustedTargetY });
 
-      // Create filter function using utility method
-      const isUnrelatedGroupFilter = EdgeUtils.createUnrelatedGroupFilter(
-        homeApps, homeClusters, applicationGroups, clusterGroups
-      );
+      // Create filter function - mark segments as "unrelated" if they pass through groups that don't contain endpoints
+      const isUnrelatedGroupFilter = (point, allGroups) => {
+        // Check if point is inside any group that's NOT a home group
+        for (const group of allGroups) {
+          if (EdgeUtils.pointInCircle(point, group) && !homeGroups.has(group.id)) {
+            return true; // Inside an unrelated group
+          }
+        }
+        return false;
+      };
 
       const segments = EdgeUtils.calculateEdgeSegments(
         edge,
         adjustedPositionMap,
-        [...applicationGroups, ...clusterGroups],
+        allGroups,
         isUnrelatedGroupFilter
       );
 
@@ -415,73 +421,29 @@ export class EdgeUtils {
   static extractRenderingDataFromVertexMap(vertexMap) {
     // Create position map from vertexMap
     const positionMap = new Map();
-    const applicationGroups = [];
-    const clusterGroups = [];
-    const nodeToAppMap = new Map();
-    const nodeToClusterMap = new Map();
-    
+    const allGroups = [];
+
     // Process all vertices
     vertexMap.forEach((vertex, id) => {
       if (!vertex.isVirtual) {
         // Add position for all vertices (nodes and groups)
         positionMap.set(id, { x: vertex.x, y: vertex.y });
-        
-        // Process groups for intersection detection
+
+        // Collect all groups for gradient intersection detection
         if (vertex.isGroup) {
-          const circle = {
+          allGroups.push({
             id: vertex.id,
             x: vertex.x,
             y: vertex.y,
-            r: vertex.r,
-            isApp: vertex.id.startsWith('app-'),
-            isCluster: vertex.id.startsWith('cluster')
-          };
-          
-          // Track application groups
-          if (circle.isApp) {
-            applicationGroups.push(circle);
-            
-            // Map all child nodes to this application
-            if (vertex.children) {
-              const mapChildNodes = (child) => {
-                if (!child.isGroup) {
-                  nodeToAppMap.set(child.id, vertex.id);
-                }
-                if (child.children) {
-                  child.children.forEach(mapChildNodes);
-                }
-              };
-              vertex.children.forEach(mapChildNodes);
-            }
-          }
-          
-          // Track cluster groups  
-          if (circle.isCluster) {
-            clusterGroups.push(circle);
-            
-            // Map all child nodes to this cluster
-            if (vertex.children) {
-              const mapChildNodes = (child) => {
-                if (!child.isGroup) {
-                  nodeToClusterMap.set(child.id, vertex.id);
-                }
-                if (child.children) {
-                  child.children.forEach(mapChildNodes);
-                }
-              };
-              vertex.children.forEach(mapChildNodes);
-            }
-          }
+            r: vertex.r
+          });
         }
       }
     });
-    
+
     return {
       positionMap,
-      applicationGroups,
-      clusterGroups,
-      nodeToAppMap,
-      nodeToClusterMap
+      allGroups
     };
   }
 
@@ -507,56 +469,32 @@ export class EdgeUtils {
   }
 
   /**
-   * Find home groups for an edge based on node mappings
+   * Find all ancestor groups containing an edge's endpoints (hierarchy-agnostic)
    * @param {Object} edge - Edge with source and target
-   * @param {Map} nodeToAppMap - Map of node to application group
-   * @param {Map} nodeToClusterMap - Map of node to cluster group
-   * @returns {Object} Object with homeApps and homeClusters Sets
+   * @param {Map} vertexMap - Map of all vertices
+   * @returns {Set} Set of group IDs that contain either endpoint
    */
-  static findHomeGroups(edge, nodeToAppMap, nodeToClusterMap) {
-    const homeApps = new Set();
-    const homeClusters = new Set();
-    
-    const sourceApp = nodeToAppMap.get(edge.source);
-    const targetApp = nodeToAppMap.get(edge.target);
-    if (sourceApp) homeApps.add(sourceApp);
-    if (targetApp) homeApps.add(targetApp);
-    
-    const sourceCluster = nodeToClusterMap.get(edge.source);
-    const targetCluster = nodeToClusterMap.get(edge.target);
-    if (sourceCluster) homeClusters.add(sourceCluster);
-    if (targetCluster) homeClusters.add(targetCluster);
-    
-    return { homeApps, homeClusters };
+  static findContainingGroups(edge, vertexMap) {
+    const homeGroups = new Set();
+
+    // Walk up parent chain from source
+    let current = vertexMap.get(edge.source);
+    while (current?.parentId) {
+      homeGroups.add(current.parentId);
+      current = vertexMap.get(current.parentId);
+    }
+
+    // Walk up parent chain from target
+    current = vertexMap.get(edge.target);
+    while (current?.parentId) {
+      homeGroups.add(current.parentId);
+      current = vertexMap.get(current.parentId);
+    }
+
+    return homeGroups;
   }
 
-  /**
-   * Create filter function for unrelated groups
-   * @param {Set} homeApps - Set of home application group IDs
-   * @param {Set} homeClusters - Set of home cluster group IDs
-   * @param {Array} applicationGroups - Array of application group circles
-   * @param {Array} clusterGroups - Array of cluster group circles
-   * @returns {Function} Filter function (point, allGroups) => boolean
-   */
-  static createUnrelatedGroupFilter(homeApps, homeClusters, applicationGroups, clusterGroups) {
-    return (point, allGroups) => {
-      // Check if inside any unrelated application
-      for (const appGroup of applicationGroups) {
-        if (this.pointInCircle(point, appGroup)) {
-          if (!homeApps.has(appGroup.id)) return true;
-        }
-      }
-      
-      // Check if inside any unrelated cluster
-      for (const clusterGroup of clusterGroups) {
-        if (this.pointInCircle(point, clusterGroup)) {
-          if (!homeClusters.has(clusterGroup.id)) return true;
-        }
-      }
-      
-      return false;
-    };
-  }
+
 
   // ========================================================================
   // Unified Rendering Pipeline
