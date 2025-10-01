@@ -245,5 +245,5 @@ export function transformGraphDataForVisualization(data, nodeColors) {
  * @returns {string} The color for the node type
  */
 function getNodeColor(type, nodeColors) {
-  return nodeColors[type] || '#999';
+  return nodeColors[type] || '#4A98E3';
 }

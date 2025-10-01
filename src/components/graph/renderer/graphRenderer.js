@@ -145,6 +145,9 @@ export class GraphRenderer {
   render() {
     if (!this.data) return;
 
+    // Clear all existing graph elements before re-rendering
+    Object.values(this.context.dom.layers).forEach(layer => layer.selectAll('*').remove());
+
     // Build hierarchy from vertices (stores vertexMap in context.state)
     const { hierarchy, rootRadialElements } = LayoutUtils.buildHierarchy(this.context, this.data.vertices);
     if (!hierarchy) return;

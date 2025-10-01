@@ -365,7 +365,7 @@ export default {
         this.loadingProgress = 10;
 
         // Call the consolidated method with status logging callback
-        const graphData = await this.fetchGraphFromNeo4j(
+        await this.fetchGraphFromNeo4j(
           (status) => {
             console.log(`APP: Progress update - ${status} (${this.loadingProgress}%)`);
           }
