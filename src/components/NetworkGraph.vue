@@ -17,6 +17,8 @@
         @zoom-in="onZoomIn"
         @zoom-out="onZoomOut"
         @reset-view="onResetView"
+        @collapse-all="onCollapseAll"
+        @expand-all="onExpandAll"
     />
 
     <GraphVisualization
@@ -154,6 +156,24 @@ export default {
     onResetView() {
       if (this.$refs.visualization) {
         this.$refs.visualization.resetView();
+      }
+    },
+
+    /**
+     * Handle collapse all button click
+     */
+    onCollapseAll() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.collapseAll();
+      }
+    },
+
+    /**
+     * Handle expand all button click
+     */
+    onExpandAll() {
+      if (this.$refs.visualization) {
+        this.$refs.visualization.expandAll();
       }
     },
 

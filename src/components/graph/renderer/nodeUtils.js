@@ -9,6 +9,7 @@
 import * as d3 from 'd3';
 import networkIcons from '../../networkIcons';
 import { EdgeUtils } from './edgeUtils.js';
+import { GroupUtils } from './groupUtils.js';
 import { FeatureRegistry } from './featureRegistry.js';
 import { getOptions } from './options.js';
 
@@ -32,6 +33,24 @@ export class NodeUtils {
     fill: '#333333',
     fontWeight: 'normal'
   };
+
+  /**
+   * Recursively count all descendants in a children array
+   * @param {Array} children - Array of child objects
+   * @returns {number} Total count of all descendants
+   */
+  static countDescendants(children) {
+    if (!children || !Array.isArray(children) || children.length === 0) return 0;
+
+    let count = children.length;
+    children.forEach(child => {
+      if (child.children && Array.isArray(child.children)) {
+        count += NodeUtils.countDescendants(child.children);
+      }
+    });
+    return count;
+  }
+
   /**
    * Node drag handlers
    */
@@ -78,9 +97,9 @@ export class NodeUtils {
    * @param {Object} context - Rendering context
    * @param {Function} handleNodeClick - Click handler for nodes
    */
-  static renderNodes(context, handleNodeClick) {
+  static renderNodes(context, handleNodeClick, handleNodeDoubleClick) {
     const nodes = Array.from(context.state.vertexMap.values())
-      .filter(vertex => !vertex.isGroup && !vertex.isVirtual);
+      .filter(vertex => (!vertex.isGroup || vertex.isCollapsed) && !vertex.isVirtual);
 
     // Create node elements to hold icons
     const nodeElements = context.dom.layers.nodeLayer
@@ -96,6 +115,11 @@ export class NodeUtils {
           handleNodeClick(event, vertex);
         }
       })
+      .on('dblclick', (event, vertex) => {
+        if (handleNodeDoubleClick) {
+          handleNodeDoubleClick(event, vertex);
+        }
+      })
       .on('mouseover', (event, vertex) => {
         // Show tooltip on hover
         NodeUtils.showNodeTooltip(event, vertex.data);
@@ -108,6 +132,24 @@ export class NodeUtils {
     // Add icons to node elements (like the old GraphVisualization.vue)
     nodeElements.each(function(d) {
       const group = d3.select(this);
+
+      // Check if this is a collapsed group - render as circle instead of icon
+      if (d.isCollapsed) {
+        // Render as small dashed circle (matching legend Application style)
+        const radius = 30;
+        group.append('circle')
+          .attr('class', 'collapsed-group-circle')
+          .attr('r', radius)
+          .attr('fill', '#FFE6CC')
+          .attr('fill-opacity', 0.8)
+          .attr('stroke', '#FF9933')
+          .attr('stroke-width', 2)
+          .attr('stroke-dasharray', '3,3');
+
+        // Apply default styling
+        NodeUtils.applyNodeDefaultStyling(group, d, true);
+        return; // Skip icon rendering
+      }
 
       // Node type is now directly accessible on d.data
       const nodeType = d.data?.type || 'Unknown';
@@ -122,7 +164,7 @@ export class NodeUtils {
 
       if (svgElement) {
         // Create SVG icon with appropriate size and color
-        const iconSize = getOptions().nodeRadius * 1.6; // Make icons bigger for visibility
+        const iconSize = getOptions().nodeRadius * 2.3; // Icon diameter = 2 * radius
 
         const iconSvg = group.append('svg')
           .attr('class', 'node-icon')
@@ -187,6 +229,74 @@ export class NodeUtils {
       .on('end', (event, d) => NodeUtils.onDragEnd(context, event, d));
 
     nodeElements.call(dragBehavior);
+
+    // Render labels for collapsed groups (reuse group label rendering)
+    const collapsedGroups = nodes.filter(vertex => vertex.isCollapsed);
+    NodeUtils.renderCollapsedGroupLabels(context, collapsedGroups);
+  }
+
+  /**
+   * Render labels and badges for collapsed groups
+   * @param {Object} context - Rendering context
+   * @param {Array} collapsedGroups - Array of collapsed group vertices
+   */
+  static renderCollapsedGroupLabels(context, collapsedGroups) {
+    // Create label containers in labelLayer (same as GroupUtils.renderGroupLabels)
+    const labelContainers = context.dom.layers.labelLayer
+      .selectAll('g.collapsed-group-label-container')
+      .data(collapsedGroups, vertex => vertex.id)
+      .join('g')
+      .attr('class', 'collapsed-group-label-container')
+      .attr('id', vertex => `collapsed-group-label-${vertex.id}`)
+      .attr('transform', vertex => `translate(${vertex.x}, ${vertex.y + vertex.r + 15})`); // Position below circle
+
+    // Render each label using GroupUtils method (reuse existing logic)
+    labelContainers.each(function(d) {
+      GroupUtils.renderGroupLabel(d3.select(this), d);
+    });
+
+    // Add badges with child count
+    collapsedGroups.forEach(group => {
+      const childCount = NodeUtils.countDescendants(group.children);
+      if (childCount > 0) {
+        NodeUtils.renderCollapsedGroupBadge(context, group, childCount);
+      }
+    });
+  }
+
+  /**
+   * Render badge with child count for a collapsed group
+   * @param {Object} context - Rendering context
+   * @param {Object} group - Collapsed group vertex
+   * @param {number} count - Number of children
+   */
+  static renderCollapsedGroupBadge(context, group, count) {
+    const badgeRadius = 10;
+    const badgeX = group.r * 0.7;  // Top-right of circle
+    const badgeY = -group.r * 0.7;
+
+    // Badge group in labelLayer (for proper z-index)
+    const badgeGroup = context.dom.layers.labelLayer
+      .append('g')
+      .attr('class', 'collapsed-group-badge-container')
+      .attr('transform', `translate(${group.x + badgeX}, ${group.y + badgeY})`);
+
+    // Badge background circle
+    badgeGroup.append('circle')
+      .attr('r', badgeRadius)
+      .attr('fill', '#F9696E')  // Red for Application
+      .attr('stroke', 'white')
+      .attr('stroke-width', 2);
+
+    // Badge count text
+    badgeGroup.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('dominant-baseline', 'middle')
+      .attr('font-size', '10px')
+      .attr('font-weight', 'bold')
+      .attr('fill', 'white')
+      .style('pointer-events', 'none')
+      .text(count);
   }
 
   /**

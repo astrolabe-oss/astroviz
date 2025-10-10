@@ -124,9 +124,15 @@ export class EdgeUtils {
       const source = vertexMap.get(edge.source);
       const target = vertexMap.get(edge.target);
 
-      // Calculate adjusted endpoint using utility method
-      const shortenBy = getOptions().nodeRadius * 0.7;
-      const { x2: adjustedTargetX, y2: adjustedTargetY } = EdgeUtils.shortenEdgeForArrow(source, target, shortenBy);
+      if (!source || !target) {
+        return;
+      }
+
+      // Calculate adjusted endpoints - shorten from both source and target
+      const sourceRadius = source.r || getOptions().nodeRadius;
+      const targetRadius = target.r || getOptions().nodeRadius;
+      const { x1: adjustedSourceX, y1: adjustedSourceY, x2: adjustedTargetX, y2: adjustedTargetY } =
+        EdgeUtils.shortenEdgeForBothEnds(source, target, sourceRadius, targetRadius);
 
       // Find all ancestor groups containing this edge's endpoints (hierarchy-agnostic)
       const homeGroups = EdgeUtils.findContainingGroups(edge, vertexMap);
@@ -143,7 +149,7 @@ export class EdgeUtils {
       };
 
       const segments = EdgeUtils.calculateEdgeSegments(
-        source,
+        { x: adjustedSourceX, y: adjustedSourceY },
         { x: adjustedTargetX, y: adjustedTargetY },
         allGroups,
         isUnrelatedGroupFilter
@@ -160,8 +166,8 @@ export class EdgeUtils {
         context.dom.defs,
         edgeId,
         gradientStops,
-        source.x,
-        source.y,
+        adjustedSourceX,
+        adjustedSourceY,
         adjustedTargetX,
         adjustedTargetY
       );
@@ -174,8 +180,8 @@ export class EdgeUtils {
         .attr('data-source', edge.source)
         .attr('data-target', edge.target)
         .attr('data-edge-id', `${edge.source}-${edge.target}-${edgeIndex}`)
-        .attr('x1', source.x)
-        .attr('y1', source.y)
+        .attr('x1', adjustedSourceX)
+        .attr('y1', adjustedSourceY)
         .attr('x2', adjustedTargetX)
         .attr('y2', adjustedTargetY)
         .attr('stroke', strokeStyle)
@@ -403,7 +409,32 @@ export class EdgeUtils {
 
 
   /**
-   * Shorten edge coordinates to accommodate arrow markers
+   * Shorten edge coordinates from both ends to accommodate node radii
+   * @param {Object} sourcePos - Source position {x, y}
+   * @param {Object} targetPos - Target position {x, y}
+   * @param {number} sourceRadius - Source node/group radius
+   * @param {number} targetRadius - Target node/group radius
+   * @returns {Object} Adjusted coordinates {x1, y1, x2, y2}
+   */
+  static shortenEdgeForBothEnds(sourcePos, targetPos, sourceRadius, targetRadius) {
+    const dx = targetPos.x - sourcePos.x;
+    const dy = targetPos.y - sourcePos.y;
+    const length = Math.sqrt(dx * dx + dy * dy);
+
+    // Calculate ratios for both ends
+    const sourceRatio = sourceRadius / length;
+    const targetRatio = targetRadius / length;
+
+    return {
+      x1: sourcePos.x + dx * sourceRatio,
+      y1: sourcePos.y + dy * sourceRatio,
+      x2: sourcePos.x + dx * (1 - targetRatio),
+      y2: sourcePos.y + dy * (1 - targetRatio)
+    };
+  }
+
+  /**
+   * Shorten edge coordinates to accommodate arrow markers (legacy - kept for compatibility)
    * @param {Object} sourcePos - Source position {x, y}
    * @param {Object} targetPos - Target position {x, y}
    * @param {number} shortenBy - Amount to shorten by
@@ -414,7 +445,7 @@ export class EdgeUtils {
     const dy = targetPos.y - sourcePos.y;
     const length = Math.sqrt(dx * dx + dy * dy);
     const ratio = (length - shortenBy) / length;
-    
+
     return {
       x1: sourcePos.x,
       y1: sourcePos.y,

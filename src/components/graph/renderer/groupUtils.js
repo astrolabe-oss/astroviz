@@ -82,13 +82,14 @@ export class GroupUtils {
    * Main method to render all groups
    * @param {Object} context - Rendering context from GraphRenderer
    * @param {Function} handleGroupClick - Click handler for groups
+   * @param {Function} handleGroupDoubleClick - Double-click handler for groups
    */
-  static renderGroups(context, handleGroupClick) {
+  static renderGroups(context, handleGroupClick, handleGroupDoubleClick) {
     const groups = Array.from(context.state.vertexMap.values())
-      .filter(vertex => vertex.isGroup && !vertex.isVirtual);
+      .filter(vertex => vertex.isGroup && !vertex.isVirtual && !vertex.isCollapsed);
 
     // Render group circles
-    const groupElements = GroupUtils.renderGroupElements(context, groups, handleGroupClick);
+    const groupElements = GroupUtils.renderGroupElements(context, groups, handleGroupClick, handleGroupDoubleClick);
 
     // Apply default styles to each group
     groupElements.each(function(d) {
@@ -108,9 +109,10 @@ export class GroupUtils {
    * @param {Object} context - Rendering context
    * @param {Array} groups - Array of group vertices
    * @param {Function} handleGroupClick - Click handler for groups
+   * @param {Function} handleGroupDoubleClick - Double-click handler for groups
    * @returns {d3.Selection} Selection of group circle elements
    */
-  static renderGroupElements(context, groups, handleGroupClick) {
+  static renderGroupElements(context, groups, handleGroupClick, handleGroupDoubleClick) {
     const groupElements = context.dom.layers.groupLayer
       .selectAll('circle.group')
       .data(groups, vertex => vertex.id)
@@ -124,6 +126,11 @@ export class GroupUtils {
       .on('click', (event, vertex) => {
         if (handleGroupClick) {
           handleGroupClick(event, vertex);
+        }
+      })
+      .on('dblclick', (event, vertex) => {
+        if (handleGroupDoubleClick) {
+          handleGroupDoubleClick(event, vertex);
         }
       });
 

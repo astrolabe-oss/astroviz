@@ -163,6 +163,18 @@ export default {
       if (this.graph) {
         this.graph.selectNodeById(nodeId, appendToSelection);
       }
+    },
+
+    collapseAll() {
+      if (this.graph) {
+        this.graph.collapseAll();
+      }
+    },
+
+    expandAll() {
+      if (this.graph) {
+        this.graph.expandAll();
+      }
     }
   }
 };

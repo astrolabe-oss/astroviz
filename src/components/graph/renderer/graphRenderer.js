@@ -8,6 +8,7 @@ import { HighlightingFeature } from './highlightingFeature.js';
 import { GroupUtils } from './groupUtils.js';
 import { FeatureRegistry } from './featureRegistry.js';
 import { initializeOptions, getOptions } from './options.js';
+import { applyCollapseTransform } from './collapseTransform.js';
 
 /**
  * GraphRenderer - D3 hierarchical graph renderer with advanced edge styling
@@ -21,7 +22,7 @@ export class GraphRenderer {
     initializeOptions({
       width: options.width || 800,
       height: options.height || 600,
-      nodePadding: options.nodePadding || 0,
+      nodePadding: options.nodePadding || 15,
       nodeRadius: options.nodeRadius || 25,
       groupPadding: options.groupPadding || 50,
       ...options
@@ -37,7 +38,8 @@ export class GraphRenderer {
       // Core mutable state
       state: {
         vertexMap: new Map(),
-        edges: null
+        edges: null,
+        collapsedGroups: new Set()  // Track collapsed application groups
       },
 
       // DOM references (populated in init)
@@ -81,7 +83,6 @@ export class GraphRenderer {
       .attr('height', getOptions().height)
       .style('background', '#f8f9fa')
       .on('click', (event) => {
-        console.log('DEBUG: Background click handler fired');
         // Clear highlights when clicking background (unless shift key is pressed)
         if (!event.shiftKey) {
           HighlightingFeature.clearSelectedNodes();
@@ -107,6 +108,10 @@ export class GraphRenderer {
     // Add zoom behavior
     this.zoom = d3.zoom()
       .scaleExtent([0.1, 4])
+      .filter(event => {
+        // Disable double-click zoom, allow all other interactions
+        return event.type !== 'dblclick';
+      })
       .on('zoom', (event) => {
         this.g.attr('transform', event.transform);
 
@@ -115,7 +120,7 @@ export class GraphRenderer {
           getOptions().onZoomChange(event.transform.k);
         }
       });
-    
+
     this.svg.call(this.zoom);
 
     // Set DOM references for utilities that need them
@@ -140,7 +145,7 @@ export class GraphRenderer {
 
   
   /**
-   * Main render method
+   * Main render method - builds layout and renders
    */
   render() {
     if (!this.data) return;
@@ -167,13 +172,52 @@ export class GraphRenderer {
     // Store original positions for drag reset functionality
     NodeUtils.storeOriginalPositions(this.context);
 
-    // Render everything
-    GroupUtils.renderGroups(this.context, (event, d) => this.handleGroupClick(event, d));
-    NodeUtils.renderNodes(this.context, (event, d) => this.handleNodeClick(event, d));
-    EdgeUtils.renderEdges(this.context);
-    
+    // Render with current collapse state
+    this.renderWithCollapse();
+
     // Fit the drawing to viewport on initial render
     LayoutUtils.fitToView(this.context);
+  }
+
+  /**
+   * Re-render DOM elements with collapse transform applied
+   * Does NOT recalculate layout - preserves positions
+   */
+  renderWithCollapse() {
+    // Clear all existing graph elements
+    Object.values(this.context.dom.layers).forEach(layer => layer.selectAll('*').remove());
+
+    // Store raw data if not already stored
+    if (!this.rawVertexMap) {
+      this.rawVertexMap = this.context.state.vertexMap;
+      this.rawEdges = this.context.state.edges;
+    }
+
+    const { vertexMap: transformedVertexMap, edges: transformedEdges } = applyCollapseTransform(
+      this.rawVertexMap,
+      this.rawEdges,
+      this.context.state.collapsedGroups
+    );
+
+    // Replace state with transformed data (and keep it!)
+    this.context.state.vertexMap = transformedVertexMap;
+    this.context.state.edges = transformedEdges;
+
+    // Render everything with transformed data
+    GroupUtils.renderGroups(
+      this.context,
+      (event, d) => this.handleGroupClick(event, d),
+      (event, d) => this.handleGroupDoubleClick(event, d)
+    );
+    NodeUtils.renderNodes(
+      this.context,
+      (event, d) => this.handleNodeClick(event, d),
+      (event, d) => this.handleNodeDoubleClick(event, d)
+    );
+    EdgeUtils.renderEdges(this.context);
+
+    // NOTE: We DON'T restore state anymore - context now has transformed data
+    // This way drag handlers and other async operations use the correct transformed state
   }
 
 
@@ -182,21 +226,13 @@ export class GraphRenderer {
    * Determines group type and routes to appropriate handler
    */
   handleGroupClick(event, d) {
-    console.log('DEBUG: Group click handler fired for', d.id);
     event.stopPropagation(); // Prevent background click
 
     // Route based on group type
     if (!d.id.startsWith('app-')) {
       // For cluster/boundary groups, do nothing (no details panel)
-      console.log('Non-application group clicked, ignoring:', d.id);
       return;
     }
-
-    // Clear any existing highlights from other systems
-    console.log('Application group clicked:', d);
-    HighlightingFeature.clearSelectedNodes();
-    HighlightingFeature.selectApplicationGroups(this.context, d.app_name || d.data?.app_name, event.shiftKey);
-    FeatureRegistry.triggerRender();
 
     // Emit clean data for NodeDetails - pass d.data consistently
     if (getOptions().onNodeClick) {
@@ -205,18 +241,54 @@ export class GraphRenderer {
   }
 
   /**
+   * Handle double-click on groups for collapse/expand toggle
+   */
+  handleGroupDoubleClick(event, d) {
+    event.stopPropagation(); // Prevent background click
+
+    // Only toggle application groups
+    if (!d.id.startsWith('app-')) {
+      return;
+    }
+
+    // Toggle collapse state
+    if (this.context.state.collapsedGroups.has(d.id)) {
+      this.context.state.collapsedGroups.delete(d.id);
+    } else {
+      this.context.state.collapsedGroups.add(d.id);
+    }
+
+    // Re-render WITHOUT re-layout (preserve positions)
+    this.renderWithCollapse();
+  }
+
+  /**
    * Unified click handler for nodes
    */
   handleNodeClick(event, d) {
-    console.log('DEBUG: Node click handler fired for', d.id);
     event.stopPropagation(); // Prevent background click
 
     // Use unified selection logic
     this.selectNodeById(d.id, event.shiftKey);
-    
+
     // Emit node data for NodeDetails - pass the clean database properties
     if (getOptions().onNodeClick) {
       getOptions().onNodeClick(d.data, event);
+    }
+  }
+
+  /**
+   * Handle double-click on nodes for expand (if collapsed Application node)
+   */
+  handleNodeDoubleClick(event, d) {
+    event.stopPropagation(); // Prevent background click
+
+    // Only expand if this is a collapsed Application node
+    if (d.data?.type === 'Application' && this.context.state.collapsedGroups.has(d.id)) {
+      this.context.state.collapsedGroups.delete(d.id);
+
+      // Re-render WITHOUT re-layout (preserve positions)
+      this.renderWithCollapse();
     }
   }
 
@@ -263,6 +335,34 @@ export class GraphRenderer {
     this.context.dom.svg.transition().duration(300).call(
       this.context.dom.zoom.scaleBy, 0.67
     );
+  }
+
+  /**
+   * Collapse all application groups
+   */
+  collapseAll() {
+    // Find all application groups in raw data
+    if (!this.rawVertexMap) return;
+
+    this.rawVertexMap.forEach((vertex, vertexId) => {
+      if (vertex.isGroup && vertexId.startsWith('app-')) {
+        this.context.state.collapsedGroups.add(vertexId);
+      }
+    });
+
+    // Re-render with all apps collapsed
+    this.renderWithCollapse();
+  }
+
+  /**
+   * Expand all application groups
+   */
+  expandAll() {
+    // Clear all collapsed groups
+    this.context.state.collapsedGroups.clear();
+
+    // Re-render with all apps expanded
+    this.renderWithCollapse();
   }
 
   setFilterDimming(filteredOutNodeIds) {

@@ -10,6 +10,9 @@
     <button @click="$emit('zoom-out')" class="control-btn" title="Zoom Out">−</button>
     <div class="zoom-level" v-if="currentZoomLevel">{{ Math.round(currentZoomLevel * 100) }}%</div>
     <button @click="$emit('reset-view')" class="control-btn" title="Reset View">⟳</button>
+    <div class="separator"></div>
+    <button @click="$emit('collapse-all')" class="control-btn control-btn-text" title="Collapse All Apps">⊟</button>
+    <button @click="$emit('expand-all')" class="control-btn control-btn-text" title="Expand All Apps">⊞</button>
   </div>
 </template>
 
@@ -65,5 +68,17 @@ export default {
   min-width: 40px;
   text-align: center;
   user-select: none;
+}
+
+.separator {
+  width: 1px;
+  height: 24px;
+  background-color: #ddd;
+  margin: 0 3px;
+}
+
+.control-btn-text {
+  font-size: 18px;
+  width: 36px;
 }
 </style>
