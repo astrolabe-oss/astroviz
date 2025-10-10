@@ -5,6 +5,21 @@ All notable changes to AstroViz will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.2.3] - 2025-10-10
+
+### Architecture Refactor / Vibe Code Cleanup
+- **Feature registry pattern**: Introduced feature registry pattern for filters and highlights
+- **Code deduplication**: Major deduplication of graph state management
+- **Utility reorganization**: Broke out renderer utilities into focused, single-purpose modules
+- **Flexible hierarchy**: Made hierarchy and edge calculations agnostic to grouping types (no longer hardcoded to application/cluster/etc)
+
+### Bug Fixes
+- **Footer alignment**: Fixed footer alignment issues
+
+### Technical Improvements
+- **Separation of concerns**: Better separation between filtering and highlighting logic
+- **Code quality**: Significant codebase cleanup and organization improvements
+
 ## [0.2.2] - 2025-09-23
 
 ### Visual Enhancements
